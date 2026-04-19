@@ -1,7 +1,13 @@
-<script setup lang="ts"></script>
+<script setup lang="ts">
+import Layout from "./layouts/Layout.vue";
+</script>
 
 <template>
-  <h1 class="firstH1">You did it!</h1>
+  <Layout>
+    <template v-slot:layoutContent>
+      <router-view />
+    </template>
+  </Layout>
 </template>
 
 <style scoped lang="less">

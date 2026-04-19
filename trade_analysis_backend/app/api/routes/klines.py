@@ -19,7 +19,7 @@ from app.schemas.kline_data import (
 router = APIRouter()
 
 
-@router.post("/", response_model=KlineDataRead, status_code=status.HTTP_201_CREATED)
+@router.post("", response_model=KlineDataRead, status_code=status.HTTP_201_CREATED)
 def create_kline(payload: KlineDataCreate, service: KlineServiceDep) -> KlineDataRead:
     return KlineDataRead.model_validate(service.create_kline(payload))
 
@@ -46,7 +46,7 @@ def sync_klines_from_akshare(
 ) -> AkshareSyncResult:
     return service.sync_from_akshare(payload)
 
-@router.get("/", response_model=KlineListResult)
+@router.get("", response_model=KlineListResult)
 def list_klines(
     symbol: str,
     interval: int,
