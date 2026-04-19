@@ -1,0 +1,27 @@
+{
+    "version": "0.2.0",
+    "configurations": [
+        {
+            "name": "Python Debugger: Current File",
+            "type": "debugpy",
+            "request": "launch",
+            "program": "${file}",
+            "console": "integratedTerminal"
+        },
+        {
+            "name": "Trade Backend API",
+            "type": "debugpy",
+            "request": "launch",
+            "program": "${workspaceFolder}/trade_analysis_backend/main.py",
+            "cwd": "${workspaceFolder}/trade_analysis_backend",
+            "console": "integratedTerminal",
+            "justMyCode": true,
+            "env": {
+                "APP_HOST": "0.0.0.0",
+                "APP_PORT": "8000",
+                "APP_RELOAD": "false",
+                "LOG_LEVEL": "DEBUG"
+            }
+        }
+    ]
+}

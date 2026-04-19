@@ -1,0 +1,7 @@
+fastapi
+sqlmodel
+uvicorn
+PyMySQL
+cryptography
+tqsdk
+akshare
