@@ -27,7 +27,6 @@ const changeTheme = () => {
   display: flex;
   flex-direction: column;
   height: 100%;
-  width: calc(100% - 2rem);
   header {
     display: flex;
     flex-direction: row;
@@ -49,7 +48,7 @@ const changeTheme = () => {
 
   .layoutContent {
     width: 100%;
-    padding: .5rem 1rem;
+    // padding: .5rem 1rem;
     margin-top: 3rem;
   }
 }

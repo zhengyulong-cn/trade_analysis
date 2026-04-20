@@ -134,7 +134,6 @@ class KlineService:
             symbol=contract.symbol,
             exchange=contract.exchange,
             name=contract.name,
-            product_type=contract.product_type,
             count=len(rows),
             kline_data=[
                 self._map_kline_list_item(kline, interval)
@@ -346,7 +345,6 @@ class KlineService:
             symbol=contract.symbol,
             exchange=contract.exchange,
             contract_name=contract.name,
-            product_type=contract.product_type,
             interval=interval.seconds,
         )
 

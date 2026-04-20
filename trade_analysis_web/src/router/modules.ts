@@ -27,7 +27,15 @@ export const RouterModules: RouteRecordRaw[] = [
         component: () => import("@/views/futures/FutureDetail.vue"),
         meta: {
           icon: "",
-          title: "期货单品详情",
+          title: "K线行情",
+        },
+      },
+      {
+        path: "/futures/contract_manager",
+        component: () => import("@/views/futures/future_contracts_manager/FutureContractManager.vue"),
+        meta: {
+          icon: "",
+          title: "期货合约管理",
         },
       },
     ],

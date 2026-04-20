@@ -8,12 +8,17 @@ class ContractBase(SQLModel):
     symbol: str
     exchange: str
     name: str
-    # 0表示股票，1表示多个股票构成的指数，2表示期货合约，3表示多个期货合约构成的指数
-    product_type: int
 
 
 class ContractCreate(ContractBase):
     pass
+
+
+class ContractUpdate(SQLModel):
+    contract_id: int
+    symbol: str | None = None
+    exchange: str | None = None
+    name: str | None = None
 
 
 class ContractRead(ContractBase):

@@ -11,7 +11,10 @@ onMounted(() => {
 
 <template>
   <div class="pageBox">
-    <div v-for="i in 100">期货单品详情</div>
+    <span v-for="i in 100">期货单品详情</span>
+    <div>
+      <p v-for="i in 100">期货单品详情</p>
+    </div>
   </div>
 </template>
 

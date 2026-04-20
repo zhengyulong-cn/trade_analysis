@@ -38,7 +38,6 @@ class KlineDataQueryResult(KlineDataRead):
     symbol: str
     exchange: str
     contract_name: str
-    product_type: int
     interval: int
 
 
@@ -51,7 +50,6 @@ class KlineListResult(SQLModel):
     symbol: str
     exchange: str
     name: str
-    product_type: int
     kline_data: list[KlineListItem]
 
 
