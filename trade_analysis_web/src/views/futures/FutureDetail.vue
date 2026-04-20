@@ -7,12 +7,11 @@ onMounted(() => {
     period: 60 * 5,
   })
 })
-getFutureDataApi
 </script>
 
 <template>
   <div class="pageBox">
-    <span>期货单品详情</span>
+    <div v-for="i in 100">期货单品详情</div>
   </div>
 </template>
 

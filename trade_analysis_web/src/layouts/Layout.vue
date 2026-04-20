@@ -11,15 +11,14 @@ const changeTheme = () => {
 <template>
   <div class="layout">
     <header>
-      <div class="title">筝语的交易分析</div>
-      <el-switch :model-value="isDark" inline-prompt active-text="暗黑模式" inactive-text="普通模式" @change="changeTheme"></el-switch>
+      <div class="headerText">Trade Analysis</div>
+      <section class="body">
+        <Menu class="menu"></Menu>
+      </section>
     </header>
-    <section class="body">
-      <Menu class="menu"></Menu>
-      <div class="contentBox">
-        <slot name="layoutContent"></slot>
-      </div>
-    </section>
+    <div class="layoutContent">
+      <slot name="layoutContent"></slot>
+    </div>
   </div>
 </template>
 
@@ -28,29 +27,30 @@ const changeTheme = () => {
   display: flex;
   flex-direction: column;
   height: 100%;
+  width: calc(100% - 2rem);
   header {
     display: flex;
     flex-direction: row;
-    justify-content: space-between;
     align-items: center;
-    height: 2.5rem;
-    border-bottom: 1px solid var(--el-border-color);
-    .title {
-      font-size: 2rem;
-      font-family: "kaiti";
+    width: 100%;
+    padding: 0rem 1rem;
+    position: fixed;
+    border-bottom: 1px solid black;
+    background-color: white;
+
+    .headerText {
+      font-weight: bold;
     }
-  }
-  .body {
-    display: flex;
-    height: calc(100% - 2.5rem);
-    .menu {
-      width: auto;
-    }
-    .contentBox {
-      padding: .5rem;
-      background-color: var(--el-fill-color);
+
+    .body {
       flex: 1;
     }
+  }
+
+  .layoutContent {
+    width: 100%;
+    padding: .5rem 1rem;
+    margin-top: 3rem;
   }
 }
 </style>

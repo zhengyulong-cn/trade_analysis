@@ -7,10 +7,4 @@
 </template>
 
 <style lang="less" scoped>
-.pageBox {
-  background-color: var(--el-bg-color);
-  height: 100%;
-  overflow: auto;
-  border-radius: 0.5rem;
-}
 </style>
