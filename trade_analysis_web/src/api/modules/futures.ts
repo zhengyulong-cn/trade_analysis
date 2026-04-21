@@ -1,4 +1,5 @@
 import axios from "@/api/axios";
+import { toChartTimestampSeconds } from "@/utils/date";
 
 export interface FutureContract {
   contract_id: number
@@ -17,6 +18,13 @@ export interface FutureContractCreateParams {
 
 export interface FutureContractUpdateParams extends Partial<FutureContractCreateParams> {
   contract_id: number
+}
+
+export interface FutureContractInterval {
+  contract_interval_id: number
+  contract_interval_name: string
+  seconds: number
+  description: string | null
 }
 
 export interface FutureKlineItem {
@@ -41,6 +49,19 @@ export interface FutureChartKLineItem {
   close: number
 }
 
+export interface FutureKlineQueryItem extends FutureKlineItem {
+  symbol: string
+  exchange: string
+  contract_name: string
+}
+
+export interface FutureKlinePage {
+  items: FutureKlineQueryItem[]
+  total: number
+  page: number
+  page_size: number
+}
+
 export interface FutureKlineData {
   contract_id: number
   symbol: string
@@ -50,9 +71,29 @@ export interface FutureKlineData {
   kLineList: FutureChartKLineItem[]
 }
 
+export interface FutureKlineSyncResult {
+  symbol: string
+  interval: number
+  ak_symbol: string
+  requested: number
+  inserted: number
+  updated: number
+}
+
+export interface FutureKlineDeleteResult {
+  symbol: string
+  interval: number
+  deleted: number
+}
+
+export interface FutureKlineItemDeleteResult {
+  kline_id: number
+  deleted: number
+}
+
 const mapFutureKlineToChartData = (item: FutureKlineItem): FutureChartKLineItem | null => {
-  const timestamp = Math.floor(new Date(item.date_time).getTime() / 1000)
-  if (Number.isNaN(timestamp)) {
+  const timestamp = toChartTimestampSeconds(item.date_time)
+  if (timestamp === null) {
     return null
   }
 
@@ -97,10 +138,45 @@ export const getFutureContractList = () => {
   return axios.get<FutureContract[]>("/contracts") as unknown as Promise<FutureContract[]>
 }
 
+export const getFutureContractIntervalList = () => {
+  return axios.get<FutureContractInterval[]>("/contract-intervals/") as unknown as Promise<
+    FutureContractInterval[]
+  >
+}
+
 export const createFutureContract = (params: FutureContractCreateParams) => {
   return axios.post<FutureContract>("/contracts/create", params) as unknown as Promise<FutureContract>
 }
 
 export const updateFutureContract = (params: FutureContractUpdateParams) => {
   return axios.post<FutureContract>("/contracts/update", params) as unknown as Promise<FutureContract>
+}
+
+export const getFutureKlinePageApi = (params: {
+  symbol: string
+  interval: number
+  page?: number
+  page_size?: number
+  start_time?: string
+  end_time?: string
+}) => {
+  return axios.get<FutureKlinePage>("/klines/page", params) as unknown as Promise<FutureKlinePage>
+}
+
+export const syncFutureKlinesApi = (params: { symbol: string; interval: number }) => {
+  return axios.post<FutureKlineSyncResult>("/klines/sync/akshare", params) as unknown as Promise<
+    FutureKlineSyncResult
+  >
+}
+
+export const deleteFutureKlinesApi = (params: { symbol: string; interval: number }) => {
+  return axios.post<FutureKlineDeleteResult>("/klines/delete", params) as unknown as Promise<
+    FutureKlineDeleteResult
+  >
+}
+
+export const deleteFutureKlineItemApi = (params: { kline_id: number }) => {
+  return axios.post<FutureKlineItemDeleteResult>("/klines/delete/item", params) as unknown as Promise<
+    FutureKlineItemDeleteResult
+  >
 }

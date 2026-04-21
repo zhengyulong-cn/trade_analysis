@@ -6,6 +6,7 @@ import {
   type FutureContract,
   type FutureContractCreateParams,
 } from '@/api/modules'
+import { formatDateTime as formatDateTimeByDayjs } from '@/utils/date'
 import { ElMessage, type FormInstance, type FormRules } from 'element-plus'
 import { computed, onMounted, reactive, ref } from 'vue'
 
@@ -111,10 +112,7 @@ const submitForm = async () => {
 }
 
 const formatDateTime = (_row: FutureContract, _column: unknown, value: string) => {
-  if (!value) {
-    return '-'
-  }
-  return new Date(value).toLocaleString()
+  return formatDateTimeByDayjs(value)
 }
 
 onMounted(() => {

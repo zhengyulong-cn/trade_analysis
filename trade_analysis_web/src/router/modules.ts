@@ -1,9 +1,9 @@
-import { type RouteRecordRaw } from "vue-router";
+import { type RouteRecordRaw } from "vue-router"
 
 export const RouterModules: RouteRecordRaw[] = [
   {
     path: "/",
-    redirect: "/futures/monitor",
+    redirect: "/futures/detail",
   },
   {
     path: "/home",
@@ -11,7 +11,7 @@ export const RouterModules: RouteRecordRaw[] = [
     component: () => import("@/views/Home.vue"),
     meta: {
       icon: "HomeFilled",
-      title: "首页",
+      title: "\u9996\u9875",
     },
   },
   {
@@ -19,15 +19,23 @@ export const RouterModules: RouteRecordRaw[] = [
     name: "Futures",
     meta: {
       icon: "TrendCharts",
-      title: "期货",
+      title: "\u671f\u8d27",
     },
     children: [
       {
         path: "/futures/detail",
-        component: () => import("@/views/futures/FutureDetail.vue"),
+        component: () => import("@/views/futures/future_detail/FutureDetail.vue"),
         meta: {
           icon: "",
-          title: "K线行情",
+          title: "K\u7ebf\u884c\u60c5",
+        },
+      },
+      {
+        path: "/futures/data_manager",
+        component: () => import("@/views/futures/future_data_manager/FutureDataManager.vue"),
+        meta: {
+          icon: "",
+          title: "\u671f\u8d27\u6570\u636e\u7ba1\u7406",
         },
       },
       {
@@ -35,9 +43,9 @@ export const RouterModules: RouteRecordRaw[] = [
         component: () => import("@/views/futures/future_contracts_manager/FutureContractManager.vue"),
         meta: {
           icon: "",
-          title: "期货合约管理",
+          title: "\u671f\u8d27\u5408\u7ea6\u7ba1\u7406",
         },
       },
     ],
   },
-];
+]
