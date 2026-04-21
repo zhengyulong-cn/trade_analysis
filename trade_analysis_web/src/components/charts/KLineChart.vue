@@ -9,6 +9,7 @@ import {
   type LineData,
   type IChartApi,
 } from "lightweight-charts";
+import { INITIAL_VISIBLE_K_LINE_COUNT } from "@/constants/chart";
 import { onMounted, onUnmounted, ref, watch } from "vue";
 
 interface KLineItem {
@@ -89,13 +90,27 @@ const resizeHandler = () => {
   chart.resize(dimensions.width, dimensions.height);
 };
 
+const applyVisibleRange = (kLineList: KLineItem[]) => {
+  if (!chart) return;
+
+  if (kLineList.length <= INITIAL_VISIBLE_K_LINE_COUNT) {
+    chart.timeScale().fitContent();
+    return;
+  }
+
+  chart.timeScale().setVisibleLogicalRange({
+    from: kLineList.length - INITIAL_VISIBLE_K_LINE_COUNT,
+    to: kLineList.length - 1,
+  });
+};
+
 const applyChartData = () => {
   if (!kSeries) return;
   const kLineList = props.data.kLineList ?? [];
   kSeries.setData(kLineList);
   ema20Series?.setData(calculateEmaData(kLineList, 20));
   ema120Series?.setData(calculateEmaData(kLineList, 120));
-  chart?.timeScale().fitContent();
+  applyVisibleRange(kLineList);
 };
 
 const getCrosshairKLine = (param: any): KLineItem | null => {

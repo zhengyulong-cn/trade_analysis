@@ -1,4 +1,4 @@
-<script lang="ts" setup>
+﻿<script lang="ts" setup>
 import {
   deleteFutureKlinesApi,
   deleteFutureKlineItemApi,
@@ -76,9 +76,14 @@ const TEXT = {
   deleteConfirmPrefix: '确定删除 ',
   deleteConfirmMiddle: ' ',
   deleteConfirmSuffix: ' 的全部 K 线数据吗？',
+  bulkSyncSuccess: '一键更新完成：新增 {inserted} 条，覆盖 {updated} 条',
+  bulkSyncPartialSuccess: '一键更新完成：新增 {inserted} 条，覆盖 {updated} 条，失败 {failed} 项',
+  deleteItemConfirmMessage: '确定删除这条 K 线数据吗？',
+  deleteItemError: '删除 K 线数据失败',
 } as const
 
 const DEFAULT_DETAIL_PAGE_SIZE = 50
+
 
 const contracts = ref<FutureContract[]>([])
 const intervals = ref<FutureContractInterval[]>([])
@@ -429,9 +434,18 @@ const handleBulkSync = async () => {
     }
 
     if (failed > 0) {
-      ElMessage.warning(`一键更新完成：新增 ${inserted} 条，覆盖 ${updated} 条，失败 ${failed} 个`)
+      ElMessage.warning(
+        TEXT.bulkSyncPartialSuccess
+          .replace('{inserted}', String(inserted))
+          .replace('{updated}', String(updated))
+          .replace('{failed}', String(failed)),
+      )
     } else {
-      ElMessage.success(`一键更新完成：新增 ${inserted} 条，覆盖 ${updated} 条`)
+      ElMessage.success(
+        TEXT.bulkSyncSuccess
+          .replace('{inserted}', String(inserted))
+          .replace('{updated}', String(updated)),
+      )
     }
   } finally {
     const rowKeySet = new Set(rows.map((row) => row.rowKey))
@@ -480,7 +494,7 @@ const handleDelete = async (row: OverviewRow) => {
 
 const handleDetailDelete = async (row: FutureKlineQueryItem) => {
   try {
-    await ElMessageBox.confirm('确定删除该条 K 线数据吗？', '确认删除', {
+    await ElMessageBox.confirm(TEXT.deleteItemConfirmMessage, TEXT.deleteConfirmTitle, {
       type: 'warning',
     })
   } catch {
@@ -501,9 +515,9 @@ const handleDetailDelete = async (row: FutureKlineQueryItem) => {
       : detailPage.value
     await loadDetail(nextPage)
 
-    ElMessage.success(`删除完成：已删除 ${result.deleted} 条`)
+    ElMessage.success(`${TEXT.deleteSuccessPrefix}${result.deleted}${TEXT.deleteSuccessSuffix}`)
   } catch (error) {
-    ElMessage.error(extractErrorMessage(error, '删除 K 线数据失败'))
+    ElMessage.error(extractErrorMessage(error, TEXT.deleteItemError))
   } finally {
     deletingKlineIds.value = deletingKlineIds.value.filter((item) => item !== row.kline_id)
   }
@@ -558,8 +572,7 @@ onMounted(async () => {
           :disabled="overviewLoading || !overviewRows.length"
           @click="handleBulkSync"
         >
-          一键更新
-        </el-button>
+          涓€閿洿鏂?        </el-button>
       </div>
     </header>
 
@@ -860,3 +873,4 @@ onMounted(async () => {
   }
 }
 </style>
+

@@ -1,0 +1,8 @@
+{
+  "name": "trade_analysis",
+  "private": true,
+  "scripts": {
+    "dev:backend": "powershell -NoProfile -ExecutionPolicy Bypass -Command \"Set-Location -LiteralPath 'trade_analysis_backend'; & '.\\.venv\\Scripts\\python.exe' -m fastapi dev main.py\"",
+    "dev:web": "npm --prefix trade_analysis_web run dev"
+  }
+}

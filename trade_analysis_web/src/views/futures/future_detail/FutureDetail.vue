@@ -6,17 +6,17 @@ import type { ChartOptions, DeepPartial } from 'lightweight-charts'
 import { computed, onMounted, ref, watch } from 'vue'
 
 const DEFAULT_PERIOD = 60 * 5
-const PAGE_TITLE = '\u671f\u8d27 K \u7ebf'
-const PAGE_SUBTITLE = '\u9009\u62e9\u5408\u7ea6\u548c\u5468\u671f\uff0c\u67e5\u770b\u5bf9\u5e94\u7684 K \u7ebf\u8d70\u52bf\u3002'
-const CONTRACT_PLACEHOLDER = '\u8bf7\u9009\u62e9\u5408\u7ea6'
-const CONTRACT_LIST_ERROR = '\u83b7\u53d6\u5408\u7ea6\u5217\u8868\u5931\u8d25'
-const KLINE_DATA_ERROR = '\u83b7\u53d6 K \u7ebf\u6570\u636e\u5931\u8d25'
-const EMPTY_DESCRIPTION = '\u5f53\u524d\u6761\u4ef6\u4e0b\u6682\u65e0 K \u7ebf\u6570\u636e'
-const UNAVAILABLE_DESCRIPTION = '\u8bf7\u5148\u5728\u5408\u7ea6\u7ba1\u7406\u4e2d\u521b\u5efa\u671f\u8d27\u5408\u7ea6'
-const LABEL_OPEN = '\u5f00\u76d8'
-const LABEL_CLOSE = '\u6536\u76d8'
-const LABEL_HIGH = '\u6700\u9ad8'
-const LABEL_LOW = '\u6700\u4f4e'
+const PAGE_TITLE = '期货 K 线'
+const PAGE_SUBTITLE = '选择合约和周期，查看对应的 K 线走势。'
+const CONTRACT_PLACEHOLDER = '请选择合约'
+const CONTRACT_LIST_ERROR = '获取合约列表失败'
+const KLINE_DATA_ERROR = '获取 K 线数据失败'
+const EMPTY_DESCRIPTION = '当前条件下暂无 K 线数据'
+const UNAVAILABLE_DESCRIPTION = '请先在合约管理中创建期货合约'
+const LABEL_OPEN = '开盘'
+const LABEL_CLOSE = '收盘'
+const LABEL_HIGH = '最高'
+const LABEL_LOW = '最低'
 
 const PERIOD_OPTIONS = [
   { label: '5F', value: DEFAULT_PERIOD },

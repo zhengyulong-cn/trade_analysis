@@ -1,9 +1,8 @@
 import dayjs, { type Dayjs } from 'dayjs'
 import utc from 'dayjs/plugin/utc'
+import { DEFAULT_DATE_TIME_FORMAT } from '@/constants/date'
 
 dayjs.extend(utc)
-
-const DEFAULT_DATE_TIME_FORMAT = 'YYYY-MM-DD HH:mm:ss'
 
 export const formatDateTime = (
   value?: string | number | Date | Dayjs | null,

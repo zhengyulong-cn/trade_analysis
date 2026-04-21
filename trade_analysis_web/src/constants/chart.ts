@@ -1,0 +1,1 @@
+export const INITIAL_VISIBLE_K_LINE_COUNT = 100
