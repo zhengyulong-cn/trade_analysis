@@ -36,6 +36,8 @@ const changeTheme = () => {
     position: fixed;
     border-bottom: 1px solid black;
     background-color: white;
+    z-index: 2000;
+
 
     .headerText {
       font-weight: bold;
