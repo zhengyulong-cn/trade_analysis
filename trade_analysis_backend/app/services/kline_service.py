@@ -122,7 +122,7 @@ class KlineService:
         self,
         symbol: str,
         interval_seconds: int,
-        limit: int = 200,
+        limit: int = 500,
         start_time: datetime | None = None,
         end_time: datetime | None = None,
     ) -> KlineListResult:

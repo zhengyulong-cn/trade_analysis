@@ -87,7 +87,7 @@ def list_klines(
     symbol: str,
     interval: int,
     service: KlineServiceDep,
-    limit: Annotated[int, Query(ge=1, le=1000)] = 200,
+    limit: Annotated[int, Query(ge=1, le=1000)] = 500,
     start_time: datetime | None = None,
     end_time: datetime | None = None,
 ) -> KlineListResult:
