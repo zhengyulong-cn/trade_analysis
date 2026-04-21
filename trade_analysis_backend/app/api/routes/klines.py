@@ -5,6 +5,8 @@ from fastapi import APIRouter, Query, status
 
 from app.api.dependencies import KlineServiceDep
 from app.schemas.kline_data import (
+    AkshareBulkSyncRequest,
+    AkshareBulkSyncResult,
     AkshareSyncRequest,
     AkshareSyncResult,
     KlineBatchCreate,
@@ -12,6 +14,10 @@ from app.schemas.kline_data import (
     KlineDataCreate,
     KlineDataQueryResult,
     KlineDataRead,
+    KlineDeleteRequest,
+    KlineDeleteResult,
+    KlineItemDeleteRequest,
+    KlineItemDeleteResult,
     KlineListResult,
     KlinePage,
 )
@@ -35,6 +41,7 @@ def create_klines_batch(
 ) -> KlineBatchWriteResult:
     return service.create_klines_batch(payload)
 
+
 @router.post(
     "/sync/akshare",
     response_model=AkshareSyncResult,
@@ -45,6 +52,35 @@ def sync_klines_from_akshare(
     service: KlineServiceDep,
 ) -> AkshareSyncResult:
     return service.sync_from_akshare(payload)
+
+
+@router.post(
+    "/sync/akshare/bulk",
+    response_model=AkshareBulkSyncResult,
+    status_code=status.HTTP_201_CREATED,
+)
+def sync_klines_from_akshare_bulk(
+    service: KlineServiceDep,
+    payload: AkshareBulkSyncRequest | None = None,
+) -> AkshareBulkSyncResult:
+    return service.sync_bulk_from_akshare(payload or AkshareBulkSyncRequest())
+
+
+@router.post("/delete", response_model=KlineDeleteResult)
+def delete_klines(
+    payload: KlineDeleteRequest,
+    service: KlineServiceDep,
+) -> KlineDeleteResult:
+    return service.delete_klines(payload)
+
+
+@router.post("/delete/item", response_model=KlineItemDeleteResult)
+def delete_kline_item(
+    payload: KlineItemDeleteRequest,
+    service: KlineServiceDep,
+) -> KlineItemDeleteResult:
+    return service.delete_kline_item(payload)
+
 
 @router.get("", response_model=KlineListResult)
 def list_klines(

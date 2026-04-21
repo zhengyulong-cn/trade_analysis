@@ -581,8 +581,9 @@ onMounted(async () => {
           :row-class-name="overviewRowClassName"
           :empty-text="TEXT.emptyOverview"
           @row-click="handleOverviewRowClick"
+          max-height="38rem"
         >
-          <el-table-column :label="TEXT.contract" min-width="200">
+          <el-table-column :label="TEXT.contract" min-width="120">
             <template #default="{ row }">
               <div class="contract-cell">
                 <span class="contract-symbol">{{ row.symbol }}</span>
@@ -590,7 +591,7 @@ onMounted(async () => {
               </div>
             </template>
           </el-table-column>
-          <el-table-column prop="intervalName" :label="TEXT.interval" width="120" />
+          <el-table-column prop="intervalName" :label="TEXT.interval" width="80" />
           <el-table-column prop="total" :label="TEXT.total" min-width="120">
             <template #default="{ row }">
               {{ row.total.toLocaleString('zh-CN') }}
@@ -601,7 +602,7 @@ onMounted(async () => {
               {{ formatDateTime(row.latestTime) }}
             </template>
           </el-table-column>
-          <el-table-column :label="TEXT.action" width="160" fixed="right">
+          <el-table-column :label="TEXT.action" min-width="140" fixed="right">
             <template #default="{ row }">
               <el-button
                 type="primary"
@@ -657,6 +658,7 @@ onMounted(async () => {
           :data="detailRows"
           border
           :empty-text="TEXT.emptyDetail"
+          max-height="35rem"
         >
           <el-table-column prop="date_time" :label="TEXT.time" min-width="180">
             <template #default="{ row }">

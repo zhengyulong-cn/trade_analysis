@@ -17,6 +17,15 @@ interface ContractForm {
   name: string
 }
 
+const exchangeOptions = [
+  { label: '中国金融期货交易所-CFFEX', value: 'CFFEX' },
+  { label: '上海期货交易所-SHFE', value: 'SHFE' },
+  { label: '上海国际能源交易中心-INE', value: 'INE' },
+  { label: '郑州商品交易所-CZCE', value: 'CZCE' },
+  { label: '大连商品交易所-DCE', value: 'DCE' },
+  { label: '广州期货交易所-GFEX', value: 'GFEX' },
+] as const
+
 const contracts = ref<FutureContract[]>([])
 const loading = ref(false)
 const submitting = ref(false)
@@ -33,7 +42,7 @@ const form = reactive<ContractForm>({
 const rules = reactive<FormRules<ContractForm>>({
   symbol: [{ required: true, message: '请输入合约代码', trigger: 'blur' }],
   exchange: [{ required: true, message: '请输入交易所', trigger: 'blur' }],
-  name: [{ required: true, message: '请输入合约名称', trigger: 'blur' }],
+  name: [{ required: true, message: '请输入合约品种名称', trigger: 'blur' }],
 })
 
 const dialogTitle = computed(() => (dialogMode.value === 'create' ? '新增合约' : '修改合约'))
@@ -140,7 +149,7 @@ onMounted(() => {
       <el-table-column prop="contract_id" label="ID" width="90" />
       <el-table-column prop="symbol" label="合约代码" min-width="140" />
       <el-table-column prop="exchange" label="交易所" min-width="120" />
-      <el-table-column prop="name" label="合约名称" min-width="180" />
+      <el-table-column prop="name" label="合约品种名称" min-width="180" />
       <el-table-column
         prop="create_at"
         label="创建时间"
@@ -160,16 +169,23 @@ onMounted(() => {
       </el-table-column>
     </el-table>
 
-    <el-dialog v-model="dialogVisible" :title="dialogTitle" width="460px" @closed="resetForm">
-      <el-form ref="formRef" :model="form" :rules="rules" label-width="90px">
+    <el-dialog v-model="dialogVisible" :title="dialogTitle" width="32rem" @closed="resetForm">
+      <el-form ref="formRef" :model="form" :rules="rules" label-width="8rem">
         <el-form-item label="合约代码" prop="symbol">
           <el-input v-model.trim="form.symbol" placeholder="请输入合约代码" />
         </el-form-item>
         <el-form-item label="交易所" prop="exchange">
-          <el-input v-model.trim="form.exchange" placeholder="请输入交易所" />
+          <el-select v-model="form.exchange" placeholder="请选择交易所" style="width: 100%">
+            <el-option
+              v-for="option in exchangeOptions"
+              :key="option.value"
+              :label="option.label"
+              :value="option.value"
+            />
+          </el-select>
         </el-form-item>
-        <el-form-item label="合约名称" prop="name">
-          <el-input v-model.trim="form.name" placeholder="请输入合约名称" />
+        <el-form-item label="合约品种名称" prop="name">
+          <el-input v-model.trim="form.name" placeholder="请输入合约品种名称" />
         </el-form-item>
       </el-form>
       <template #footer>

@@ -50,6 +50,7 @@ class KlineListResult(SQLModel):
     symbol: str
     exchange: str
     name: str
+    count: int
     kline_data: list[KlineListItem]
 
 
@@ -65,9 +66,31 @@ class KlineBatchWriteResult(SQLModel):
     inserted: int
     updated: int
 
+
+class KlineDeleteRequest(SQLModel):
+    symbol: str
+    interval: int
+
+
+class KlineDeleteResult(SQLModel):
+    symbol: str
+    interval: int
+    deleted: int
+
+
+class KlineItemDeleteRequest(SQLModel):
+    kline_id: int
+
+
+class KlineItemDeleteResult(SQLModel):
+    kline_id: int
+    deleted: int
+
+
 class AkshareSyncRequest(SQLModel):
     symbol: str
     interval: int
+
 
 class AkshareSyncResult(SQLModel):
     symbol: str
@@ -76,3 +99,25 @@ class AkshareSyncResult(SQLModel):
     requested: int
     inserted: int
     updated: int
+
+
+class AkshareBulkSyncRequest(SQLModel):
+    symbols: list[str] | None = None
+    intervals: list[int] | None = None
+
+
+class AkshareBulkSyncError(SQLModel):
+    symbol: str
+    interval: int
+    detail: str
+
+
+class AkshareBulkSyncResult(SQLModel):
+    total: int
+    succeeded: int
+    failed: int
+    requested: int
+    inserted: int
+    updated: int
+    items: list[AkshareSyncResult]
+    errors: list[AkshareBulkSyncError]

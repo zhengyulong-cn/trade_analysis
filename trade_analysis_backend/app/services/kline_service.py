@@ -1,4 +1,4 @@
-from datetime import datetime, timezone
+from datetime import datetime
 from decimal import Decimal
 
 import akshare as ak
@@ -10,12 +10,19 @@ from app.models.contract import Contract
 from app.models.contract_interval import ContractInterval
 from app.models.kline_data import KlineData
 from app.schemas.kline_data import (
+    AkshareBulkSyncError,
+    AkshareBulkSyncRequest,
+    AkshareBulkSyncResult,
     AkshareSyncRequest,
     AkshareSyncResult,
     KlineBarInput,
     KlineBatchCreate,
     KlineBatchWriteResult,
     KlineDataCreate,
+    KlineDeleteRequest,
+    KlineDeleteResult,
+    KlineItemDeleteRequest,
+    KlineItemDeleteResult,
     KlineListItem,
     KlineListResult,
     KlineDataQueryResult,
@@ -65,7 +72,8 @@ class KlineService:
 
         contract = self._get_contract_by_symbol(payload.symbol)
         interval = self._get_interval_by_seconds(payload.interval)
-        date_times = [self._normalize_datetime(item.date_time) for item in payload.items]
+        items = self._deduplicate_kline_items(payload.items)
+        date_times = [self._normalize_datetime(item.date_time) for item in items]
 
         existing_statement = select(KlineData).where(
             KlineData.contract_id == contract.contract_id,
@@ -80,7 +88,7 @@ class KlineService:
         inserted = 0
         updated = 0
 
-        for item in payload.items:
+        for item in items:
             normalized_date_time = self._normalize_datetime(item.date_time)
             current = existing_map.get(
                 self._canonical_datetime_key(normalized_date_time)
@@ -105,7 +113,7 @@ class KlineService:
 
         self.session.commit()
         return KlineBatchWriteResult(
-            total=len(payload.items),
+            total=len(items),
             inserted=inserted,
             updated=updated,
         )
@@ -195,6 +203,41 @@ class KlineService:
             page_size=page_size,
         )
 
+    def delete_klines(self, payload: KlineDeleteRequest) -> KlineDeleteResult:
+        contract = self._get_contract_by_symbol(payload.symbol)
+        interval = self._get_interval_by_seconds(payload.interval)
+        statement = select(KlineData).where(
+            KlineData.contract_id == contract.contract_id,
+            KlineData.interval_id == interval.contract_interval_id,
+        )
+        klines = list(self.session.exec(statement).all())
+
+        for kline in klines:
+            self.session.delete(kline)
+        self.session.commit()
+
+        return KlineDeleteResult(
+            symbol=contract.symbol,
+            interval=interval.seconds,
+            deleted=len(klines),
+        )
+
+    def delete_kline_item(
+        self,
+        payload: KlineItemDeleteRequest,
+    ) -> KlineItemDeleteResult:
+        kline = self.session.get(KlineData, payload.kline_id)
+        if kline is None:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail=f"Kline data not found: {payload.kline_id}",
+            )
+
+        self.session.delete(kline)
+        self.session.commit()
+
+        return KlineItemDeleteResult(kline_id=payload.kline_id, deleted=1)
+
     def get_latest_kline(
         self,
         symbol: str,
@@ -269,6 +312,52 @@ class KlineService:
             updated=write_result.updated,
         )
 
+    def sync_bulk_from_akshare(
+        self,
+        payload: AkshareBulkSyncRequest,
+    ) -> AkshareBulkSyncResult:
+        contracts = self._list_contracts_for_sync(payload.symbols)
+        intervals = self._list_intervals_for_sync(payload.intervals)
+        total = len(contracts) * len(intervals)
+        items: list[AkshareSyncResult] = []
+        errors: list[AkshareBulkSyncError] = []
+
+        for contract in contracts:
+            for interval in intervals:
+                request = AkshareSyncRequest(
+                    symbol=contract.symbol,
+                    interval=interval.seconds,
+                )
+                try:
+                    items.append(self.sync_from_akshare(request))
+                except HTTPException as exc:
+                    errors.append(
+                        AkshareBulkSyncError(
+                            symbol=contract.symbol,
+                            interval=interval.seconds,
+                            detail=self._format_exception_detail(exc.detail),
+                        )
+                    )
+                except Exception as exc:
+                    errors.append(
+                        AkshareBulkSyncError(
+                            symbol=contract.symbol,
+                            interval=interval.seconds,
+                            detail=str(exc),
+                        )
+                    )
+
+        return AkshareBulkSyncResult(
+            total=total,
+            succeeded=len(items),
+            failed=len(errors),
+            requested=sum(item.requested for item in items),
+            inserted=sum(item.inserted for item in items),
+            updated=sum(item.updated for item in items),
+            items=items,
+            errors=errors,
+        )
+
     def _build_kline_query(
         self,
         symbol: str,
@@ -324,6 +413,19 @@ class KlineService:
             for item in items
             if self._normalize_datetime(item.date_time) >= latest_date_time
         ]
+
+    def _deduplicate_kline_items(
+        self,
+        items: list[KlineBarInput],
+    ) -> list[KlineBarInput]:
+        item_map: dict[str, KlineBarInput] = {}
+        for item in items:
+            key = self._canonical_datetime_key(item.date_time)
+            item_map[key] = item
+        return sorted(
+            item_map.values(),
+            key=lambda item: self._normalize_datetime(item.date_time),
+        )
 
     def _map_query_row(
         self,
@@ -441,17 +543,12 @@ class KlineService:
                 status_code=status.HTTP_400_BAD_REQUEST,
                 detail=f"Invalid akshare datetime value: {raw_datetime}",
             )
-
-        if timestamp.tzinfo is None:
-            timestamp = timestamp.tz_localize("Asia/Shanghai")
-        else:
-            timestamp = timestamp.tz_convert("Asia/Shanghai")
-        return timestamp.tz_convert(timezone.utc).to_pydatetime()
+        if hasattr(timestamp, "to_pydatetime"):
+            return timestamp.to_pydatetime().replace(tzinfo=None)
+        return timestamp.replace(tzinfo=None)
 
     def _normalize_datetime(self, value: datetime) -> datetime:
-        if value.tzinfo is None:
-            return value.replace(tzinfo=timezone.utc)
-        return value.astimezone(timezone.utc)
+        return value.replace(tzinfo=None)
 
     def _canonical_datetime_key(self, value: datetime) -> str:
         return self._normalize_datetime(value).isoformat()
@@ -471,6 +568,26 @@ class KlineService:
             )
         return contract
 
+    def _list_contracts_for_sync(self, symbols: list[str] | None) -> list[Contract]:
+        statement = select(Contract).order_by(Contract.symbol)
+        if symbols:
+            unique_symbols = sorted(set(symbols))
+            statement = (
+                select(Contract)
+                .where(Contract.symbol.in_(unique_symbols))
+                .order_by(Contract.symbol)
+            )
+        contracts = list(self.session.exec(statement).all())
+        if symbols:
+            found_symbols = {contract.symbol for contract in contracts}
+            missing_symbols = sorted(set(symbols) - found_symbols)
+            if missing_symbols:
+                raise HTTPException(
+                    status_code=status.HTTP_404_NOT_FOUND,
+                    detail=f"Contract not found: {', '.join(missing_symbols)}",
+                )
+        return contracts
+
     def _get_interval_by_seconds(self, interval_seconds: int) -> ContractInterval:
         statement = select(ContractInterval).where(
             ContractInterval.seconds == interval_seconds
@@ -482,3 +599,34 @@ class KlineService:
                 detail=f"Contract interval not found: {interval_seconds}",
             )
         return interval
+
+    def _list_intervals_for_sync(
+        self,
+        intervals: list[int] | None,
+    ) -> list[ContractInterval]:
+        statement = select(ContractInterval).order_by(ContractInterval.seconds)
+        if intervals:
+            unique_intervals = sorted(set(intervals))
+            statement = (
+                select(ContractInterval)
+                .where(ContractInterval.seconds.in_(unique_intervals))
+                .order_by(ContractInterval.seconds)
+            )
+        contract_intervals = list(self.session.exec(statement).all())
+        if intervals:
+            found_intervals = {interval.seconds for interval in contract_intervals}
+            missing_intervals = sorted(set(intervals) - found_intervals)
+            if missing_intervals:
+                raise HTTPException(
+                    status_code=status.HTTP_404_NOT_FOUND,
+                    detail=(
+                        "Contract interval not found: "
+                        f"{', '.join(str(item) for item in missing_intervals)}"
+                    ),
+                )
+        return contract_intervals
+
+    def _format_exception_detail(self, detail: object) -> str:
+        if isinstance(detail, str):
+            return detail
+        return str(detail)
