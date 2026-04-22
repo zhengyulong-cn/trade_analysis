@@ -3,7 +3,7 @@ from sqlmodel import Field, SQLModel
 
 
 class StrategyAnalysis(SQLModel, table=True):
-    __tablename__ = "strategy_analyses"
+    __tablename__ = "strategy_analysis"
     __table_args__ = (
         UniqueConstraint("contract_id", name="uq_strategy_analysis_contract_id"),
     )

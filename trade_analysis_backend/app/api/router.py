@@ -4,7 +4,7 @@ from app.api.routes.contract_intervals import router as contract_interval_router
 from app.api.routes.contracts import router as contract_router
 from app.api.routes.health import router as health_router
 from app.api.routes.klines import router as kline_router
-from app.api.routes.strategy_analyses import router as strategy_analysis_router
+from app.api.routes.strategy_analysis import router as strategy_analysis_router
 
 api_router = APIRouter()
 api_router.include_router(health_router, tags=["health"])
