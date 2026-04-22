@@ -1,6 +1,12 @@
 <script lang="ts" setup>
 import KLineSection from '@/components/charts/KLineSection.vue'
-import { getFutureContractList, getFutureDataApi, type FutureContract, type FutureKlineData } from '@/api/modules'
+import {
+  buildFutureSegmentAnalysisApi,
+  getFutureContractList,
+  getFutureDataApi,
+  type FutureContract,
+  type FutureKlineData,
+} from '@/api/modules'
 import { ElMessage } from 'element-plus'
 import type { ChartOptions, DeepPartial } from 'lightweight-charts'
 import { computed, onMounted, ref, watch } from 'vue'
@@ -17,6 +23,10 @@ const LABEL_OPEN = '开盘'
 const LABEL_CLOSE = '收盘'
 const LABEL_HIGH = '最高'
 const LABEL_LOW = '最低'
+
+const BUILD_SEGMENT_TEXT = '\u6784\u5efa\u6bb5\u5206\u6790'
+const BUILD_SEGMENT_SUCCESS = '\u6784\u5efa\u6bb5\u5206\u6790\u5b8c\u6210\uff0c\u5df2\u6253\u5370\u63a5\u53e3\u8fd4\u56de'
+const BUILD_SEGMENT_ERROR = '\u6784\u5efa\u6bb5\u5206\u6790\u5931\u8d25'
 
 const PERIOD_OPTIONS = [
   { label: '5F', value: DEFAULT_PERIOD },
@@ -38,10 +48,12 @@ const selectedSymbol = ref('')
 const selectedPeriod = ref(DEFAULT_PERIOD)
 const contractsLoading = ref(false)
 const chartLoading = ref(false)
+const buildSegmentLoading = ref(false)
 const chartData = ref<FutureKlineData>(createEmptyChartData())
 const activeKLineBar = ref<FutureKlineData['kLineList'][number] | null>(null)
 
 const hasContracts = computed(() => contracts.value.length > 0)
+const canBuildSegments = computed(() => Boolean(selectedSymbol.value))
 const contractOptions = computed(() => {
   return contracts.value.map((contract) => ({
     label: `${contract.symbol} \u00b7 ${contract.name}`,
@@ -115,6 +127,20 @@ const chartOptions = computed<DeepPartial<ChartOptions>>(() => ({
 }))
 
 let latestRequestId = 0
+
+const extractErrorMessage = (error: unknown, fallback: string) => {
+  if (typeof error === 'object' && error !== null) {
+    const response = error as { data?: { detail?: string; msg?: string } }
+    if (response.data?.detail) {
+      return response.data.detail
+    }
+    if (response.data?.msg) {
+      return response.data.msg
+    }
+  }
+
+  return fallback
+}
 
 const formatPrice = (value?: number) => {
   if (value === undefined) {
@@ -193,6 +219,29 @@ const loadKLineData = async () => {
   }
 }
 
+const handleBuildSegments = async () => {
+  if (!selectedSymbol.value) {
+    return
+  }
+
+  buildSegmentLoading.value = true
+
+  try {
+    const response = await buildFutureSegmentAnalysisApi({
+      symbol: selectedSymbol.value,
+      interval: Number(selectedPeriod.value),
+    })
+
+    console.log('[segment-build-result]', response)
+    console.log('[segment-build-strategy]', response.strategy)
+    ElMessage.success(BUILD_SEGMENT_SUCCESS)
+  } catch (error) {
+    ElMessage.error(extractErrorMessage(error, BUILD_SEGMENT_ERROR))
+  } finally {
+    buildSegmentLoading.value = false
+  }
+}
+
 watch([selectedSymbol, selectedPeriod], () => {
   void loadKLineData()
 })
@@ -208,6 +257,16 @@ onMounted(() => {
       <div>
         <h2 class="title">{{ PAGE_TITLE }}</h2>
         <p class="subtitle">{{ PAGE_SUBTITLE }}</p>
+      </div>
+      <div class="page-actions">
+        <el-button
+          type="primary"
+          :loading="buildSegmentLoading"
+          :disabled="!canBuildSegments"
+          @click="handleBuildSegments"
+        >
+          {{ BUILD_SEGMENT_TEXT }}
+        </el-button>
       </div>
     </header>
 
@@ -244,7 +303,14 @@ onMounted(() => {
 .page-header {
   display: flex;
   align-items: flex-start;
+  justify-content: space-between;
   gap: 16px;
+}
+
+.page-actions {
+  display: flex;
+  align-items: center;
+  gap: 12px;
 }
 
 .title {

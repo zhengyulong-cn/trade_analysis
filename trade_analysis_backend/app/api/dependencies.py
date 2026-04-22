@@ -7,6 +7,7 @@ from app.db.session import get_session
 from app.services.contract_service import ContractService
 from app.services.contract_interval_service import ContractIntervalService
 from app.services.kline_service import KlineService
+from app.services.strategy_analysis_service import StrategyAnalysisService
 
 SessionDep = Annotated[Session, Depends(get_session)]
 
@@ -23,8 +24,15 @@ def get_kline_service(session: SessionDep) -> KlineService:
     return KlineService(session)
 
 
+def get_strategy_analysis_service(session: SessionDep) -> StrategyAnalysisService:
+    return StrategyAnalysisService(session)
+
+
 ContractServiceDep = Annotated[ContractService, Depends(get_contract_service)]
 ContractIntervalServiceDep = Annotated[
     ContractIntervalService, Depends(get_contract_interval_service)
 ]
 KlineServiceDep = Annotated[KlineService, Depends(get_kline_service)]
+StrategyAnalysisServiceDep = Annotated[
+    StrategyAnalysisService, Depends(get_strategy_analysis_service)
+]

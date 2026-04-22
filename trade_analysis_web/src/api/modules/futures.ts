@@ -91,6 +91,61 @@ export interface FutureKlineItemDeleteResult {
   deleted: number
 }
 
+export interface FutureStrategyAnalysisBuildParams {
+  symbol: string
+  interval: number
+  reset?: boolean
+}
+
+export interface FutureStrategyEmaState {
+  period: number
+  seed_closes: Array<number | string>
+  last_ema: number | string | null
+  last_relation: string | null
+  warmup_bars: FutureKlineItem[]
+}
+
+export interface FutureTrendSegment {
+  segment_index: number
+  direction: string
+  status: string
+  trigger_time: string
+  first_kline_time: string
+  last_kline_time: string
+  start_time: string
+  start_price: number | string
+  end_time: string
+  end_price: number | string
+  kline_count: number
+  confirmed_at: string | null
+}
+
+export interface FutureIntervalStrategy {
+  interval: number
+  interval_name: string | null
+  ema_state: FutureStrategyEmaState
+  confirmed_segments: FutureTrendSegment[]
+  current_segment: FutureTrendSegment | null
+  processed_kline_count: number
+  last_processed_at: string | null
+}
+
+export interface FutureStrategyContent {
+  intervals: Record<string, FutureIntervalStrategy>
+}
+
+export interface FutureSegmentBuildResult {
+  strategy_id: number
+  contract_id: number
+  symbol: string
+  exchange: string
+  contract_name: string
+  interval: number
+  interval_name: string | null
+  strategy: FutureStrategyContent
+  interval_strategy: FutureIntervalStrategy
+}
+
 const mapFutureKlineToChartData = (item: FutureKlineItem): FutureChartKLineItem | null => {
   const timestamp = toChartTimestampSeconds(item.date_time)
   if (timestamp === null) {
@@ -178,5 +233,11 @@ export const deleteFutureKlinesApi = (params: { symbol: string; interval: number
 export const deleteFutureKlineItemApi = (params: { kline_id: number }) => {
   return axios.post<FutureKlineItemDeleteResult>("/klines/delete/item", params) as unknown as Promise<
     FutureKlineItemDeleteResult
+  >
+}
+
+export const buildFutureSegmentAnalysisApi = (params: FutureStrategyAnalysisBuildParams) => {
+  return axios.post<FutureSegmentBuildResult>("/strategy-analyses/segments/build", params) as unknown as Promise<
+    FutureSegmentBuildResult
   >
 }

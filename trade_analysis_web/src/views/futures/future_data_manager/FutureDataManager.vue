@@ -33,6 +33,7 @@ const TEXT = {
   pageTitle: '期货数据管理',
   pageSubtitle: '左侧展示合约-周期汇总，右侧展示对应 K 线明细。',
   refreshOverview: '刷新合约汇总数据',
+  batchUpdate: '批量更新',
   overviewTitle: '合约汇总数据',
   detailTitle: 'K 线明细',
   detailPlaceholder: '点击左侧汇总表某行查看明细',
@@ -572,7 +573,8 @@ onMounted(async () => {
           :disabled="overviewLoading || !overviewRows.length"
           @click="handleBulkSync"
         >
-          涓€閿洿鏂?        </el-button>
+          {{ TEXT.batchUpdate }}
+        </el-button>
       </div>
     </header>
 
