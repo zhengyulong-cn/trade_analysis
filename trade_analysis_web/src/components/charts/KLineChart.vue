@@ -3,6 +3,7 @@ import {
   CandlestickSeries,
   ColorType,
   createChart,
+  LineStyle,
   LineSeries,
   type ChartOptions,
   type DeepPartial,
@@ -20,15 +21,23 @@ interface KLineItem {
   close: number
 }
 
+interface SegmentLineItem {
+  id: string
+  points: LineData<number>[]
+  lineStyle?: 'solid' | 'dashed'
+}
+
 const props = withDefaults(
   defineProps<{
     data: {
       kLineList: KLineItem[]
     }
+    segmentLines?: SegmentLineItem[]
     autosize?: boolean
     commonChartOptions?: DeepPartial<ChartOptions>
   }>(),
   {
+    segmentLines: () => [],
     autosize: true,
     commonChartOptions: () => ({}),
   }
@@ -43,6 +52,7 @@ let chart: IChartApi | null = null;
 let kSeries: any = null;
 let ema20Series: any = null;
 let ema120Series: any = null;
+let segmentSeriesList: any[] = [];
 let crosshairMoveHandler: ((param: any) => void) | null = null;
 
 const calculateEmaData = (kLineList: KLineItem[], period: number): LineData<number>[] => {
@@ -110,7 +120,55 @@ const applyChartData = () => {
   kSeries.setData(kLineList);
   ema20Series?.setData(calculateEmaData(kLineList, 20));
   ema120Series?.setData(calculateEmaData(kLineList, 120));
+  applySegmentLines();
   applyVisibleRange(kLineList);
+};
+
+const clearSegmentLines = () => {
+  if (!chart || !segmentSeriesList.length) {
+    segmentSeriesList = [];
+    return;
+  }
+
+  for (const series of segmentSeriesList) {
+    chart.removeSeries(series);
+  }
+  segmentSeriesList = [];
+};
+
+const createLineSeries = (chartInstance: any, options: Record<string, unknown>) => {
+  return typeof chartInstance.addLineSeries === "function"
+    ? chartInstance.addLineSeries(options)
+    : chartInstance.addSeries(LineSeries, options);
+};
+
+const applySegmentLines = () => {
+  if (!chart) {
+    return;
+  }
+
+  clearSegmentLines();
+
+  const chartInstance = chart as any;
+  const segmentLines = props.segmentLines ?? [];
+  for (const segment of segmentLines) {
+    if (!segment.points?.length) {
+      continue;
+    }
+
+    const lineSeries = createLineSeries(chartInstance, {
+      title: segment.id,
+      color: "#000000",
+      lineWidth: 2,
+      lineStyle:
+        segment.lineStyle === "dashed" ? LineStyle.Dashed : LineStyle.Solid,
+      priceLineVisible: false,
+      lastValueVisible: false,
+      crosshairMarkerVisible: false,
+    });
+    lineSeries.setData(segment.points);
+    segmentSeriesList.push(lineSeries);
+  }
 };
 
 const getCrosshairKLine = (param: any): KLineItem | null => {
@@ -240,6 +298,7 @@ onUnmounted(() => {
   if (ema120Series) {
     ema120Series = null;
   }
+  segmentSeriesList = [];
   window.removeEventListener("resize", resizeHandler);
 });
 
@@ -275,6 +334,14 @@ watch(
   () => {
     applyChartData();
     emit('crosshair-move', null);
+  },
+  { deep: true }
+);
+
+watch(
+  () => props.segmentLines,
+  () => {
+    applySegmentLines();
   },
   { deep: true }
 );

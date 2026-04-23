@@ -30,6 +30,15 @@ interface PeriodOption {
   value: number | string
 }
 
+interface SegmentLineItem {
+  id: string
+  points: Array<{
+    time: number
+    value: number
+  }>
+  lineStyle?: 'solid' | 'dashed'
+}
+
 const emit = defineEmits<{
   'update:selectedContract': [value: string]
   'update:selectedPeriod': [value: number | string]
@@ -51,6 +60,7 @@ const props = withDefaults(
     chartData: {
       kLineList: KLineItem[]
     }
+    segmentLines?: SegmentLineItem[]
     summaryItems?: SummaryItem[]
     chartOptions?: DeepPartial<ChartOptions>
     emptyDescription?: string
@@ -67,6 +77,7 @@ const props = withDefaults(
     contractDisabled: false,
     periodDisabled: false,
     contractPlaceholder: '\u8bf7\u9009\u62e9\u5408\u7ea6',
+    segmentLines: () => [],
     summaryItems: () => [],
     chartOptions: () => ({}),
     emptyDescription: '\u6682\u65e0 K \u7ebf\u6570\u636e',
@@ -162,6 +173,7 @@ const handleCrosshairMove = (value: KLineItem | null) => {
       <div v-if="hasChartData" class="chart-card">
         <KLineChart
           :data="chartData"
+          :segment-lines="segmentLines"
           :common-chart-options="chartOptions"
           @crosshair-move="handleCrosshairMove"
         />

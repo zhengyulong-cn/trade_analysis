@@ -134,6 +134,15 @@ export interface FutureStrategyContent {
   intervals: Record<string, FutureIntervalStrategy>
 }
 
+export interface FutureStrategyAnalysisDetail {
+  strategy_id: number
+  contract_id: number
+  symbol: string
+  exchange: string
+  contract_name: string
+  strategy: FutureStrategyContent
+}
+
 export interface FutureSegmentBuildResult {
   strategy_id: number
   contract_id: number
@@ -239,5 +248,11 @@ export const deleteFutureKlineItemApi = (params: { kline_id: number }) => {
 export const buildFutureSegmentAnalysisApi = (params: FutureStrategyAnalysisBuildParams) => {
   return axios.post<FutureSegmentBuildResult>("/strategy-analyses/segments/build", params) as unknown as Promise<
     FutureSegmentBuildResult
+  >
+}
+
+export const getFutureStrategyAnalysisApi = (params: { symbol: string }) => {
+  return axios.get<FutureStrategyAnalysisDetail>("/strategy-analyses", params) as unknown as Promise<
+    FutureStrategyAnalysisDetail
   >
 }

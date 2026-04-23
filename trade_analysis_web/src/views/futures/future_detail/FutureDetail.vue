@@ -4,11 +4,14 @@ import {
   buildFutureSegmentAnalysisApi,
   getFutureContractList,
   getFutureDataApi,
+  getFutureStrategyAnalysisApi,
   type FutureContract,
+  type FutureIntervalStrategy,
   type FutureKlineData,
 } from '@/api/modules'
 import { ElMessage } from 'element-plus'
 import type { ChartOptions, DeepPartial } from 'lightweight-charts'
+import { toChartTimestampSeconds } from '@/utils/date'
 import { computed, onMounted, ref, watch } from 'vue'
 
 const DEFAULT_PERIOD = 60 * 5
@@ -24,9 +27,13 @@ const LABEL_CLOSE = '收盘'
 const LABEL_HIGH = '最高'
 const LABEL_LOW = '最低'
 
-const BUILD_SEGMENT_TEXT = '\u6784\u5efa\u6bb5\u5206\u6790'
-const BUILD_SEGMENT_SUCCESS = '\u6784\u5efa\u6bb5\u5206\u6790\u5b8c\u6210\uff0c\u5df2\u6253\u5370\u63a5\u53e3\u8fd4\u56de'
-const BUILD_SEGMENT_ERROR = '\u6784\u5efa\u6bb5\u5206\u6790\u5931\u8d25'
+const BUILD_SEGMENT_TEXT = '构建段分析'
+const LOAD_SEGMENT_TEXT = '载入构建段'
+const BUILD_SEGMENT_SUCCESS = '构建段分析完成，已打印接口返回'
+const BUILD_SEGMENT_ERROR = '构建段分析失败'
+const LOAD_SEGMENT_SUCCESS = '构建段已载入K线图'
+const LOAD_SEGMENT_ERROR = '载入构建段失败'
+const LOAD_SEGMENT_EMPTY = '当前周期暂无已构建的线段数据'
 
 const PERIOD_OPTIONS = [
   { label: '5F', value: DEFAULT_PERIOD },
@@ -43,17 +50,29 @@ const createEmptyChartData = (): FutureKlineData => ({
   kLineList: [],
 })
 
+interface ChartSegmentLineItem {
+  id: string
+  points: Array<{
+    time: number
+    value: number
+  }>
+  lineStyle: 'solid' | 'dashed'
+}
+
 const contracts = ref<FutureContract[]>([])
 const selectedSymbol = ref('')
 const selectedPeriod = ref(DEFAULT_PERIOD)
 const contractsLoading = ref(false)
 const chartLoading = ref(false)
 const buildSegmentLoading = ref(false)
+const loadSegmentLoading = ref(false)
 const chartData = ref<FutureKlineData>(createEmptyChartData())
+const loadedSegmentLines = ref<ChartSegmentLineItem[]>([])
 const activeKLineBar = ref<FutureKlineData['kLineList'][number] | null>(null)
 
 const hasContracts = computed(() => contracts.value.length > 0)
 const canBuildSegments = computed(() => Boolean(selectedSymbol.value))
+const canLoadSegments = computed(() => Boolean(selectedSymbol.value))
 const contractOptions = computed(() => {
   return contracts.value.map((contract) => ({
     label: `${contract.symbol} \u00b7 ${contract.name}`,
@@ -153,6 +172,86 @@ const formatPrice = (value?: number) => {
   })
 }
 
+const clearLoadedSegments = () => {
+  loadedSegmentLines.value = []
+}
+
+const createChartSegmentLine = (
+  id: string,
+  startTime: string,
+  startPrice: number | string,
+  endTime: string,
+  endPrice: number | string,
+  lineStyle: 'solid' | 'dashed',
+): ChartSegmentLineItem | null => {
+  const startTimestamp = toChartTimestampSeconds(startTime)
+  const endTimestamp = toChartTimestampSeconds(endTime)
+  const startValue = Number(startPrice)
+  const endValue = Number(endPrice)
+
+  if (
+    startTimestamp === null
+    || endTimestamp === null
+    || !Number.isFinite(startValue)
+    || !Number.isFinite(endValue)
+  ) {
+    return null
+  }
+
+  const points = [
+    { time: startTimestamp, value: startValue },
+    { time: endTimestamp, value: endValue },
+  ].sort((first, second) => first.time - second.time)
+
+  if (points[0] && points[1] && points[0].time === points[1].time) {
+    points[1] = {
+      ...points[1],
+      time: points[1].time + 1,
+    }
+  }
+
+  return {
+    id,
+    lineStyle,
+    points,
+  }
+}
+
+const mapIntervalStrategyToChartSegments = (intervalStrategy?: FutureIntervalStrategy | null) => {
+  if (!intervalStrategy) {
+    return []
+  }
+
+  const segmentLines = intervalStrategy.confirmed_segments
+    .map((segment) => {
+      return createChartSegmentLine(
+        `confirmed-${segment.segment_index}`,
+        segment.start_time,
+        segment.start_price,
+        segment.end_time,
+        segment.end_price,
+        'solid',
+      )
+    })
+    .filter((item): item is ChartSegmentLineItem => item !== null)
+
+  if (intervalStrategy.current_segment) {
+    const buildingSegment = createChartSegmentLine(
+      `building-${intervalStrategy.current_segment.segment_index}`,
+      intervalStrategy.current_segment.start_time,
+      intervalStrategy.current_segment.start_price,
+      intervalStrategy.current_segment.end_time,
+      intervalStrategy.current_segment.end_price,
+      'dashed',
+    )
+    if (buildingSegment) {
+      segmentLines.push(buildingSegment)
+    }
+  }
+
+  return segmentLines
+}
+
 const loadContracts = async () => {
   contractsLoading.value = true
   try {
@@ -242,7 +341,38 @@ const handleBuildSegments = async () => {
   }
 }
 
+const handleLoadSegments = async () => {
+  if (!selectedSymbol.value) {
+    return
+  }
+
+  loadSegmentLoading.value = true
+
+  try {
+    const response = await getFutureStrategyAnalysisApi({
+      symbol: selectedSymbol.value,
+    })
+    const intervalStrategy = response.strategy.intervals[String(Number(selectedPeriod.value))]
+    const nextSegmentLines = mapIntervalStrategyToChartSegments(intervalStrategy)
+
+    loadedSegmentLines.value = nextSegmentLines
+
+    if (!nextSegmentLines.length) {
+      ElMessage.warning(LOAD_SEGMENT_EMPTY)
+      return
+    }
+
+    ElMessage.success(LOAD_SEGMENT_SUCCESS)
+  } catch (error) {
+    clearLoadedSegments()
+    ElMessage.error(extractErrorMessage(error, LOAD_SEGMENT_ERROR))
+  } finally {
+    loadSegmentLoading.value = false
+  }
+}
+
 watch([selectedSymbol, selectedPeriod], () => {
+  clearLoadedSegments()
   void loadKLineData()
 })
 
@@ -267,6 +397,13 @@ onMounted(() => {
         >
           {{ BUILD_SEGMENT_TEXT }}
         </el-button>
+        <el-button
+          :loading="loadSegmentLoading"
+          :disabled="!canLoadSegments"
+          @click="handleLoadSegments"
+        >
+          {{ LOAD_SEGMENT_TEXT }}
+        </el-button>
       </div>
     </header>
 
@@ -281,6 +418,7 @@ onMounted(() => {
       :contract-disabled="!hasContracts"
       :contract-placeholder="CONTRACT_PLACEHOLDER"
       :chart-data="chartData"
+      :segment-lines="loadedSegmentLines"
       :summary-items="summaryItems"
       :chart-options="chartOptions"
       :empty-description="EMPTY_DESCRIPTION"
