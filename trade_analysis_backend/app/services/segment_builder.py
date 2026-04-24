@@ -55,11 +55,17 @@ class SegmentBuilder:
     ) -> None:
         if strategy.current_segment is None:
             strategy.ema_state.warmup_bars.append(kline.model_copy(deep=True))
+        
+        if kline.date_time.day == 17 and kline.date_time.hour == 11 and kline.date_time.minute == 15:
+            pass
 
-        previous_relation = strategy.ema_state.last_relation
         current_ema = self._update_ema(strategy.ema_state, kline.close)
         current_relation = (
-            self._resolve_relation(kline.close, current_ema)
+            self._resolve_relation(
+                kline=kline,
+                ema_price=current_ema,
+                current_segment=strategy.current_segment,
+            )
             if current_ema is not None
             else None
         )
@@ -76,16 +82,26 @@ class SegmentBuilder:
                     )
                     strategy.ema_state.warmup_bars = []
             else:
-                cross_direction = self._detect_cross(
-                    previous_relation=previous_relation,
-                    current_relation=current_relation,
-                )
-                if (
-                    cross_direction is not None
-                    and cross_direction != strategy.current_segment.direction
-                ):
+                relation_direction = self._relation_to_direction(current_relation)
+                if relation_direction == strategy.current_segment.direction:
+                    strategy.pending_segment = None
+                    strategy.current_segment = self._extend_segment(
+                        segment=strategy.current_segment,
+                        kline=kline,
+                    )
+                else:
+                    strategy.current_segment = self._touch_segment(
+                        segment=strategy.current_segment,
+                        kline=kline,
+                    )
+                    strategy.pending_segment = self._build_pending_segment(
+                        strategy=strategy,
+                        kline=kline,
+                        direction=relation_direction,
+                    )
                     if (
-                        strategy.current_segment.kline_count
+                        strategy.pending_segment is not None
+                        and strategy.current_segment.bars_since_end
                         >= self.min_segment_kline_count
                     ):
                         strategy.confirmed_segments.append(
@@ -94,17 +110,22 @@ class SegmentBuilder:
                                 confirmed_at=kline.date_time,
                             )
                         )
-                    strategy.current_segment = self._create_segment_from_kline(
-                        kline=kline,
-                        direction=cross_direction,
-                        segment_index=len(strategy.confirmed_segments) + 1,
-                        trigger_time=kline.date_time,
-                    )
-                else:
-                    strategy.current_segment = self._extend_segment(
-                        segment=strategy.current_segment,
-                        kline=kline,
-                    )
+                        strategy.current_segment = (
+                            strategy.pending_segment.model_copy(deep=True)
+                        )
+                        strategy.current_segment.segment_index = (
+                            len(strategy.confirmed_segments) + 1
+                        )
+                        strategy.current_segment.last_kline_time = kline.date_time
+                        strategy.current_segment.end_time = kline.date_time
+                        strategy.current_segment.end_price = (
+                            kline.high
+                            if strategy.current_segment.direction
+                            == SegmentDirection.UP
+                            else kline.low
+                        )
+                        strategy.current_segment.bars_since_end = 0
+                        strategy.pending_segment = None
 
         strategy.ema_state.last_relation = current_relation
         strategy.last_processed_at = kline.date_time
@@ -133,12 +154,27 @@ class SegmentBuilder:
 
     def _resolve_relation(
         self,
-        close_price: Decimal,
+        kline: KlineBarInput,
         ema_price: Decimal,
+        current_segment: TrendSegment | None,
     ) -> EmaRelation:
-        if close_price > ema_price:
+        if current_segment is not None:
+            if current_segment.direction == SegmentDirection.DOWN:
+                if kline.low <= current_segment.end_price:
+                    return EmaRelation.BELOW
+                if kline.high > ema_price:
+                    return EmaRelation.ABOVE
+                return EmaRelation.BELOW
+
+            if kline.high >= current_segment.end_price:
+                return EmaRelation.ABOVE
+            if kline.low < ema_price:
+                return EmaRelation.BELOW
             return EmaRelation.ABOVE
-        if close_price < ema_price:
+
+        if kline.close > ema_price:
+            return EmaRelation.ABOVE
+        if kline.close < ema_price:
             return EmaRelation.BELOW
         return EmaRelation.ON
 
@@ -151,6 +187,35 @@ class SegmentBuilder:
         if relation == EmaRelation.BELOW:
             return SegmentDirection.DOWN
         return None
+
+    def _build_pending_segment(
+        self,
+        strategy: IntervalStrategy,
+        kline: KlineBarInput,
+        direction: SegmentDirection | None,
+    ) -> TrendSegment | None:
+        if strategy.current_segment is None or direction is None:
+            return None
+
+        pending_segment = strategy.pending_segment
+        if (
+            pending_segment is None
+            or pending_segment.direction != direction
+            or pending_segment.start_time != strategy.current_segment.end_time
+            or pending_segment.start_price != strategy.current_segment.end_price
+        ):
+            return self._create_pending_segment(
+                anchor_segment=strategy.current_segment,
+                kline=kline,
+                direction=direction,
+                segment_index=strategy.current_segment.segment_index + 1,
+                trigger_time=kline.date_time,
+            )
+
+        return self._extend_pending_segment(
+            segment=pending_segment,
+            kline=kline,
+        )
 
     def _detect_cross(
         self,
@@ -168,6 +233,17 @@ class SegmentBuilder:
         }:
             return SegmentDirection.DOWN
         return None
+
+    def _touch_segment(
+        self,
+        segment: TrendSegment,
+        kline: KlineBarInput,
+    ) -> TrendSegment:
+        updated = segment.model_copy(deep=True)
+        updated.last_kline_time = kline.date_time
+        updated.kline_count += 1
+        updated.bars_since_end += 1
+        return updated
 
     def _replay_initial_segment(
         self,
@@ -215,7 +291,60 @@ class SegmentBuilder:
             end_time=kline.date_time,
             end_price=end_price,
             kline_count=1,
+            bars_since_end=0,
         )
+
+    def _create_pending_segment(
+        self,
+        anchor_segment: TrendSegment,
+        kline: KlineBarInput,
+        direction: SegmentDirection,
+        segment_index: int,
+        trigger_time: datetime,
+    ) -> TrendSegment:
+        end_price = kline.high if direction == SegmentDirection.UP else kline.low
+        return TrendSegment(
+            segment_index=segment_index,
+            direction=direction,
+            status=SegmentStatus.BUILDING,
+            trigger_time=trigger_time,
+            first_kline_time=anchor_segment.end_time,
+            last_kline_time=kline.date_time,
+            start_time=anchor_segment.end_time,
+            start_price=anchor_segment.end_price,
+            end_time=kline.date_time,
+            end_price=end_price,
+            kline_count=1,
+            bars_since_end=0,
+        )
+
+    def _extend_pending_segment(
+        self,
+        segment: TrendSegment,
+        kline: KlineBarInput,
+    ) -> TrendSegment:
+        updated = segment.model_copy(deep=True)
+        updated.last_kline_time = kline.date_time
+        updated.kline_count += 1
+
+        if updated.direction == SegmentDirection.UP:
+            if kline.high >= updated.end_price:
+                updated.end_time = kline.date_time
+                updated.end_price = kline.high
+                updated.bars_since_end = 0
+                return updated
+
+            updated.bars_since_end += 1
+            return updated
+
+        if kline.low <= updated.end_price:
+            updated.end_time = kline.date_time
+            updated.end_price = kline.low
+            updated.bars_since_end = 0
+            return updated
+
+        updated.bars_since_end += 1
+        return updated
 
     def _extend_segment(
         self,
@@ -233,12 +362,17 @@ class SegmentBuilder:
                 updated.end_time = kline.date_time
                 updated.end_price = kline.high
                 updated.kline_count = 1
+                updated.bars_since_end = 0
                 return updated
 
             updated.kline_count += 1
             if kline.high >= updated.end_price:
                 updated.end_time = kline.date_time
                 updated.end_price = kline.high
+                updated.bars_since_end = 0
+                return updated
+
+            updated.bars_since_end += 1
             return updated
 
         if kline.high >= updated.start_price:
@@ -248,12 +382,17 @@ class SegmentBuilder:
             updated.end_time = kline.date_time
             updated.end_price = kline.low
             updated.kline_count = 1
+            updated.bars_since_end = 0
             return updated
 
         updated.kline_count += 1
         if kline.low <= updated.end_price:
             updated.end_time = kline.date_time
             updated.end_price = kline.low
+            updated.bars_since_end = 0
+            return updated
+
+        updated.bars_since_end += 1
         return updated
 
     def _confirm_segment(

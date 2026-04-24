@@ -44,6 +44,7 @@ class TrendSegment(SQLModel):
     end_time: datetime
     end_price: Decimal
     kline_count: int = 1
+    bars_since_end: int = 0
     confirmed_at: datetime | None = None
 
 
@@ -53,6 +54,7 @@ class IntervalStrategy(SQLModel):
     ema_state: EmaBuildState = Field(default_factory=EmaBuildState)
     confirmed_segments: list[TrendSegment] = Field(default_factory=list)
     current_segment: TrendSegment | None = None
+    pending_segment: TrendSegment | None = None
     processed_kline_count: int = 0
     last_processed_at: datetime | None = None
 

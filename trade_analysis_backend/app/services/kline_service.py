@@ -500,7 +500,7 @@ class KlineService:
 
         filtered = dataframe.dropna(
             subset=["datetime", "open", "close", "high", "low"]
-        )
+        ).tail(500)
         for row in filtered.to_dict(orient="records"):
             items.append(
                 KlineBarInput(
