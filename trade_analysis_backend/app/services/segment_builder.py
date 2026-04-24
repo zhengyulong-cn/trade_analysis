@@ -55,9 +55,6 @@ class SegmentBuilder:
     ) -> None:
         if strategy.current_segment is None:
             strategy.ema_state.warmup_bars.append(kline.model_copy(deep=True))
-        
-        if kline.date_time.day == 17 and kline.date_time.hour == 11 and kline.date_time.minute == 15:
-            pass
 
         current_ema = self._update_ema(strategy.ema_state, kline.close)
         current_relation = (
@@ -100,9 +97,12 @@ class SegmentBuilder:
                         direction=relation_direction,
                     )
                     if (
-                        strategy.pending_segment is not None
-                        and strategy.current_segment.bars_since_end
-                        >= self.min_segment_kline_count
+                        current_ema is not None
+                        and self._should_confirm_pending_segment(
+                            strategy=strategy,
+                            kline=kline,
+                            ema_price=current_ema,
+                        )
                     ):
                         strategy.confirmed_segments.append(
                             self._confirm_segment(
@@ -111,18 +111,13 @@ class SegmentBuilder:
                             )
                         )
                         strategy.current_segment = (
-                            strategy.pending_segment.model_copy(deep=True)
+                            self._finalize_pending_segment(
+                                strategy=strategy,
+                                kline=kline,
+                            )
                         )
                         strategy.current_segment.segment_index = (
                             len(strategy.confirmed_segments) + 1
-                        )
-                        strategy.current_segment.last_kline_time = kline.date_time
-                        strategy.current_segment.end_time = kline.date_time
-                        strategy.current_segment.end_price = (
-                            kline.high
-                            if strategy.current_segment.direction
-                            == SegmentDirection.UP
-                            else kline.low
                         )
                         strategy.current_segment.bars_since_end = 0
                         strategy.pending_segment = None
@@ -216,6 +211,60 @@ class SegmentBuilder:
             segment=pending_segment,
             kline=kline,
         )
+
+    def _should_confirm_pending_segment(
+        self,
+        strategy: IntervalStrategy,
+        kline: KlineBarInput,
+        ema_price: Decimal,
+    ) -> bool:
+        if strategy.current_segment is None or strategy.pending_segment is None:
+            return False
+
+        if strategy.pending_segment.direction == SegmentDirection.UP:
+            if kline.high <= ema_price:
+                return False
+            if strategy.current_segment.bars_since_end <= self.min_segment_kline_count:
+                return False
+            if strategy.pending_segment.end_price <= kline.high:
+                return True
+            return (
+                strategy.current_segment.bars_since_end
+                > self.min_segment_kline_count * 2
+            )
+
+        if kline.low >= ema_price:
+            return False
+        if strategy.current_segment.bars_since_end <= self.min_segment_kline_count:
+            return False
+        if strategy.pending_segment.end_price >= kline.low:
+            return True
+        return (
+            strategy.current_segment.bars_since_end
+            > self.min_segment_kline_count * 2
+        )
+
+    def _finalize_pending_segment(
+        self,
+        strategy: IntervalStrategy,
+        kline: KlineBarInput,
+    ) -> TrendSegment:
+        if strategy.pending_segment is None:
+            raise ValueError("Pending segment is required before finalizing")
+
+        updated = strategy.pending_segment.model_copy(deep=True)
+        updated.last_kline_time = kline.date_time
+
+        if updated.direction == SegmentDirection.UP:
+            if updated.end_price > kline.high:
+                updated.end_time = kline.date_time
+                updated.end_price = kline.high
+            return updated
+
+        if updated.end_price < kline.low:
+            updated.end_time = kline.date_time
+            updated.end_price = kline.low
+        return updated
 
     def _detect_cross(
         self,
