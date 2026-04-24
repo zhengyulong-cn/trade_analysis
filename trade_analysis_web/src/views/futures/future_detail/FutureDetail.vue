@@ -75,7 +75,7 @@ const canBuildSegments = computed(() => Boolean(selectedSymbol.value))
 const canLoadSegments = computed(() => Boolean(selectedSymbol.value))
 const contractOptions = computed(() => {
   return contracts.value.map((contract) => ({
-    label: `${contract.symbol} \u00b7 ${contract.name}`,
+    label: `${contract.symbol} · ${contract.name}`,
     value: contract.symbol,
     description: contract.name,
   }))

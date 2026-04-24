@@ -124,6 +124,7 @@ const handleCrosshairMove = (value: KLineItem | null) => {
             >
               <div v-if="contract.description" class="contract-option">
                 <span class="contract-symbol">{{ contract.value }}</span>
+                <span>·</span>
                 <span class="contract-name">{{ contract.description }}</span>
               </div>
               <span v-else>{{ contract.label }}</span>
