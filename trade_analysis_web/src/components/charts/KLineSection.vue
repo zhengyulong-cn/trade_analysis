@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import type { ChartOptions, DeepPartial } from 'lightweight-charts'
 import { computed } from 'vue'
+import FutureContractIntervalSelector from '@/components/futures/FutureContractIntervalSelector.vue'
 import KLineChart from './KLineChart.vue'
 
 interface KLineItem {
@@ -76,12 +77,12 @@ const props = withDefaults(
     contractLoading: false,
     contractDisabled: false,
     periodDisabled: false,
-    contractPlaceholder: '\u8bf7\u9009\u62e9\u5408\u7ea6',
+    contractPlaceholder: '请选择合约',
     segmentLines: () => [],
     summaryItems: () => [],
     chartOptions: () => ({}),
-    emptyDescription: '\u6682\u65e0 K \u7ebf\u6570\u636e',
-    unavailableDescription: '\u6682\u65e0\u53ef\u7528\u6570\u636e',
+    emptyDescription: '暂无 K 线数据',
+    unavailableDescription: '暂无可用数据',
   },
 )
 
@@ -106,46 +107,18 @@ const handleCrosshairMove = (value: KLineItem | null) => {
     <template v-if="available">
       <header class="header-info">
         <div v-if="hasToolbar" class="header-actions">
-          <el-select
-            v-if="contractOptions.length"
-            :model-value="selectedContract"
-            class="selector"
-            :placeholder="contractPlaceholder"
-            filterable
-            :loading="contractLoading"
-            :disabled="contractDisabled"
-            @update:model-value="handleContractChange"
-          >
-            <el-option
-              v-for="contract in contractOptions"
-              :key="contract.value"
-              :label="contract.label"
-              :value="contract.value"
-            >
-              <div v-if="contract.description" class="contract-option">
-                <span class="contract-symbol">{{ contract.value }}</span>
-                <span>·</span>
-                <span class="contract-name">{{ contract.description }}</span>
-              </div>
-              <span v-else>{{ contract.label }}</span>
-            </el-option>
-          </el-select>
-
-          <el-radio-group
-            v-if="periodOptions.length"
-            :model-value="selectedPeriod"
-            class="period-group"
-            :disabled="periodDisabled"
-            @update:model-value="handlePeriodChange"
-          >
-            <el-radio-button
-              v-for="period in periodOptions"
-              :key="period.value"
-              :value="period.value"
-            >
-              {{ period.label }}
-            </el-radio-button>
-          </el-radio-group>
+          <FutureContractIntervalSelector
+            :selected-contract="selectedContract"
+            :selected-period="selectedPeriod"
+            :contract-options="contractOptions"
+            :period-options="periodOptions"
+            :contract-loading="contractLoading"
+            :contract-disabled="contractDisabled"
+            :period-disabled="periodDisabled"
+            :contract-placeholder="contractPlaceholder"
+            @update:selected-contract="handleContractChange"
+            @update:selected-period="handlePeriodChange"
+          />
         </div>
 
         <div v-if="summaryItems.length" class="summary-bar">
@@ -199,35 +172,7 @@ const handleCrosshairMove = (value: KLineItem | null) => {
     column-gap: 1rem;
 
     .header-actions {
-      display: flex;
-      align-items: center;
-      justify-content: flex-end;
-      gap: 12px;
-      flex-wrap: wrap;
       margin-bottom: 14px;
-
-      .selector {
-        width: 16rem;
-      }
-
-      .contract-option {
-        display: flex;
-        align-items: center;
-        justify-content: space-between;
-        gap: .75rem;
-      }
-
-      .contract-symbol {
-        color: #303133;
-        font-weight: 600;
-      }
-
-      .contract-name {
-        color: #909399;
-        overflow: hidden;
-        text-overflow: ellipsis;
-        white-space: nowrap;
-      }
     }
 
     .summary-bar {
@@ -295,10 +240,6 @@ const handleCrosshairMove = (value: KLineItem | null) => {
 
   .header-actions {
     justify-content: flex-start;
-  }
-
-  .selector {
-    width: 100%;
   }
 
   .summary-bar {

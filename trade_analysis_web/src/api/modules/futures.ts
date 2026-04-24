@@ -155,6 +155,72 @@ export interface FutureSegmentBuildResult {
   interval_strategy: FutureIntervalStrategy
 }
 
+export type FutureStrategySegmentRole = 'confirmed' | 'current' | 'pending'
+
+export interface FutureStrategySegmentItem {
+  segment_role: FutureStrategySegmentRole
+  segment_index: number
+  direction: string
+  status: string
+  trigger_time: string
+  first_kline_time: string
+  last_kline_time: string
+  start_time: string
+  start_price: number | string
+  end_time: string
+  end_price: number | string
+  kline_count: number
+  bars_since_end: number
+  confirmed_at: string | null
+}
+
+export interface FutureStrategySegmentListResult {
+  strategy_id: number | null
+  contract_id: number
+  symbol: string
+  exchange: string
+  contract_name: string
+  interval: number
+  interval_name: string | null
+  items: FutureStrategySegmentItem[]
+}
+
+export interface FutureStrategySegmentBaseParams {
+  symbol: string
+  interval: number
+  segment_role: FutureStrategySegmentRole
+  direction: string
+  start_time: string
+  start_price: number
+  end_time: string
+  end_price: number
+}
+
+export interface FutureStrategySegmentCreateParams extends FutureStrategySegmentBaseParams {}
+
+export interface FutureStrategySegmentUpdateParams extends FutureStrategySegmentBaseParams {
+  original_segment_role: FutureStrategySegmentRole
+  original_segment_index: number
+}
+
+export interface FutureStrategySegmentDeleteItem {
+  segment_role: FutureStrategySegmentRole
+  segment_index: number
+}
+
+export interface FutureStrategySegmentBatchDeleteParams {
+  symbol: string
+  interval: number
+  items: FutureStrategySegmentDeleteItem[]
+}
+
+export interface FutureStrategySegmentBatchDeleteResult {
+  symbol: string
+  interval: number
+  deleted: number
+  remaining: number
+}
+
 const mapFutureKlineToChartData = (item: FutureKlineItem): FutureChartKLineItem | null => {
   const timestamp = toChartTimestampSeconds(item.date_time)
   if (timestamp === null) {
@@ -254,5 +320,29 @@ export const buildFutureSegmentAnalysisApi = (params: FutureStrategyAnalysisBuil
 export const getFutureStrategyAnalysisApi = (params: { symbol: string }) => {
   return axios.get<FutureStrategyAnalysisDetail>("/strategy-analyses", params) as unknown as Promise<
     FutureStrategyAnalysisDetail
+  >
+}
+
+export const getFutureStrategySegmentListApi = (params: { symbol: string; interval: number }) => {
+  return axios.get<FutureStrategySegmentListResult>("/strategy-analyses/segments", params) as unknown as Promise<
+    FutureStrategySegmentListResult
+  >
+}
+
+export const createFutureStrategySegmentApi = (params: FutureStrategySegmentCreateParams) => {
+  return axios.post<FutureStrategySegmentListResult>("/strategy-analyses/segments/create", params) as unknown as Promise<
+    FutureStrategySegmentListResult
+  >
+}
+
+export const updateFutureStrategySegmentApi = (params: FutureStrategySegmentUpdateParams) => {
+  return axios.post<FutureStrategySegmentListResult>("/strategy-analyses/segments/update", params) as unknown as Promise<
+    FutureStrategySegmentListResult
+  >
+}
+
+export const deleteFutureStrategySegmentsApi = (params: FutureStrategySegmentBatchDeleteParams) => {
+  return axios.post<FutureStrategySegmentBatchDeleteResult>("/strategy-analyses/segments/delete", params) as unknown as Promise<
+    FutureStrategySegmentBatchDeleteResult
   >
 }

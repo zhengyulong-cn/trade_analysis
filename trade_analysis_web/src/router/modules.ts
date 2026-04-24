@@ -46,6 +46,14 @@ export const RouterModules: RouteRecordRaw[] = [
           title: "\u671f\u8d27\u5408\u7ea6\u7ba1\u7406",
         },
       },
+      {
+        path: "/futures/strategy_analysis_manager",
+        component: () => import("@/views/futures/future_strategy_analysis_manager/FutureStrategyAnalysisManager.vue"),
+        meta: {
+          icon: "",
+          title: "\u671f\u8d27\u7b56\u7565\u5206\u6790\u7ba1\u7406",
+        },
+      },
     ],
   },
 ]

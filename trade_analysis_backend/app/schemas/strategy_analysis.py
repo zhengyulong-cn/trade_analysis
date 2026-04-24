@@ -143,6 +143,81 @@ class SegmentBuildResult(SQLModel):
     interval_strategy: IntervalStrategy
 
 
+class ManagedSegmentRole(str, Enum):
+    """线段管理角色。"""
+
+    CONFIRMED = "confirmed"
+    CURRENT = "current"
+    PENDING = "pending"
+
+
+class ManagedTrendSegment(TrendSegment):
+    """线段管理视图对象。"""
+
+    segment_role: ManagedSegmentRole
+
+
+class SegmentListResult(SQLModel):
+    """单周期线段列表。"""
+
+    strategy_id: int | None = None
+    contract_id: int
+    symbol: str
+    exchange: str
+    contract_name: str
+    interval: int
+    interval_name: str | None = None
+    items: list[ManagedTrendSegment] = Field(default_factory=list)
+
+
+class SegmentBase(SQLModel):
+    """线段新增/编辑基础字段。"""
+
+    symbol: str
+    interval: int
+    segment_role: ManagedSegmentRole
+    direction: SegmentDirection
+    start_time: datetime
+    start_price: Decimal
+    end_time: datetime
+    end_price: Decimal
+
+
+class SegmentCreateRequest(SegmentBase):
+    """线段新增请求。"""
+
+
+class SegmentUpdateRequest(SegmentBase):
+    """线段编辑请求。"""
+
+    original_segment_role: ManagedSegmentRole
+    original_segment_index: int = Field(ge=1)
+
+
+class SegmentDeleteItem(SQLModel):
+    """线段删除项。"""
+
+    segment_role: ManagedSegmentRole
+    segment_index: int = Field(ge=1)
+
+
+class SegmentBatchDeleteRequest(SQLModel):
+    """线段批量删除请求。"""
+
+    symbol: str
+    interval: int
+    items: list[SegmentDeleteItem] = Field(default_factory=list)
+
+
+class SegmentBatchDeleteResult(SQLModel):
+    """线段批量删除结果。"""
+
+    symbol: str
+    interval: int
+    deleted: int
+    remaining: int
+
+
 class StrategyAnalysisRead(SQLModel):
     """数据库策略记录的基础读取模型。"""
 
