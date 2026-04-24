@@ -20,6 +20,8 @@ from app.schemas.strategy_analysis import (
     SegmentListResult,
     SegmentUpdateRequest,
     SegmentStatus,
+    StrategyAnalysisDeleteRequest,
+    StrategyAnalysisDeleteResult,
     StrategyAnalysisDetail,
     StrategyContent,
     TrendSegment,
@@ -300,6 +302,35 @@ class StrategyAnalysisService:
             interval=interval.seconds,
             deleted=deleted,
             remaining=len(normalized_items),
+        )
+
+    def delete_strategy_analysis(
+        self,
+        payload: StrategyAnalysisDeleteRequest,
+    ) -> StrategyAnalysisDeleteResult:
+        """按 strategy_id 与 contract_id 删除整条策略分析记录。"""
+        statement = (
+            select(StrategyAnalysis)
+            .where(StrategyAnalysis.strategy_id == payload.strategy_id)
+            .where(StrategyAnalysis.contract_id == payload.contract_id)
+        )
+        strategy_row = self.session.exec(statement).first()
+        if strategy_row is None:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail=(
+                    "Strategy analysis not found for "
+                    f"strategy_id={payload.strategy_id}, contract_id={payload.contract_id}"
+                ),
+            )
+
+        self.session.delete(strategy_row)
+        self.session.commit()
+
+        return StrategyAnalysisDeleteResult(
+            contract_id=payload.contract_id,
+            strategy_id=payload.strategy_id,
+            deleted=1,
         )
 
     def _parse_strategy(self, raw_strategy: str | None) -> StrategyContent:

@@ -221,6 +221,17 @@ export interface FutureStrategySegmentBatchDeleteResult {
   remaining: number
 }
 
+export interface FutureStrategyAnalysisDeleteParams {
+  contract_id: number
+  strategy_id: number
+}
+
+export interface FutureStrategyAnalysisDeleteResult {
+  contract_id: number
+  strategy_id: number
+  deleted: number
+}
+
 const mapFutureKlineToChartData = (item: FutureKlineItem): FutureChartKLineItem | null => {
   const timestamp = toChartTimestampSeconds(item.date_time)
   if (timestamp === null) {
@@ -344,5 +355,11 @@ export const updateFutureStrategySegmentApi = (params: FutureStrategySegmentUpda
 export const deleteFutureStrategySegmentsApi = (params: FutureStrategySegmentBatchDeleteParams) => {
   return axios.post<FutureStrategySegmentBatchDeleteResult>("/strategy-analyses/segments/delete", params) as unknown as Promise<
     FutureStrategySegmentBatchDeleteResult
+  >
+}
+
+export const deleteFutureStrategyAnalysisApi = (params: FutureStrategyAnalysisDeleteParams) => {
+  return axios.post<FutureStrategyAnalysisDeleteResult>("/strategy-analyses/delete", params) as unknown as Promise<
+    FutureStrategyAnalysisDeleteResult
   >
 }

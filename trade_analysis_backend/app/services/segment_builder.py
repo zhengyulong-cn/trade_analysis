@@ -33,7 +33,7 @@ class SegmentBuilder:
         self,
         ema_period: int = 20,
         min_segment_kline_count: int = 5,
-        impulse_amplitude_lookback: int = 20,
+        impulse_amplitude_lookback: int = 80,
         impulse_amplitude_multiplier: Decimal | int | str = 3,
     ):
         # ema_period: EMA 周期，当前默认 20。

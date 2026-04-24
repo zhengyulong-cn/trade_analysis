@@ -218,6 +218,21 @@ class SegmentBatchDeleteResult(SQLModel):
     remaining: int
 
 
+class StrategyAnalysisDeleteRequest(SQLModel):
+    """绛栫暐鍒犻櫎璇锋眰銆?"""
+
+    contract_id: int
+    strategy_id: int
+
+
+class StrategyAnalysisDeleteResult(SQLModel):
+    """绛栫暐鍒犻櫎缁撴灉銆?"""
+
+    contract_id: int
+    strategy_id: int
+    deleted: int
+
+
 class StrategyAnalysisRead(SQLModel):
     """数据库策略记录的基础读取模型。"""
 

@@ -2,6 +2,7 @@
 import FutureContractIntervalSelector from '@/components/futures/FutureContractIntervalSelector.vue'
 import {
   createFutureStrategySegmentApi,
+  deleteFutureStrategyAnalysisApi,
   deleteFutureStrategySegmentsApi,
   getFutureContractIntervalList,
   getFutureContractList,
@@ -36,9 +37,10 @@ const TEXT = {
   subtitle: '当前先支持线段管理；买卖点管理后续再补充。',
   filterTitle: '合约与周期',
   filterSubtitle: '选择期货合约和周期后，可查看并维护当前策略线段。',
-  refresh: '刷新线段',
+  refresh: '刷新线段列表',
+  deleteStrategy: '删除策略',
   create: '新增线段',
-  batchDelete: '批量删除',
+  batchDeleteSegments: '批量删除线段',
   emptySelection: '请先选择合约和周期',
   emptySegments: '当前周期暂无线段',
   loadOptionsError: '获取合约或周期列表失败',
@@ -50,6 +52,10 @@ const TEXT = {
   deleteSuccessPrefix: '批量删除成功，已删除 ',
   deleteSuccessSuffix: ' 条线段',
   deleteError: '批量删除线段失败',
+  deleteStrategySuccess: '删除策略成功',
+  deleteStrategyError: '删除策略失败',
+  deleteStrategyTitle: '确认删除策略',
+  deleteStrategyMessage: '确定删除当前合约的整条策略记录吗？',
   deleteTitle: '确认删除',
   deleteMessagePrefix: '确定删除已选中的 ',
   deleteMessageSuffix: ' 条线段吗？',
@@ -100,10 +106,13 @@ const segments = ref<FutureStrategySegmentItem[]>([])
 const selectedRows = ref<FutureStrategySegmentItem[]>([])
 const selectedSymbol = ref('')
 const selectedInterval = ref<number>()
+const currentStrategyId = ref<number | null>(null)
+const currentContractId = ref<number | null>(null)
 const optionsLoading = ref(false)
 const tableLoading = ref(false)
 const submitting = ref(false)
 const batchDeleting = ref(false)
+const strategyDeleting = ref(false)
 const dialogVisible = ref(false)
 const dialogMode = ref<'create' | 'edit'>('create')
 const formRef = ref<FormInstance>()
@@ -134,6 +143,7 @@ const isEditMode = computed(() => dialogMode.value === 'edit')
 const dialogTitle = computed(() => (isEditMode.value ? TEXT.editDialogTitle : TEXT.addDialogTitle))
 const emptyText = computed(() => (hasSelection.value ? TEXT.emptySegments : TEXT.emptySelection))
 const canBatchDelete = computed(() => selectedRows.value.length > 0 && hasSelection.value)
+const canDeleteStrategy = computed(() => currentStrategyId.value !== null && currentContractId.value !== null)
 const contractOptions = computed(() => {
   return contracts.value.map((contract) => ({
     label: `${contract.symbol} · ${contract.name}`,
@@ -229,6 +239,11 @@ const resetSelection = () => {
   tableRef.value?.clearSelection?.()
 }
 
+const resetStrategyIdentity = () => {
+  currentStrategyId.value = null
+  currentContractId.value = null
+}
+
 const resetForm = () => {
   form.original_segment_role = undefined
   form.original_segment_index = undefined
@@ -252,6 +267,7 @@ const applySegmentList = (items: FutureStrategySegmentItem[]) => {
 const loadSegments = async () => {
   if (!hasSelection.value || !selectedInterval.value) {
     segments.value = []
+    resetStrategyIdentity()
     resetSelection()
     return
   }
@@ -262,9 +278,12 @@ const loadSegments = async () => {
       symbol: selectedSymbol.value,
       interval: selectedInterval.value,
     })
+    currentStrategyId.value = result.strategy_id
+    currentContractId.value = result.contract_id
     applySegmentList(result.items)
   } catch (error) {
     segments.value = []
+    resetStrategyIdentity()
     resetSelection()
     ElMessage.error(extractErrorMessage(error, TEXT.loadSegmentsError))
   } finally {
@@ -287,6 +306,7 @@ const loadOptions = async () => {
       selectedSymbol.value = ''
       selectedInterval.value = undefined
       segments.value = []
+      resetStrategyIdentity()
       resetSelection()
       return
     }
@@ -381,10 +401,14 @@ const submitForm = async () => {
         original_segment_role: form.original_segment_role || form.segment_role,
         original_segment_index: form.original_segment_index || 1,
       })
+      currentStrategyId.value = result.strategy_id
+      currentContractId.value = result.contract_id
       applySegmentList(result.items)
       ElMessage.success(TEXT.updateSuccess)
     } else {
       const result = await createFutureStrategySegmentApi(payload)
+      currentStrategyId.value = result.strategy_id
+      currentContractId.value = result.contract_id
       applySegmentList(result.items)
       ElMessage.success(TEXT.createSuccess)
     }
@@ -433,6 +457,36 @@ const handleBatchDelete = async () => {
   }
 }
 
+const handleDeleteStrategy = async () => {
+  if (!canDeleteStrategy.value) {
+    return
+  }
+
+  try {
+    await ElMessageBox.confirm(TEXT.deleteStrategyMessage, TEXT.deleteStrategyTitle, {
+      type: 'warning',
+    })
+  } catch {
+    return
+  }
+
+  strategyDeleting.value = true
+  try {
+    await deleteFutureStrategyAnalysisApi({
+      contract_id: Number(currentContractId.value),
+      strategy_id: Number(currentStrategyId.value),
+    })
+    segments.value = []
+    resetStrategyIdentity()
+    resetSelection()
+    ElMessage.success(TEXT.deleteStrategySuccess)
+  } catch (error) {
+    ElMessage.error(extractErrorMessage(error, TEXT.deleteStrategyError))
+  } finally {
+    strategyDeleting.value = false
+  }
+}
+
 onMounted(() => {
   void loadOptions()
 })
@@ -445,20 +499,6 @@ onMounted(() => {
         <h2 class="title">{{ TEXT.title }}</h2>
         <p class="subtitle">{{ TEXT.subtitle }}</p>
       </div>
-      <div class="page-actions">
-        <el-button :loading="optionsLoading || tableLoading" @click="loadSegments">{{ TEXT.refresh }}</el-button>
-        <el-button type="primary" :disabled="!hasSelection" @click="openCreateDialog">
-          {{ TEXT.create }}
-        </el-button>
-        <el-button
-          type="danger"
-          :loading="batchDeleting"
-          :disabled="!canBatchDelete"
-          @click="handleBatchDelete"
-        >
-          {{ TEXT.batchDelete }}
-        </el-button>
-      </div>
     </header>
 
     <section class="panel">
@@ -466,6 +506,16 @@ onMounted(() => {
         <div>
           <h3 class="panel-title">{{ TEXT.filterTitle }}</h3>
           <p class="panel-subtitle">{{ TEXT.filterSubtitle }}</p>
+        </div>
+        <div class="page-actions">
+          <el-button
+            type="danger"
+            :loading="strategyDeleting"
+            :disabled="!canDeleteStrategy"
+            @click="handleDeleteStrategy"
+          >
+            {{ TEXT.deleteStrategy }}
+          </el-button>
         </div>
       </div>
       <FutureContractIntervalSelector
@@ -487,6 +537,20 @@ onMounted(() => {
         <div>
           <h3 class="panel-title">{{ TEXT.tableTitle }}</h3>
           <p class="panel-subtitle">{{ currentSelectionText }}</p>
+        </div>
+        <div class="page-actions">
+          <el-button :loading="optionsLoading || tableLoading" @click="loadSegments">{{ TEXT.refresh }}</el-button>
+          <el-button type="primary" :disabled="!hasSelection" @click="openCreateDialog">
+            {{ TEXT.create }}
+          </el-button>
+          <el-button
+            type="danger"
+            :loading="batchDeleting"
+            :disabled="!canBatchDelete"
+            @click="handleBatchDelete"
+          >
+            {{ TEXT.batchDeleteSegments }}
+          </el-button>
         </div>
       </div>
 

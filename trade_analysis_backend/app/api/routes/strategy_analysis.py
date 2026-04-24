@@ -9,6 +9,8 @@ from app.schemas.strategy_analysis import (
     SegmentCreateRequest,
     SegmentListResult,
     SegmentUpdateRequest,
+    StrategyAnalysisDeleteRequest,
+    StrategyAnalysisDeleteResult,
     StrategyAnalysisDetail,
 )
 
@@ -58,6 +60,14 @@ def delete_interval_segments(
     service: StrategyAnalysisServiceDep,
 ) -> SegmentBatchDeleteResult:
     return service.delete_interval_segments(payload)
+
+
+@router.post("/delete", response_model=StrategyAnalysisDeleteResult)
+def delete_strategy_analysis(
+    payload: StrategyAnalysisDeleteRequest,
+    service: StrategyAnalysisServiceDep,
+) -> StrategyAnalysisDeleteResult:
+    return service.delete_strategy_analysis(payload)
 
 
 @router.post(
