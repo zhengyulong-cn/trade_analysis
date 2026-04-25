@@ -8,6 +8,7 @@ import {
   getFutureDataApi,
   getFutureStrategySegmentListApi,
   getFutureStrategyAnalysisApi,
+  updateFutureContract,
   updateFutureStrategySegmentApi,
   type FutureContract,
   type FutureIntervalStrategy,
@@ -45,6 +46,9 @@ const CREATE_SEGMENT_SUCCESS = '线段已创建'
 const CREATE_SEGMENT_ERROR = '创建线段失败'
 const DELETE_SEGMENT_SUCCESS = '线段已删除'
 const DELETE_SEGMENT_ERROR = '删除线段失败'
+const AUTO_LOAD_SEGMENT_ON_SUCCESS = '已开启自动载入线段'
+const AUTO_LOAD_SEGMENT_OFF_SUCCESS = '已关闭自动载入线段'
+const AUTO_LOAD_SEGMENT_ERROR = '切换自动载入失败'
 
 const PERIOD_OPTIONS = [
   { label: '5F', value: DEFAULT_PERIOD },
@@ -112,6 +116,10 @@ const activeKLineBar = ref<FutureKlineData['kLineList'][number] | null>(null)
 const hasContracts = computed(() => contracts.value.length > 0)
 const canBuildSegments = computed(() => Boolean(selectedSymbol.value))
 const canLoadSegments = computed(() => Boolean(selectedSymbol.value))
+const currentContract = computed(() => {
+  return contracts.value.find((contract) => contract.symbol === selectedSymbol.value) ?? null
+})
+const autoLoadSegments = computed(() => currentContract.value?.auto_load_segments === 1)
 const contractOptions = computed(() => {
   return contracts.value.map((contract) => ({
     label: `${contract.symbol} · ${contract.name}`,
@@ -213,6 +221,12 @@ const formatPrice = (value?: number) => {
 
 const clearLoadedSegments = () => {
   loadedSegmentLines.value = []
+}
+
+const setLoadedSegmentsFromStrategy = (intervalStrategy?: FutureIntervalStrategy | null) => {
+  const nextSegmentLines = mapIntervalStrategyToChartSegments(intervalStrategy)
+  loadedSegmentLines.value = nextSegmentLines
+  return nextSegmentLines
 }
 
 const isSegmentRole = (value?: string): value is FutureStrategySegmentRole => {
@@ -394,6 +408,10 @@ const loadKLineData = async () => {
 
     chartData.value = response
     activeKLineBar.value = null
+
+    if (autoLoadSegments.value) {
+      await loadSegmentsForCurrentSelection({ silent: true })
+    }
   } catch {
     if (requestId !== latestRequestId) {
       return
@@ -432,34 +450,46 @@ const handleBuildSegments = async () => {
   }
 }
 
-const handleLoadSegments = async () => {
+const loadSegmentsForCurrentSelection = async (options: { silent?: boolean } = {}) => {
   if (!selectedSymbol.value) {
-    return
+    return []
   }
 
-  loadSegmentLoading.value = true
+  if (!options.silent) {
+    loadSegmentLoading.value = true
+  }
 
   try {
     const response = await getFutureStrategyAnalysisApi({
       symbol: selectedSymbol.value,
     })
     const intervalStrategy = response.strategy.intervals[String(Number(selectedPeriod.value))]
-    const nextSegmentLines = mapIntervalStrategyToChartSegments(intervalStrategy)
+    const nextSegmentLines = setLoadedSegmentsFromStrategy(intervalStrategy)
 
-    loadedSegmentLines.value = nextSegmentLines
-
-    if (!nextSegmentLines.length) {
+    if (!options.silent && !nextSegmentLines.length) {
       ElMessage.warning(LOAD_SEGMENT_EMPTY)
-      return
+      return nextSegmentLines
     }
 
-    ElMessage.success(LOAD_SEGMENT_SUCCESS)
+    if (!options.silent) {
+      ElMessage.success(LOAD_SEGMENT_SUCCESS)
+    }
+    return nextSegmentLines
   } catch (error) {
     clearLoadedSegments()
-    ElMessage.error(extractErrorMessage(error, LOAD_SEGMENT_ERROR))
+    if (!options.silent) {
+      ElMessage.error(extractErrorMessage(error, LOAD_SEGMENT_ERROR))
+    }
+    return []
   } finally {
-    loadSegmentLoading.value = false
+    if (!options.silent) {
+      loadSegmentLoading.value = false
+    }
   }
+}
+
+const handleLoadSegments = async () => {
+  await loadSegmentsForCurrentSelection()
 }
 
 const handleSegmentLineChange = async (change: SegmentLineChange) => {
@@ -581,6 +611,31 @@ const handleSegmentLineDelete = async (payload: SegmentLineDelete) => {
   }
 }
 
+const handleSegmentAutoLoadToggle = async () => {
+  const contract = currentContract.value
+  if (!contract) {
+    return
+  }
+
+  const nextValue = contract.auto_load_segments === 1 ? 0 : 1
+  try {
+    const updatedContract = await updateFutureContract({
+      contract_id: contract.contract_id,
+      auto_load_segments: nextValue,
+    })
+    contracts.value = contracts.value.map((item) => {
+      return item.contract_id === updatedContract.contract_id ? updatedContract : item
+    })
+    ElMessage.success(nextValue === 1 ? AUTO_LOAD_SEGMENT_ON_SUCCESS : AUTO_LOAD_SEGMENT_OFF_SUCCESS)
+
+    if (nextValue === 1) {
+      await loadSegmentsForCurrentSelection({ silent: true })
+    }
+  } catch (error) {
+    ElMessage.error(extractErrorMessage(error, AUTO_LOAD_SEGMENT_ERROR))
+  }
+}
+
 watch([selectedSymbol, selectedPeriod], () => {
   clearLoadedSegments()
   void loadKLineData()
@@ -614,6 +669,7 @@ onMounted(() => {
       :segment-lines="loadedSegmentLines"
       :can-build-segments="canBuildSegments && !buildSegmentLoading"
       :can-load-segments="canLoadSegments && !loadSegmentLoading"
+      :auto-load-segments="autoLoadSegments"
       :summary-items="summaryItems"
       :chart-options="chartOptions"
       :empty-description="EMPTY_DESCRIPTION"
@@ -626,6 +682,7 @@ onMounted(() => {
       @segment-line-delete="handleSegmentLineDelete"
       @segment-build-request="handleBuildSegments"
       @segment-load-request="handleLoadSegments"
+      @segment-auto-load-toggle="handleSegmentAutoLoadToggle"
     />
   </div>
 </template>

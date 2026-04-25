@@ -13,6 +13,11 @@ class ContractService:
         self.session = session
 
     def create_contract(self, payload: ContractCreate) -> Contract:
+        if payload.auto_load_segments not in (0, 1):
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="auto_load_segments must be 0 or 1",
+            )
         contract = Contract.model_validate(payload)
         self.session.add(contract)
         try:
@@ -37,6 +42,11 @@ class ContractService:
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
                 detail="No contract fields to update",
+            )
+        if "auto_load_segments" in update_data and update_data["auto_load_segments"] not in (0, 1):
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="auto_load_segments must be 0 or 1",
             )
 
         for field_name, value in update_data.items():

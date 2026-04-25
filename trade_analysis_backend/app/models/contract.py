@@ -18,5 +18,6 @@ class Contract(SQLModel, table=True):
     symbol: str = Field(index=True, min_length=1, max_length=50)
     exchange: str = Field(index=True, min_length=1, max_length=50)
     name: str = Field(min_length=1, max_length=100)
+    auto_load_segments: int = Field(default=0, nullable=False)
     create_at: datetime = Field(default_factory=utc_now, nullable=False)
     updated_at: datetime = Field(default_factory=utc_now, nullable=False)

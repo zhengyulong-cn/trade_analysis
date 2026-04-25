@@ -6,6 +6,7 @@ export interface FutureContract {
   symbol: string
   exchange: string
   name: string
+  auto_load_segments: number
   create_at: string
   updated_at: string
 }
@@ -14,6 +15,7 @@ export interface FutureContractCreateParams {
   symbol: string
   exchange: string
   name: string
+  auto_load_segments?: number
 }
 
 export interface FutureContractUpdateParams extends Partial<FutureContractCreateParams> {

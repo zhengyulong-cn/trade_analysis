@@ -15,6 +15,7 @@ interface ContractForm {
   symbol: string
   exchange: string
   name: string
+  auto_load_segments: number
 }
 
 const exchangeOptions = [
@@ -37,6 +38,7 @@ const form = reactive<ContractForm>({
   symbol: '',
   exchange: '',
   name: '',
+  auto_load_segments: 0,
 })
 
 const rules = reactive<FormRules<ContractForm>>({
@@ -52,6 +54,7 @@ const resetForm = () => {
   form.symbol = ''
   form.exchange = ''
   form.name = ''
+  form.auto_load_segments = 0
   formRef.value?.clearValidate()
 }
 
@@ -78,6 +81,7 @@ const openEditDialog = (row: FutureContract) => {
   form.symbol = row.symbol
   form.exchange = row.exchange
   form.name = row.name
+  form.auto_load_segments = row.auto_load_segments
   formRef.value?.clearValidate()
   dialogVisible.value = true
 }
@@ -98,6 +102,7 @@ const submitForm = async () => {
       symbol: form.symbol.trim(),
       exchange: form.exchange.trim(),
       name: form.name.trim(),
+      auto_load_segments: form.auto_load_segments,
     }
 
     if (dialogMode.value === 'create') {
@@ -122,6 +127,10 @@ const submitForm = async () => {
 
 const formatDateTime = (_row: FutureContract, _column: unknown, value: string) => {
   return formatDateTimeByDayjs(value)
+}
+
+const formatAutoLoadSegments = (value: number) => {
+  return value === 1 ? '自动载入' : '手动载入'
 }
 
 onMounted(() => {
@@ -150,6 +159,13 @@ onMounted(() => {
       <el-table-column prop="symbol" label="合约代码" min-width="140" />
       <el-table-column prop="exchange" label="交易所" min-width="120" />
       <el-table-column prop="name" label="合约品种名称" min-width="180" />
+      <el-table-column prop="auto_load_segments" label="自动载入线段" min-width="120">
+        <template #default="{ row }">
+          <el-tag :type="row.auto_load_segments === 1 ? 'success' : 'info'">
+            {{ formatAutoLoadSegments(row.auto_load_segments) }}
+          </el-tag>
+        </template>
+      </el-table-column>
       <el-table-column
         prop="create_at"
         label="创建时间"
@@ -186,6 +202,15 @@ onMounted(() => {
         </el-form-item>
         <el-form-item label="合约品种名称" prop="name">
           <el-input v-model.trim="form.name" placeholder="请输入合约品种名称" />
+        </el-form-item>
+        <el-form-item label="自动载入线段" prop="auto_load_segments">
+          <el-switch
+            v-model="form.auto_load_segments"
+            :active-value="1"
+            :inactive-value="0"
+            active-text="自动"
+            inactive-text="手动"
+          />
         </el-form-item>
       </el-form>
       <template #footer>

@@ -11,8 +11,9 @@ import {
   type IChartApi,
 } from "lightweight-charts";
 import { INITIAL_VISIBLE_K_LINE_COUNT } from "@/constants/chart";
-import { computed, onMounted, onUnmounted, ref, watch } from "vue";
+import { computed, h, onMounted, onUnmounted, ref, watch } from "vue";
 import ContextMenu, { type MenuItem } from '@imengyu/vue3-context-menu'
+import { Check, Close, Delete, EditPen } from '@element-plus/icons-vue'
 
 interface KLineItem {
   time: number
@@ -74,6 +75,7 @@ const props = withDefaults(
     autosize?: boolean
     canBuildSegments?: boolean
     canLoadSegments?: boolean
+    autoLoadSegments?: boolean
     commonChartOptions?: DeepPartial<ChartOptions>
   }>(),
   {
@@ -81,6 +83,7 @@ const props = withDefaults(
     autosize: true,
     canBuildSegments: true,
     canLoadSegments: true,
+    autoLoadSegments: false,
     commonChartOptions: () => ({}),
   }
 );
@@ -92,6 +95,7 @@ const emit = defineEmits<{
   'segment-line-delete': [value: SegmentLineDelete]
   'segment-build-request': []
   'segment-load-request': []
+  'segment-auto-load-toggle': []
 }>()
 
 const chartContainer = ref<HTMLDivElement | null>(null);
@@ -513,6 +517,10 @@ const handleLoadSegmentsFromContext = () => {
   emit('segment-load-request');
 };
 
+const handleToggleAutoLoadSegmentsFromContext = () => {
+  emit('segment-auto-load-toggle');
+};
+
 const handleChartContextMenu = (event: MouseEvent) => {
   event.preventDefault();
 
@@ -549,10 +557,12 @@ const handleChartContextMenu = (event: MouseEvent) => {
     {
       label: '删除线段',
       disabled: !canDeleteSegment,
+      icon: h(Delete),
       onClick: handleDeleteSegmentFromContext,
     },
     {
       label: '构建段处理',
+      icon: h(EditPen),
       children: [
         {
           label: '构建段分析',
@@ -560,9 +570,14 @@ const handleChartContextMenu = (event: MouseEvent) => {
           onClick: handleBuildSegmentsFromContext,
         },
         {
-          label: '载入构建段',
+          label: '手动载入构建段',
           disabled: !props.canLoadSegments,
           onClick: handleLoadSegmentsFromContext,
+        },
+        {
+          label: '自动载入',
+          icon: h(props.autoLoadSegments ? Check : Close),
+          onClick: handleToggleAutoLoadSegmentsFromContext,
         },
       ],
     },

@@ -76,6 +76,7 @@ const emit = defineEmits<{
   'segmentLineDelete': [value: SegmentLineDelete]
   'segmentBuildRequest': []
   'segmentLoadRequest': []
+  'segmentAutoLoadToggle': []
 }>()
 
 const props = withDefaults(
@@ -91,6 +92,7 @@ const props = withDefaults(
     periodDisabled?: boolean
     canBuildSegments?: boolean
     canLoadSegments?: boolean
+    autoLoadSegments?: boolean
     contractPlaceholder?: string
     chartData: {
       kLineList: KLineItem[]
@@ -113,6 +115,7 @@ const props = withDefaults(
     periodDisabled: false,
     canBuildSegments: true,
     canLoadSegments: true,
+    autoLoadSegments: false,
     contractPlaceholder: '请选择合约',
     segmentLines: () => [],
     summaryItems: () => [],
@@ -155,6 +158,10 @@ const handleSegmentBuildRequest = () => {
 
 const handleSegmentLoadRequest = () => {
   emit('segmentLoadRequest')
+}
+
+const handleSegmentAutoLoadToggle = () => {
+  emit('segmentAutoLoadToggle')
 }
 </script>
 
@@ -206,6 +213,7 @@ const handleSegmentLoadRequest = () => {
           :segment-lines="segmentLines"
           :can-build-segments="canBuildSegments"
           :can-load-segments="canLoadSegments"
+          :auto-load-segments="autoLoadSegments"
           :common-chart-options="chartOptions"
           @crosshair-move="handleCrosshairMove"
           @segment-line-change="handleSegmentLineChange"
@@ -213,6 +221,7 @@ const handleSegmentLoadRequest = () => {
           @segment-line-delete="handleSegmentLineDelete"
           @segment-build-request="handleSegmentBuildRequest"
           @segment-load-request="handleSegmentLoadRequest"
+          @segment-auto-load-toggle="handleSegmentAutoLoadToggle"
         />
       </div>
       <el-empty v-else :description="emptyDescription" />
