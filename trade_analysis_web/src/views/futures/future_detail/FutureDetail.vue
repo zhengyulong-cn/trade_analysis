@@ -5,9 +5,13 @@ import {
   getFutureContractList,
   getFutureDataApi,
   getFutureStrategyAnalysisApi,
+  updateFutureStrategySegmentApi,
   type FutureContract,
   type FutureIntervalStrategy,
   type FutureKlineData,
+  type FutureStrategySegmentItem,
+  type FutureStrategySegmentRole,
+  type FutureTrendSegment,
 } from '@/api/modules'
 import { ElMessage } from 'element-plus'
 import type { ChartOptions, DeepPartial } from 'lightweight-charts'
@@ -34,6 +38,8 @@ const BUILD_SEGMENT_ERROR = '构建段分析失败'
 const LOAD_SEGMENT_SUCCESS = '构建段已载入K线图'
 const LOAD_SEGMENT_ERROR = '载入构建段失败'
 const LOAD_SEGMENT_EMPTY = '当前周期暂无已构建的线段数据'
+const UPDATE_SEGMENT_SUCCESS = '线段已更新'
+const UPDATE_SEGMENT_ERROR = '修改线段失败'
 
 const PERIOD_OPTIONS = [
   { label: '5F', value: DEFAULT_PERIOD },
@@ -56,7 +62,19 @@ interface ChartSegmentLineItem {
     time: number
     value: number
   }>
-  lineStyle: 'solid' | 'dashed'
+  lineStyle?: 'solid' | 'dashed'
+  segmentRole?: string
+  segmentIndex?: number
+  direction?: string
+}
+
+interface SegmentLineChange {
+  segment: ChartSegmentLineItem
+  endpoint: 'start' | 'end'
+  points: Array<{
+    time: number
+    value: number
+  }>
 }
 
 const contracts = ref<FutureContract[]>([])
@@ -66,6 +84,7 @@ const contractsLoading = ref(false)
 const chartLoading = ref(false)
 const buildSegmentLoading = ref(false)
 const loadSegmentLoading = ref(false)
+const updateSegmentLoading = ref(false)
 const chartData = ref<FutureKlineData>(createEmptyChartData())
 const loadedSegmentLines = ref<ChartSegmentLineItem[]>([])
 const activeKLineBar = ref<FutureKlineData['kLineList'][number] | null>(null)
@@ -176,6 +195,18 @@ const clearLoadedSegments = () => {
   loadedSegmentLines.value = []
 }
 
+const isSegmentRole = (value?: string): value is FutureStrategySegmentRole => {
+  return value === 'confirmed' || value === 'current' || value === 'pending'
+}
+
+const findKLineDateTimeByChartTime = (time: number) => {
+  const matchedItem = chartData.value.kline_data.find((item) => {
+    return toChartTimestampSeconds(item.date_time) === time
+  })
+
+  return matchedItem?.date_time ?? null
+}
+
 const createChartSegmentLine = (
   id: string,
   startTime: string,
@@ -183,6 +214,9 @@ const createChartSegmentLine = (
   endTime: string,
   endPrice: number | string,
   lineStyle: 'solid' | 'dashed',
+  segmentRole: FutureStrategySegmentRole,
+  segmentIndex: number,
+  direction: string,
 ): ChartSegmentLineItem | null => {
   const startTimestamp = toChartTimestampSeconds(startTime)
   const endTimestamp = toChartTimestampSeconds(endTime)
@@ -214,7 +248,42 @@ const createChartSegmentLine = (
     id,
     lineStyle,
     points,
+    segmentRole,
+    segmentIndex,
+    direction,
   }
+}
+
+const createChartSegmentLineFromManagedSegment = (segment: FutureStrategySegmentItem) => {
+  return createChartSegmentLine(
+    `${segment.segment_role}-${segment.segment_index}`,
+    segment.start_time,
+    segment.start_price,
+    segment.end_time,
+    segment.end_price,
+    segment.segment_role === 'confirmed' ? 'solid' : 'dashed',
+    segment.segment_role,
+    segment.segment_index,
+    segment.direction,
+  )
+}
+
+const createChartSegmentLineFromStrategySegment = (
+  segment: FutureTrendSegment,
+  segmentRole: FutureStrategySegmentRole,
+  lineStyle: 'solid' | 'dashed',
+) => {
+  return createChartSegmentLine(
+    `${segmentRole}-${segment.segment_index}`,
+    segment.start_time,
+    segment.start_price,
+    segment.end_time,
+    segment.end_price,
+    lineStyle,
+    segmentRole,
+    segment.segment_index,
+    segment.direction,
+  )
 }
 
 const mapIntervalStrategyToChartSegments = (intervalStrategy?: FutureIntervalStrategy | null) => {
@@ -224,25 +293,21 @@ const mapIntervalStrategyToChartSegments = (intervalStrategy?: FutureIntervalStr
 
   const segmentLines = intervalStrategy.confirmed_segments
     .map((segment) => {
-      return createChartSegmentLine(
-        `confirmed-${segment.segment_index}`,
-        segment.start_time,
-        segment.start_price,
-        segment.end_time,
-        segment.end_price,
-        'solid',
-      )
+      return createChartSegmentLineFromStrategySegment(segment, 'confirmed', 'solid')
     })
     .filter((item): item is ChartSegmentLineItem => item !== null)
 
   if (intervalStrategy.current_segment) {
     const buildingSegment = createChartSegmentLine(
-      `building-${intervalStrategy.current_segment.segment_index}`,
+      `current-${intervalStrategy.current_segment.segment_index}`,
       intervalStrategy.current_segment.start_time,
       intervalStrategy.current_segment.start_price,
       intervalStrategy.current_segment.end_time,
       intervalStrategy.current_segment.end_price,
       'dashed',
+      'current',
+      intervalStrategy.current_segment.segment_index,
+      intervalStrategy.current_segment.direction,
     )
     if (buildingSegment) {
       segmentLines.push(buildingSegment)
@@ -250,6 +315,12 @@ const mapIntervalStrategyToChartSegments = (intervalStrategy?: FutureIntervalStr
   }
 
   return segmentLines
+}
+
+const mapManagedSegmentsToChartSegments = (items: FutureStrategySegmentItem[]) => {
+  return items
+    .map(createChartSegmentLineFromManagedSegment)
+    .filter((item): item is ChartSegmentLineItem => item !== null)
 }
 
 const loadContracts = async () => {
@@ -371,6 +442,52 @@ const handleLoadSegments = async () => {
   }
 }
 
+const handleSegmentLineChange = async (change: SegmentLineChange) => {
+  if (!selectedSymbol.value || updateSegmentLoading.value) {
+    return
+  }
+
+  if (!isSegmentRole(change.segment.segmentRole) || !change.segment.segmentIndex) {
+    ElMessage.error(UPDATE_SEGMENT_ERROR)
+    return
+  }
+
+  const [startPoint, endPoint] = [...change.points].sort((first, second) => first.time - second.time)
+  if (!startPoint || !endPoint) {
+    return
+  }
+
+  const startTime = findKLineDateTimeByChartTime(startPoint.time)
+  const endTime = findKLineDateTimeByChartTime(endPoint.time)
+  if (!startTime || !endTime) {
+    ElMessage.error(UPDATE_SEGMENT_ERROR)
+    return
+  }
+
+  updateSegmentLoading.value = true
+  try {
+    const response = await updateFutureStrategySegmentApi({
+      symbol: selectedSymbol.value,
+      interval: Number(selectedPeriod.value),
+      original_segment_role: change.segment.segmentRole,
+      original_segment_index: change.segment.segmentIndex,
+      segment_role: change.segment.segmentRole,
+      direction: endPoint.value >= startPoint.value ? 'up' : 'down',
+      start_time: startTime,
+      start_price: startPoint.value,
+      end_time: endTime,
+      end_price: endPoint.value,
+    })
+
+    loadedSegmentLines.value = mapManagedSegmentsToChartSegments(response.items)
+    ElMessage.success(UPDATE_SEGMENT_SUCCESS)
+  } catch (error) {
+    ElMessage.error(extractErrorMessage(error, UPDATE_SEGMENT_ERROR))
+  } finally {
+    updateSegmentLoading.value = false
+  }
+}
+
 watch([selectedSymbol, selectedPeriod], () => {
   clearLoadedSegments()
   void loadKLineData()
@@ -426,6 +543,7 @@ onMounted(() => {
       @update:selected-contract="selectedSymbol = $event"
       @update:selected-period="selectedPeriod = Number($event)"
       @hover-kline-change="activeKLineBar = $event"
+      @segment-line-change="handleSegmentLineChange"
     />
   </div>
 </template>

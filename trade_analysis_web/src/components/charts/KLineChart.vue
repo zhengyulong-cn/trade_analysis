@@ -11,7 +11,7 @@ import {
   type IChartApi,
 } from "lightweight-charts";
 import { INITIAL_VISIBLE_K_LINE_COUNT } from "@/constants/chart";
-import { onMounted, onUnmounted, ref, watch } from "vue";
+import { computed, onMounted, onUnmounted, ref, watch } from "vue";
 
 interface KLineItem {
   time: number
@@ -25,6 +25,28 @@ interface SegmentLineItem {
   id: string
   points: LineData<number>[]
   lineStyle?: 'solid' | 'dashed'
+  segmentRole?: string
+  segmentIndex?: number
+  direction?: string
+}
+
+interface SegmentLineChange {
+  segment: SegmentLineItem
+  endpoint: 'start' | 'end'
+  points: Array<{
+    time: number
+    value: number
+  }>
+}
+
+interface SegmentOverlayItem {
+  id: string
+  segment: SegmentLineItem
+  x1: number
+  y1: number
+  x2: number
+  y2: number
+  isSelected: boolean
 }
 
 const props = withDefaults(
@@ -45,6 +67,7 @@ const props = withDefaults(
 
 const emit = defineEmits<{
   'crosshair-move': [value: KLineItem | null]
+  'segment-line-change': [value: SegmentLineChange]
 }>()
 
 const chartContainer = ref<HTMLDivElement | null>(null);
@@ -54,6 +77,43 @@ let ema20Series: any = null;
 let ema120Series: any = null;
 let segmentSeriesList: any[] = [];
 let crosshairMoveHandler: ((param: any) => void) | null = null;
+let clickHandler: ((param: any) => void) | null = null;
+let logicalRangeChangeHandler: (() => void) | null = null;
+let timeScaleSizeChangeHandler: (() => void) | null = null;
+let chartOptionsBeforeDrag: Pick<ChartOptions, 'handleScroll' | 'handleScale'> | null = null;
+
+const selectedSegmentId = ref<string | null>(null);
+const overlayItems = ref<SegmentOverlayItem[]>([]);
+const overlaySize = ref({
+  width: 0,
+  height: 0,
+});
+const dragState = ref<{
+  segmentId: string
+  endpoint: 'start' | 'end'
+  previewPoint: {
+    time: number
+    value: number
+  }
+} | null>(null);
+
+const overlayCursor = computed(() => (dragState.value ? 'grabbing' : 'default'));
+
+const syncOverlaySize = () => {
+  if (!chartContainer.value) {
+    overlaySize.value = {
+      width: 0,
+      height: 0,
+    };
+    return;
+  }
+
+  const dimensions = chartContainer.value.getBoundingClientRect();
+  overlaySize.value = {
+    width: dimensions.width,
+    height: dimensions.height,
+  };
+};
 
 const calculateEmaData = (kLineList: KLineItem[], period: number): LineData<number>[] => {
   if (kLineList.length < period) {
@@ -98,6 +158,8 @@ const resizeHandler = () => {
   if (!chart || !chartContainer.value) return;
   const dimensions = chartContainer.value.getBoundingClientRect();
   chart.resize(dimensions.width, dimensions.height);
+  syncOverlaySize();
+  updateSegmentOverlayItems();
 };
 
 const applyVisibleRange = (kLineList: KLineItem[]) => {
@@ -168,6 +230,304 @@ const applySegmentLines = () => {
     });
     lineSeries.setData(segment.points);
     segmentSeriesList.push(lineSeries);
+  }
+
+  updateSegmentOverlayItems();
+};
+
+const getSegmentDisplayPoints = (segment: SegmentLineItem) => {
+  const points = segment.points.map((point) => ({
+    time: Number(point.time),
+    value: Number(point.value ?? 0),
+  }));
+  const preview = dragState.value;
+
+  if (preview?.segmentId !== segment.id) {
+    return points;
+  }
+
+  const nextPoints = [...points];
+  nextPoints[preview.endpoint === 'start' ? 0 : 1] = preview.previewPoint;
+  return nextPoints;
+};
+
+const updateSegmentOverlayItems = () => {
+  if (!chart || !kSeries) {
+    overlayItems.value = [];
+    return;
+  }
+
+  const nextItems: SegmentOverlayItem[] = [];
+  for (const segment of props.segmentLines ?? []) {
+    const [startPoint, endPoint] = getSegmentDisplayPoints(segment);
+    if (!startPoint || !endPoint) {
+      continue;
+    }
+
+    const x1 = chart.timeScale().timeToCoordinate(startPoint.time as any);
+    const x2 = chart.timeScale().timeToCoordinate(endPoint.time as any);
+    const y1 = kSeries.priceToCoordinate(startPoint.value);
+    const y2 = kSeries.priceToCoordinate(endPoint.value);
+
+    if (x1 === null || x2 === null || y1 === null || y2 === null) {
+      continue;
+    }
+
+    nextItems.push({
+      id: segment.id,
+      segment,
+      x1: Number(x1),
+      y1: Number(y1),
+      x2: Number(x2),
+      y2: Number(y2),
+      isSelected: selectedSegmentId.value === segment.id,
+    });
+  }
+
+  overlayItems.value = nextItems;
+};
+
+const selectSegment = (segmentId: string) => {
+  selectedSegmentId.value = segmentId;
+  updateSegmentOverlayItems();
+};
+
+const clearSelectedSegment = () => {
+  selectedSegmentId.value = null;
+  updateSegmentOverlayItems();
+};
+
+const getDistanceToLineSegment = (
+  point: { x: number; y: number },
+  lineStart: { x: number; y: number },
+  lineEnd: { x: number; y: number },
+) => {
+  const deltaX = lineEnd.x - lineStart.x;
+  const deltaY = lineEnd.y - lineStart.y;
+  const lengthSquared = deltaX * deltaX + deltaY * deltaY;
+
+  if (lengthSquared === 0) {
+    return Math.hypot(point.x - lineStart.x, point.y - lineStart.y);
+  }
+
+  const projection = Math.max(
+    0,
+    Math.min(1, ((point.x - lineStart.x) * deltaX + (point.y - lineStart.y) * deltaY) / lengthSquared),
+  );
+  const projectedX = lineStart.x + projection * deltaX;
+  const projectedY = lineStart.y + projection * deltaY;
+
+  return Math.hypot(point.x - projectedX, point.y - projectedY);
+};
+
+const handleChartClick = (param: any) => {
+  if (dragState.value) {
+    return;
+  }
+
+  if (!param?.point) {
+    clearSelectedSegment();
+    return;
+  }
+
+  const clickPoint = {
+    x: Number(param.point.x),
+    y: Number(param.point.y),
+  };
+  const nearestSegment = overlayItems.value
+    .map((item) => ({
+      item,
+      distance: getDistanceToLineSegment(
+        clickPoint,
+        { x: item.x1, y: item.y1 },
+        { x: item.x2, y: item.y2 },
+      ),
+    }))
+    .sort((first, second) => first.distance - second.distance)[0];
+
+  if (nearestSegment && nearestSegment.distance <= 8) {
+    selectSegment(nearestSegment.item.id);
+    return;
+  }
+
+  clearSelectedSegment();
+};
+
+const findNearestKLineByCoordinate = (x: number) => {
+  if (!chart) {
+    return null;
+  }
+
+  let nearestItem: KLineItem | null = null;
+  let nearestDistance = Number.POSITIVE_INFINITY;
+
+  for (const item of props.data.kLineList ?? []) {
+    const coordinate = chart.timeScale().timeToCoordinate(item.time as any);
+    if (coordinate === null) {
+      continue;
+    }
+
+    const distance = Math.abs(Number(coordinate) - x);
+    if (distance < nearestDistance) {
+      nearestDistance = distance;
+      nearestItem = item;
+    }
+  }
+
+  return nearestItem;
+};
+
+const getNearestPriceOnKLine = (item: KLineItem, y: number) => {
+  const price = kSeries?.coordinateToPrice(y);
+  const candidatePrices = [item.open, item.high, item.low, item.close];
+
+  if (price === null || price === undefined || !Number.isFinite(Number(price))) {
+    return item.close;
+  }
+
+  return candidatePrices.reduce((nearestPrice: number, currentPrice) => {
+    return Math.abs(currentPrice - Number(price)) < Math.abs(nearestPrice - Number(price))
+      ? currentPrice
+      : nearestPrice;
+  }, item.open);
+};
+
+const getMousePointInChart = (event: MouseEvent) => {
+  if (!chartContainer.value) {
+    return null;
+  }
+
+  const rect = chartContainer.value.getBoundingClientRect();
+  return {
+    x: event.clientX - rect.left,
+    y: event.clientY - rect.top,
+  };
+};
+
+const getSnappedSegmentPoint = (event: MouseEvent) => {
+  const point = getMousePointInChart(event);
+  if (!point) {
+    return null;
+  }
+
+  const nearestKLine = findNearestKLineByCoordinate(point.x);
+  if (!nearestKLine) {
+    return null;
+  }
+
+  return {
+    time: nearestKLine.time,
+    value: getNearestPriceOnKLine(nearestKLine, point.y),
+  };
+};
+
+const setChartDragEnabled = (enabled: boolean) => {
+  if (!chart) {
+    return;
+  }
+
+  if (!enabled) {
+    const currentOptions = chart.options();
+    chartOptionsBeforeDrag = {
+      handleScroll: currentOptions.handleScroll,
+      handleScale: currentOptions.handleScale,
+    };
+    chart.applyOptions({
+      handleScroll: false,
+      handleScale: false,
+    });
+    return;
+  }
+
+  if (chartOptionsBeforeDrag) {
+    chart.applyOptions(chartOptionsBeforeDrag);
+    chartOptionsBeforeDrag = null;
+  }
+
+  chart.applyOptions({
+    handleScroll: true,
+    handleScale: true,
+  });
+};
+
+const cleanupEndpointDrag = () => {
+  dragState.value = null;
+  setChartDragEnabled(true);
+  window.removeEventListener('mousemove', handleEndpointMouseMove);
+  window.removeEventListener('mouseup', handleEndpointMouseUp);
+  updateSegmentOverlayItems();
+};
+
+const handleEndpointMouseDown = (
+  event: MouseEvent,
+  segmentId: string,
+  endpoint: 'start' | 'end',
+) => {
+  event.preventDefault();
+  event.stopPropagation();
+  selectSegment(segmentId);
+
+  const previewPoint = getSnappedSegmentPoint(event);
+  if (!previewPoint) {
+    return;
+  }
+
+  dragState.value = {
+    segmentId,
+    endpoint,
+    previewPoint,
+  };
+  setChartDragEnabled(false);
+  window.addEventListener('mousemove', handleEndpointMouseMove);
+  window.addEventListener('mouseup', handleEndpointMouseUp);
+};
+
+const handleEndpointMouseMove = (event: MouseEvent) => {
+  if (!dragState.value) {
+    return;
+  }
+
+  const previewPoint = getSnappedSegmentPoint(event);
+  if (!previewPoint) {
+    return;
+  }
+
+  dragState.value = {
+    ...dragState.value,
+    previewPoint,
+  };
+  updateSegmentOverlayItems();
+};
+
+const handleEndpointMouseUp = (event: MouseEvent) => {
+  if (!dragState.value) {
+    return;
+  }
+
+  const currentDragState = dragState.value;
+  const finalPoint = getSnappedSegmentPoint(event) ?? dragState.value.previewPoint;
+  const segment = props.segmentLines.find((item) => item.id === currentDragState.segmentId);
+  let changePayload: SegmentLineChange | null = null;
+
+  if (segment) {
+    const points = segment.points.map((point) => ({
+      time: Number(point.time),
+      value: Number(point.value ?? 0),
+    }));
+    points[currentDragState.endpoint === 'start' ? 0 : 1] = finalPoint;
+    points.sort((first, second) => first.time - second.time);
+
+    changePayload = {
+      segment,
+      endpoint: currentDragState.endpoint,
+      points,
+    };
+  }
+
+  cleanupEndpointDrag();
+
+  if (changePayload) {
+    emit('segment-line-change', changePayload);
   }
 };
 
@@ -274,6 +634,12 @@ onMounted(() => {
     emit('crosshair-move', getCrosshairKLine(param));
   };
   chart.subscribeCrosshairMove(crosshairMoveHandler);
+  clickHandler = handleChartClick;
+  chart.subscribeClick(clickHandler);
+  logicalRangeChangeHandler = () => updateSegmentOverlayItems();
+  timeScaleSizeChangeHandler = () => updateSegmentOverlayItems();
+  chart.timeScale().subscribeVisibleLogicalRangeChange(logicalRangeChangeHandler);
+  chart.timeScale().subscribeSizeChange(timeScaleSizeChangeHandler);
 
   if (props.autosize) {
     window.addEventListener("resize", resizeHandler);
@@ -281,9 +647,22 @@ onMounted(() => {
 });
 
 onUnmounted(() => {
+  cleanupEndpointDrag();
   if (chart && crosshairMoveHandler) {
     chart.unsubscribeCrosshairMove(crosshairMoveHandler);
     crosshairMoveHandler = null;
+  }
+  if (chart && clickHandler) {
+    chart.unsubscribeClick(clickHandler);
+    clickHandler = null;
+  }
+  if (chart && logicalRangeChangeHandler) {
+    chart.timeScale().unsubscribeVisibleLogicalRangeChange(logicalRangeChangeHandler);
+    logicalRangeChangeHandler = null;
+  }
+  if (chart && timeScaleSizeChangeHandler) {
+    chart.timeScale().unsubscribeSizeChange(timeScaleSizeChangeHandler);
+    timeScaleSizeChangeHandler = null;
   }
   if (chart) {
     chart.remove();
@@ -334,6 +713,7 @@ watch(
   () => {
     applyChartData();
     emit('crosshair-move', null);
+    selectedSegmentId.value = null;
   },
   { deep: true }
 );
@@ -342,14 +722,56 @@ watch(
   () => props.segmentLines,
   () => {
     applySegmentLines();
+    if (!props.segmentLines.some((segment) => segment.id === selectedSegmentId.value)) {
+      selectedSegmentId.value = null;
+    }
   },
   { deep: true }
 );
+
+watch(selectedSegmentId, () => {
+  updateSegmentOverlayItems();
+});
 </script>
 
 <template>
   <div class="lw-chart-wrap">
     <div class="lw-chart" ref="chartContainer"></div>
+    <svg
+      class="segment-overlay"
+      :width="overlaySize.width"
+      :height="overlaySize.height"
+      :viewBox="`0 0 ${overlaySize.width} ${overlaySize.height}`"
+      :style="{ cursor: overlayCursor }"
+    >
+      <g v-for="item in overlayItems" :key="item.id">
+        <line
+          class="segment-overlay__line"
+          :class="{ 'segment-overlay__line--selected': item.isSelected }"
+          :x1="item.x1"
+          :y1="item.y1"
+          :x2="item.x2"
+          :y2="item.y2"
+          :stroke-dasharray="item.segment.lineStyle === 'dashed' ? '8 5' : undefined"
+        />
+      </g>
+    </svg>
+    <template v-for="item in overlayItems" :key="`handles-${item.id}`">
+      <button
+        v-if="item.isSelected"
+        class="segment-handle"
+        type="button"
+        :style="{ left: `${item.x1}px`, top: `${item.y1}px` }"
+        @mousedown="handleEndpointMouseDown($event, item.id, 'start')"
+      />
+      <button
+        v-if="item.isSelected"
+        class="segment-handle"
+        type="button"
+        :style="{ left: `${item.x2}px`, top: `${item.y2}px` }"
+        @mousedown="handleEndpointMouseDown($event, item.id, 'end')"
+      />
+    </template>
     <div class="ema-legend">
       <span class="ema-legend__item ema-legend__item--ema20">EMA20</span>
       <span class="ema-legend__item ema-legend__item--ema120">EMA120</span>
@@ -370,11 +792,50 @@ watch(
   position: relative;
 }
 
+.segment-overlay {
+  position: absolute;
+  inset: 0;
+  z-index: 2;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
+
+  .segment-overlay__line {
+    stroke: transparent;
+    stroke-width: 2;
+    pointer-events: none;
+  }
+
+  .segment-overlay__line--selected {
+    stroke: #f59e0b;
+    stroke-width: 3;
+  }
+
+}
+
+.segment-handle {
+  position: absolute;
+  z-index: 3;
+  width: 14px;
+  height: 14px;
+  padding: 0;
+  border: 2px solid #f59e0b;
+  border-radius: 50%;
+  background: #ffffff;
+  box-shadow: 0 1px 4px rgba(15, 23, 42, 0.2);
+  cursor: grab;
+  transform: translate(-50%, -50%);
+}
+
+.segment-handle:active {
+  cursor: grabbing;
+}
+
 .ema-legend {
   position: absolute;
   top: 10px;
   left: 12px;
-  z-index: 1;
+  z-index: 3;
   display: flex;
   gap: 12px;
   padding: 4px 8px;

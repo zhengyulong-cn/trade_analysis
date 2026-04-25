@@ -38,12 +38,25 @@ interface SegmentLineItem {
     value: number
   }>
   lineStyle?: 'solid' | 'dashed'
+  segmentRole?: string
+  segmentIndex?: number
+  direction?: string
+}
+
+interface SegmentLineChange {
+  segment: SegmentLineItem
+  endpoint: 'start' | 'end'
+  points: Array<{
+    time: number
+    value: number
+  }>
 }
 
 const emit = defineEmits<{
   'update:selectedContract': [value: string]
   'update:selectedPeriod': [value: number | string]
   'hoverKlineChange': [value: KLineItem | null]
+  'segmentLineChange': [value: SegmentLineChange]
 }>()
 
 const props = withDefaults(
@@ -100,6 +113,10 @@ const handlePeriodChange = (value: number | string) => {
 const handleCrosshairMove = (value: KLineItem | null) => {
   emit('hoverKlineChange', value)
 }
+
+const handleSegmentLineChange = (value: SegmentLineChange) => {
+  emit('segmentLineChange', value)
+}
 </script>
 
 <template>
@@ -150,6 +167,7 @@ const handleCrosshairMove = (value: KLineItem | null) => {
           :segment-lines="segmentLines"
           :common-chart-options="chartOptions"
           @crosshair-move="handleCrosshairMove"
+          @segment-line-change="handleSegmentLineChange"
         />
       </div>
       <el-empty v-else :description="emptyDescription" />
