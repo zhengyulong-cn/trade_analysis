@@ -142,7 +142,13 @@ const hasSelection = computed(() => Boolean(selectedSymbol.value && selectedInte
 const isEditMode = computed(() => dialogMode.value === 'edit')
 const dialogTitle = computed(() => (isEditMode.value ? TEXT.editDialogTitle : TEXT.addDialogTitle))
 const emptyText = computed(() => (hasSelection.value ? TEXT.emptySegments : TEXT.emptySelection))
-const canBatchDelete = computed(() => selectedRows.value.length > 0 && hasSelection.value)
+const canBatchDelete = computed(() => {
+  return (
+    selectedRows.value.length > 0
+    && hasSelection.value
+    && selectedRows.value.every((row) => row.segment_role === 'confirmed')
+  )
+})
 const canDeleteStrategy = computed(() => currentStrategyId.value !== null && currentContractId.value !== null)
 const contractOptions = computed(() => {
   return contracts.value.map((contract) => ({
@@ -649,8 +655,8 @@ onMounted(() => {
           <el-form-item :label="TEXT.startPrice" prop="start_price">
             <el-input-number
               v-model="form.start_price"
-              :precision="4"
-              :step="0.01"
+              :precision="1"
+              :step="0.5"
               controls-position="right"
               style="width: 100%"
             />
@@ -668,8 +674,8 @@ onMounted(() => {
           <el-form-item :label="TEXT.endPrice" prop="end_price">
             <el-input-number
               v-model="form.end_price"
-              :precision="4"
-              :step="0.01"
+              :precision="1"
+              :step="0.5"
               controls-position="right"
               style="width: 100%"
             />
