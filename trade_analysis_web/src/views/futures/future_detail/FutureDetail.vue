@@ -2,8 +2,11 @@
 import KLineSection from '@/components/charts/KLineSection.vue'
 import {
   buildFutureSegmentAnalysisApi,
+  createFutureStrategySegmentApi,
+  deleteFutureStrategySegmentsApi,
   getFutureContractList,
   getFutureDataApi,
+  getFutureStrategySegmentListApi,
   getFutureStrategyAnalysisApi,
   updateFutureStrategySegmentApi,
   type FutureContract,
@@ -40,6 +43,10 @@ const LOAD_SEGMENT_ERROR = '载入构建段失败'
 const LOAD_SEGMENT_EMPTY = '当前周期暂无已构建的线段数据'
 const UPDATE_SEGMENT_SUCCESS = '线段已更新'
 const UPDATE_SEGMENT_ERROR = '修改线段失败'
+const CREATE_SEGMENT_SUCCESS = '线段已创建'
+const CREATE_SEGMENT_ERROR = '创建线段失败'
+const DELETE_SEGMENT_SUCCESS = '线段已删除'
+const DELETE_SEGMENT_ERROR = '删除线段失败'
 
 const PERIOD_OPTIONS = [
   { label: '5F', value: DEFAULT_PERIOD },
@@ -75,6 +82,21 @@ interface SegmentLineChange {
     time: number
     value: number
   }>
+}
+
+interface SegmentLineCreate {
+  startPoint: {
+    time: number
+    value: number
+  }
+  endPoint: {
+    time: number
+    value: number
+  }
+}
+
+interface SegmentLineDelete {
+  segment: ChartSegmentLineItem
 }
 
 const contracts = ref<FutureContract[]>([])
@@ -488,6 +510,79 @@ const handleSegmentLineChange = async (change: SegmentLineChange) => {
   }
 }
 
+const refreshManagedSegments = async () => {
+  const response = await getFutureStrategySegmentListApi({
+    symbol: selectedSymbol.value,
+    interval: Number(selectedPeriod.value),
+  })
+  loadedSegmentLines.value = mapManagedSegmentsToChartSegments(response.items)
+}
+
+const handleSegmentLineCreate = async (payload: SegmentLineCreate) => {
+  if (!selectedSymbol.value || updateSegmentLoading.value) {
+    return
+  }
+
+  const startTime = findKLineDateTimeByChartTime(payload.startPoint.time)
+  const endTime = findKLineDateTimeByChartTime(payload.endPoint.time)
+  if (!startTime || !endTime) {
+    ElMessage.error(CREATE_SEGMENT_ERROR)
+    return
+  }
+
+  updateSegmentLoading.value = true
+  try {
+    const response = await createFutureStrategySegmentApi({
+      symbol: selectedSymbol.value,
+      interval: Number(selectedPeriod.value),
+      segment_role: 'confirmed',
+      direction: payload.endPoint.value >= payload.startPoint.value ? 'up' : 'down',
+      start_time: startTime,
+      start_price: payload.startPoint.value,
+      end_time: endTime,
+      end_price: payload.endPoint.value,
+    })
+
+    loadedSegmentLines.value = mapManagedSegmentsToChartSegments(response.items)
+    ElMessage.success(CREATE_SEGMENT_SUCCESS)
+  } catch (error) {
+    ElMessage.error(extractErrorMessage(error, CREATE_SEGMENT_ERROR))
+  } finally {
+    updateSegmentLoading.value = false
+  }
+}
+
+const handleSegmentLineDelete = async (payload: SegmentLineDelete) => {
+  if (!selectedSymbol.value || updateSegmentLoading.value) {
+    return
+  }
+
+  if (payload.segment.segmentRole !== 'confirmed' || !payload.segment.segmentIndex) {
+    ElMessage.error(DELETE_SEGMENT_ERROR)
+    return
+  }
+
+  updateSegmentLoading.value = true
+  try {
+    await deleteFutureStrategySegmentsApi({
+      symbol: selectedSymbol.value,
+      interval: Number(selectedPeriod.value),
+      items: [
+        {
+          segment_role: 'confirmed',
+          segment_index: payload.segment.segmentIndex,
+        },
+      ],
+    })
+    await refreshManagedSegments()
+    ElMessage.success(DELETE_SEGMENT_SUCCESS)
+  } catch (error) {
+    ElMessage.error(extractErrorMessage(error, DELETE_SEGMENT_ERROR))
+  } finally {
+    updateSegmentLoading.value = false
+  }
+}
+
 watch([selectedSymbol, selectedPeriod], () => {
   clearLoadedSegments()
   void loadKLineData()
@@ -544,6 +639,8 @@ onMounted(() => {
       @update:selected-period="selectedPeriod = Number($event)"
       @hover-kline-change="activeKLineBar = $event"
       @segment-line-change="handleSegmentLineChange"
+      @segment-line-create="handleSegmentLineCreate"
+      @segment-line-delete="handleSegmentLineDelete"
     />
   </div>
 </template>

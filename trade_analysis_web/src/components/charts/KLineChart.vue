@@ -12,6 +12,7 @@ import {
 } from "lightweight-charts";
 import { INITIAL_VISIBLE_K_LINE_COUNT } from "@/constants/chart";
 import { computed, onMounted, onUnmounted, ref, watch } from "vue";
+import KLineChartContextMenu from './KLineChartContextMenu.vue'
 
 interface KLineItem {
   time: number
@@ -37,6 +38,21 @@ interface SegmentLineChange {
     time: number
     value: number
   }>
+}
+
+interface SegmentLineCreate {
+  startPoint: {
+    time: number
+    value: number
+  }
+  endPoint: {
+    time: number
+    value: number
+  }
+}
+
+interface SegmentLineDelete {
+  segment: SegmentLineItem
 }
 
 interface SegmentOverlayItem {
@@ -68,6 +84,8 @@ const props = withDefaults(
 const emit = defineEmits<{
   'crosshair-move': [value: KLineItem | null]
   'segment-line-change': [value: SegmentLineChange]
+  'segment-line-create': [value: SegmentLineCreate]
+  'segment-line-delete': [value: SegmentLineDelete]
 }>()
 
 const chartContainer = ref<HTMLDivElement | null>(null);
@@ -96,8 +114,31 @@ const dragState = ref<{
     value: number
   }
 } | null>(null);
+const contextMenuState = ref<{
+  visible: boolean
+  x: number
+  y: number
+  startIndex: number | null
+}>({
+  visible: false,
+  x: 0,
+  y: 0,
+  startIndex: null,
+});
 
 const overlayCursor = computed(() => (dragState.value ? 'grabbing' : 'default'));
+const selectedSegment = computed(() => {
+  if (!selectedSegmentId.value) {
+    return null;
+  }
+
+  return props.segmentLines.find((segment) => segment.id === selectedSegmentId.value) ?? null;
+});
+const canCreateSegmentFromContext = computed(() => {
+  const startIndex = contextMenuState.value.startIndex;
+  return startIndex !== null && Boolean(props.data.kLineList[startIndex + 5]);
+});
+const canDeleteSelectedSegment = computed(() => selectedSegment.value?.segmentRole === 'confirmed');
 
 const syncOverlaySize = () => {
   if (!chartContainer.value) {
@@ -297,6 +338,13 @@ const clearSelectedSegment = () => {
   updateSegmentOverlayItems();
 };
 
+const closeContextMenu = () => {
+  contextMenuState.value = {
+    ...contextMenuState.value,
+    visible: false,
+  };
+};
+
 const getDistanceToLineSegment = (
   point: { x: number; y: number },
   lineStart: { x: number; y: number },
@@ -321,6 +369,8 @@ const getDistanceToLineSegment = (
 };
 
 const handleChartClick = (param: any) => {
+  closeContextMenu();
+
   if (dragState.value) {
     return;
   }
@@ -353,15 +403,21 @@ const handleChartClick = (param: any) => {
   clearSelectedSegment();
 };
 
-const findNearestKLineByCoordinate = (x: number) => {
+const findNearestKLineInfoByCoordinate = (x: number) => {
   if (!chart) {
     return null;
   }
 
   let nearestItem: KLineItem | null = null;
+  let nearestIndex: number | null = null;
   let nearestDistance = Number.POSITIVE_INFINITY;
 
-  for (const item of props.data.kLineList ?? []) {
+  for (let index = 0; index < (props.data.kLineList ?? []).length; index += 1) {
+    const item = props.data.kLineList[index];
+    if (!item) {
+      continue;
+    }
+
     const coordinate = chart.timeScale().timeToCoordinate(item.time as any);
     if (coordinate === null) {
       continue;
@@ -371,10 +427,22 @@ const findNearestKLineByCoordinate = (x: number) => {
     if (distance < nearestDistance) {
       nearestDistance = distance;
       nearestItem = item;
+      nearestIndex = index;
     }
   }
 
-  return nearestItem;
+  if (!nearestItem || nearestIndex === null) {
+    return null;
+  }
+
+  return {
+    item: nearestItem,
+    index: nearestIndex,
+  };
+};
+
+const findNearestKLineByCoordinate = (x: number) => {
+  return findNearestKLineInfoByCoordinate(x)?.item ?? null;
 };
 
 const getNearestPriceOnKLine = (item: KLineItem, y: number) => {
@@ -419,6 +487,76 @@ const getSnappedSegmentPoint = (event: MouseEvent) => {
     time: nearestKLine.time,
     value: getNearestPriceOnKLine(nearestKLine, point.y),
   };
+};
+
+const handleChartContextMenu = (event: MouseEvent) => {
+  event.preventDefault();
+  closeContextMenu();
+
+  const point = getMousePointInChart(event);
+  if (!point || !chartContainer.value) {
+    return;
+  }
+
+  const nearestSegment = overlayItems.value
+    .map((item) => ({
+      item,
+      distance: getDistanceToLineSegment(
+        point,
+        { x: item.x1, y: item.y1 },
+        { x: item.x2, y: item.y2 },
+      ),
+    }))
+    .sort((first, second) => first.distance - second.distance)[0];
+
+  if (nearestSegment && nearestSegment.distance <= 8) {
+    selectSegment(nearestSegment.item.id);
+  }
+
+  const nearestKLine = findNearestKLineInfoByCoordinate(point.x);
+  contextMenuState.value = {
+    visible: true,
+    x: point.x,
+    y: point.y,
+    startIndex: nearestKLine?.index ?? null,
+  };
+};
+
+const handleCreateSegmentFromContext = () => {
+  const startIndex = contextMenuState.value.startIndex;
+  if (startIndex === null) {
+    return;
+  }
+
+  const startItem = props.data.kLineList[startIndex];
+  const endItem = props.data.kLineList[startIndex + 5];
+  if (!startItem || !endItem) {
+    return;
+  }
+
+  closeContextMenu();
+  emit('segment-line-create', {
+    startPoint: {
+      time: startItem.time,
+      value: startItem.close,
+    },
+    endPoint: {
+      time: endItem.time,
+      value: endItem.close,
+    },
+  });
+};
+
+const handleDeleteSegmentFromContext = () => {
+  const segment = selectedSegment.value;
+  if (!segment || segment.segmentRole !== 'confirmed') {
+    return;
+  }
+
+  closeContextMenu();
+  emit('segment-line-delete', {
+    segment,
+  });
 };
 
 const setChartDragEnabled = (enabled: boolean) => {
@@ -629,6 +767,9 @@ onMounted(() => {
 
   applyChartData();
   resizeHandler();
+  chartContainer.value.addEventListener('contextmenu', handleChartContextMenu);
+  window.addEventListener('click', closeContextMenu);
+  window.addEventListener('keydown', closeContextMenu);
 
   crosshairMoveHandler = (param) => {
     emit('crosshair-move', getCrosshairKLine(param));
@@ -648,6 +789,11 @@ onMounted(() => {
 
 onUnmounted(() => {
   cleanupEndpointDrag();
+  if (chartContainer.value) {
+    chartContainer.value.removeEventListener('contextmenu', handleChartContextMenu);
+  }
+  window.removeEventListener('click', closeContextMenu);
+  window.removeEventListener('keydown', closeContextMenu);
   if (chart && crosshairMoveHandler) {
     chart.unsubscribeCrosshairMove(crosshairMoveHandler);
     crosshairMoveHandler = null;
@@ -772,6 +918,15 @@ watch(selectedSegmentId, () => {
         @mousedown="handleEndpointMouseDown($event, item.id, 'end')"
       />
     </template>
+    <KLineChartContextMenu
+      :visible="contextMenuState.visible"
+      :x="contextMenuState.x"
+      :y="contextMenuState.y"
+      :can-create="canCreateSegmentFromContext"
+      :can-delete="canDeleteSelectedSegment"
+      @create="handleCreateSegmentFromContext"
+      @delete="handleDeleteSegmentFromContext"
+    />
     <div class="ema-legend">
       <span class="ema-legend__item ema-legend__item--ema20">EMA20</span>
       <span class="ema-legend__item ema-legend__item--ema120">EMA120</span>
