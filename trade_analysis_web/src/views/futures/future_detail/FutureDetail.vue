@@ -34,6 +34,8 @@ const LABEL_OPEN = '开盘'
 const LABEL_CLOSE = '收盘'
 const LABEL_HIGH = '最高'
 const LABEL_LOW = '最低'
+const LABEL_EMA20 = 'EMA20'
+const LABEL_EMA120 = 'EMA120'
 
 const BUILD_SEGMENT_SUCCESS = '构建段分析完成，已打印接口返回'
 const BUILD_SEGMENT_ERROR = '构建段分析失败'
@@ -171,6 +173,16 @@ const summaryItems = computed(() => {
       label: LABEL_LOW,
       value: formatPrice(summaryBar.value?.low),
       tone: summaryTone.value,
+    },
+    {
+      label: LABEL_EMA20,
+      value: formatPrice(summaryBar.value?.ema20),
+      tone: 'neutral' as const,
+    },
+    {
+      label: LABEL_EMA120,
+      value: formatPrice(summaryBar.value?.ema120),
+      tone: 'neutral' as const,
     },
   ]
 })

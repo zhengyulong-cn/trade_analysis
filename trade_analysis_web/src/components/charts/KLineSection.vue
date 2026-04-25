@@ -10,6 +10,8 @@ interface KLineItem {
   high: number
   low: number
   close: number
+  ema20?: number
+  ema120?: number
 }
 
 interface SummaryItem {

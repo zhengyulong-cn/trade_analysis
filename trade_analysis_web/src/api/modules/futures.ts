@@ -49,6 +49,8 @@ export interface FutureChartKLineItem {
   high: number
   low: number
   close: number
+  ema20?: number
+  ema120?: number
 }
 
 export interface FutureKlineQueryItem extends FutureKlineItem {

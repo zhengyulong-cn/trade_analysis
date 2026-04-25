@@ -21,6 +21,8 @@ interface KLineItem {
   high: number
   low: number
   close: number
+  ema20?: number
+  ema120?: number
 }
 
 interface SegmentLineItem {
@@ -255,7 +257,7 @@ const applySegmentLines = () => {
     }
 
     const lineSeries = createLineSeries(chartInstance, {
-      title: segment.id,
+      title: '',
       color: "#000000",
       lineWidth: 2,
       lineStyle:
@@ -717,6 +719,10 @@ const getCrosshairKLine = (param: any): KLineItem | null => {
   const high = Number(seriesData.high)
   const low = Number(seriesData.low)
   const close = Number(seriesData.close)
+  const ema20Data = ema20Series ? param.seriesData?.get(ema20Series) : null
+  const ema120Data = ema120Series ? param.seriesData?.get(ema120Series) : null
+  const ema20 = ema20Data ? Number(ema20Data.value) : undefined
+  const ema120 = ema120Data ? Number(ema120Data.value) : undefined
 
   if (![time, open, high, low, close].every(Number.isFinite)) {
     return null
@@ -728,6 +734,8 @@ const getCrosshairKLine = (param: any): KLineItem | null => {
     high,
     low,
     close,
+    ema20: Number.isFinite(ema20) ? ema20 : undefined,
+    ema120: Number.isFinite(ema120) ? ema120 : undefined,
   }
 }
 
