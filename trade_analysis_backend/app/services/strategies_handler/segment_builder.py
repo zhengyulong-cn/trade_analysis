@@ -10,12 +10,14 @@ from app.schemas.strategy_analysis import (
     SegmentStatus,
     TrendSegment,
 )
+from app.services.strategies_handler.analysis_launcher import BaseStrategyAnalyzer
 
 
-class SegmentBuilder:
+class SegmentBuilder(BaseStrategyAnalyzer):
     """线段构建器。
 
-    这个类负责按 K 线时间升序，增量地构建线段。
+    这个类只负责“单根 K 线进入后，如何更新线段状态”。
+    K 线从左到右的循环不再放在这里，而是交给 StrategyAnalysisLauncher。
 
     它维护三类核心状态：
     - current_segment：当前正在延展的线段
@@ -56,29 +58,33 @@ class SegmentBuilder:
         interval: int | None = None,
         interval_name: str | None = None,
     ) -> IntervalStrategy:
-        """基于已有状态继续构建线段。"""
-        # strategy: 当前周期的完整分析状态。
-        strategy = existing.model_copy(deep=True) if existing is not None else None
-        if strategy is None:
-            strategy = IntervalStrategy(
-                interval=interval or 0,
-                interval_name=interval_name,
-                ema_state=EmaBuildState(period=self.ema_period),
-            )
+        """兼容旧调用方式：内部委托给策略分析启动器。"""
+        from trade_analysis_backend.app.services.strategies_handler.analysis_launcher import StrategyAnalysisLauncher
 
-        if interval is not None:
-            strategy.interval = interval
-        if interval_name is not None:
-            strategy.interval_name = interval_name
+        launcher = StrategyAnalysisLauncher([self])
+        return launcher.run(
+            klines=klines,
+            existing=existing,
+            interval=interval,
+            interval_name=interval_name,
+        )
+
+    def initialize(
+        self,
+        strategy: IntervalStrategy,
+        *,
+        interval: int | None = None,
+        interval_name: str | None = None,
+    ) -> None:
+        """初始化线段构建所需状态。"""
+        super().initialize(
+            strategy,
+            interval=interval,
+            interval_name=interval_name,
+        )
         strategy.ema_state.period = self.ema_period
 
-        # 所有 K 线必须严格按时间升序处理，避免未来函数。
-        for kline in sorted(klines, key=lambda item: item.date_time):
-            self._apply_kline(strategy, kline)
-
-        return strategy
-
-    def _apply_kline(
+    def on_kline(
         self,
         strategy: IntervalStrategy,
         kline: KlineBarInput,

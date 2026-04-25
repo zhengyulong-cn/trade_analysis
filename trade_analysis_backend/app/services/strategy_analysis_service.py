@@ -26,7 +26,10 @@ from app.schemas.strategy_analysis import (
     StrategyContent,
     TrendSegment,
 )
-from app.services.segment_builder import SegmentBuilder
+from app.services.strategies_handler.analysis_launcher import StrategyAnalysisLauncher
+from app.services.strategies_handler.buy_sell_point_scanner import BuySellPointScanner
+from app.services.strategies_handler.momentum_checker import MomentumChecker
+from app.services.strategies_handler.segment_builder import SegmentBuilder
 
 
 class StrategyAnalysisService:
@@ -36,7 +39,8 @@ class StrategyAnalysisService:
     - 合约查询
     - 周期查询
     - 数据库存取
-    - 线段构建器 SegmentBuilder
+    - 分析启动器 StrategyAnalysisLauncher
+    - 各类分析器（SegmentBuilder / MomentumChecker / BuySellPointScanner）
 
     这几部分串起来，形成“读取旧状态 -> 增量构建 -> 写回数据库”的完整流程。
     """
@@ -46,6 +50,18 @@ class StrategyAnalysisService:
         self.session = session
         # segment_builder: 真正执行线段推演的核心算法对象。
         self.segment_builder = SegmentBuilder()
+        # momentum_checker: 动能检查器，当前先保留统一接入点。
+        self.momentum_checker = MomentumChecker()
+        # buy_sell_point_scanner: 买卖点扫描器，当前先保留统一接入点。
+        self.buy_sell_point_scanner = BuySellPointScanner()
+        # analysis_launcher: 统一负责 K 线从左到右循环，并把每根 K 线分发给各分析器。
+        self.analysis_launcher = StrategyAnalysisLauncher(
+            [
+                self.segment_builder,
+                self.momentum_checker,
+                self.buy_sell_point_scanner,
+            ]
+        )
 
     def get_strategy_by_symbol(self, symbol: str) -> StrategyAnalysisDetail:
         """按合约代码读取完整的策略分析结果。"""
@@ -72,7 +88,7 @@ class StrategyAnalysisService:
         3. 读取数据库中该合约已有的 strategy 记录；
         4. 取出当前周期对应的 IntervalStrategy；
         5. 只拉取上次处理之后的新 K 线；
-        6. 把“旧状态 + 新 K 线”交给 SegmentBuilder 增量推演；
+        6. 把“旧状态 + 新 K 线”交给 StrategyAnalysisLauncher 增量推演；
         7. 将当前周期结果回写到 strategy_content.intervals 中；
         8. 最后把整份 strategy JSON 保存回数据库。
         """
@@ -107,7 +123,7 @@ class StrategyAnalysisService:
                 None if payload.reset else interval_strategy.last_processed_at
             ),
         )
-        interval_strategy = self.segment_builder.build(
+        interval_strategy = self.analysis_launcher.run(
             klines=new_klines,
             existing=interval_strategy,
             interval=interval.seconds,
