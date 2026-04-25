@@ -34,8 +34,6 @@ const LABEL_CLOSE = '收盘'
 const LABEL_HIGH = '最高'
 const LABEL_LOW = '最低'
 
-const BUILD_SEGMENT_TEXT = '构建段分析'
-const LOAD_SEGMENT_TEXT = '载入构建段'
 const BUILD_SEGMENT_SUCCESS = '构建段分析完成，已打印接口返回'
 const BUILD_SEGMENT_ERROR = '构建段分析失败'
 const LOAD_SEGMENT_SUCCESS = '构建段已载入K线图'
@@ -600,23 +598,6 @@ onMounted(() => {
         <h2 class="title">{{ PAGE_TITLE }}</h2>
         <p class="subtitle">{{ PAGE_SUBTITLE }}</p>
       </div>
-      <div class="page-actions">
-        <el-button
-          type="primary"
-          :loading="buildSegmentLoading"
-          :disabled="!canBuildSegments"
-          @click="handleBuildSegments"
-        >
-          {{ BUILD_SEGMENT_TEXT }}
-        </el-button>
-        <el-button
-          :loading="loadSegmentLoading"
-          :disabled="!canLoadSegments"
-          @click="handleLoadSegments"
-        >
-          {{ LOAD_SEGMENT_TEXT }}
-        </el-button>
-      </div>
     </header>
 
     <KLineSection
@@ -631,6 +612,8 @@ onMounted(() => {
       :contract-placeholder="CONTRACT_PLACEHOLDER"
       :chart-data="chartData"
       :segment-lines="loadedSegmentLines"
+      :can-build-segments="canBuildSegments && !buildSegmentLoading"
+      :can-load-segments="canLoadSegments && !loadSegmentLoading"
       :summary-items="summaryItems"
       :chart-options="chartOptions"
       :empty-description="EMPTY_DESCRIPTION"
@@ -641,6 +624,8 @@ onMounted(() => {
       @segment-line-change="handleSegmentLineChange"
       @segment-line-create="handleSegmentLineCreate"
       @segment-line-delete="handleSegmentLineDelete"
+      @segment-build-request="handleBuildSegments"
+      @segment-load-request="handleLoadSegments"
     />
   </div>
 </template>
@@ -658,12 +643,6 @@ onMounted(() => {
   align-items: flex-start;
   justify-content: space-between;
   gap: 16px;
-}
-
-.page-actions {
-  display: flex;
-  align-items: center;
-  gap: 12px;
 }
 
 .title {

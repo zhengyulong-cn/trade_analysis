@@ -74,6 +74,8 @@ const emit = defineEmits<{
   'segmentLineChange': [value: SegmentLineChange]
   'segmentLineCreate': [value: SegmentLineCreate]
   'segmentLineDelete': [value: SegmentLineDelete]
+  'segmentBuildRequest': []
+  'segmentLoadRequest': []
 }>()
 
 const props = withDefaults(
@@ -87,6 +89,8 @@ const props = withDefaults(
     contractLoading?: boolean
     contractDisabled?: boolean
     periodDisabled?: boolean
+    canBuildSegments?: boolean
+    canLoadSegments?: boolean
     contractPlaceholder?: string
     chartData: {
       kLineList: KLineItem[]
@@ -107,6 +111,8 @@ const props = withDefaults(
     contractLoading: false,
     contractDisabled: false,
     periodDisabled: false,
+    canBuildSegments: true,
+    canLoadSegments: true,
     contractPlaceholder: '请选择合约',
     segmentLines: () => [],
     summaryItems: () => [],
@@ -141,6 +147,14 @@ const handleSegmentLineCreate = (value: SegmentLineCreate) => {
 
 const handleSegmentLineDelete = (value: SegmentLineDelete) => {
   emit('segmentLineDelete', value)
+}
+
+const handleSegmentBuildRequest = () => {
+  emit('segmentBuildRequest')
+}
+
+const handleSegmentLoadRequest = () => {
+  emit('segmentLoadRequest')
 }
 </script>
 
@@ -190,11 +204,15 @@ const handleSegmentLineDelete = (value: SegmentLineDelete) => {
         <KLineChart
           :data="chartData"
           :segment-lines="segmentLines"
+          :can-build-segments="canBuildSegments"
+          :can-load-segments="canLoadSegments"
           :common-chart-options="chartOptions"
           @crosshair-move="handleCrosshairMove"
           @segment-line-change="handleSegmentLineChange"
           @segment-line-create="handleSegmentLineCreate"
           @segment-line-delete="handleSegmentLineDelete"
+          @segment-build-request="handleSegmentBuildRequest"
+          @segment-load-request="handleSegmentLoadRequest"
         />
       </div>
       <el-empty v-else :description="emptyDescription" />

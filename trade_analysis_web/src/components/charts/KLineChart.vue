@@ -12,7 +12,7 @@ import {
 } from "lightweight-charts";
 import { INITIAL_VISIBLE_K_LINE_COUNT } from "@/constants/chart";
 import { computed, onMounted, onUnmounted, ref, watch } from "vue";
-import KLineChartContextMenu from './KLineChartContextMenu.vue'
+import ContextMenu, { type MenuItem } from '@imengyu/vue3-context-menu'
 
 interface KLineItem {
   time: number
@@ -72,11 +72,15 @@ const props = withDefaults(
     }
     segmentLines?: SegmentLineItem[]
     autosize?: boolean
+    canBuildSegments?: boolean
+    canLoadSegments?: boolean
     commonChartOptions?: DeepPartial<ChartOptions>
   }>(),
   {
     segmentLines: () => [],
     autosize: true,
+    canBuildSegments: true,
+    canLoadSegments: true,
     commonChartOptions: () => ({}),
   }
 );
@@ -86,6 +90,8 @@ const emit = defineEmits<{
   'segment-line-change': [value: SegmentLineChange]
   'segment-line-create': [value: SegmentLineCreate]
   'segment-line-delete': [value: SegmentLineDelete]
+  'segment-build-request': []
+  'segment-load-request': []
 }>()
 
 const chartContainer = ref<HTMLDivElement | null>(null);
@@ -114,17 +120,6 @@ const dragState = ref<{
     value: number
   }
 } | null>(null);
-const contextMenuState = ref<{
-  visible: boolean
-  x: number
-  y: number
-  startIndex: number | null
-}>({
-  visible: false,
-  x: 0,
-  y: 0,
-  startIndex: null,
-});
 
 const overlayCursor = computed(() => (dragState.value ? 'grabbing' : 'default'));
 const selectedSegment = computed(() => {
@@ -133,10 +128,6 @@ const selectedSegment = computed(() => {
   }
 
   return props.segmentLines.find((segment) => segment.id === selectedSegmentId.value) ?? null;
-});
-const canCreateSegmentFromContext = computed(() => {
-  const startIndex = contextMenuState.value.startIndex;
-  return startIndex !== null && Boolean(props.data.kLineList[startIndex + 5]);
 });
 const canDeleteSelectedSegment = computed(() => selectedSegment.value?.segmentRole === 'confirmed');
 
@@ -338,13 +329,6 @@ const clearSelectedSegment = () => {
   updateSegmentOverlayItems();
 };
 
-const closeContextMenu = () => {
-  contextMenuState.value = {
-    ...contextMenuState.value,
-    visible: false,
-  };
-};
-
 const getDistanceToLineSegment = (
   point: { x: number; y: number },
   lineStart: { x: number; y: number },
@@ -369,8 +353,6 @@ const getDistanceToLineSegment = (
 };
 
 const handleChartClick = (param: any) => {
-  closeContextMenu();
-
   if (dragState.value) {
     return;
   }
@@ -489,12 +471,53 @@ const getSnappedSegmentPoint = (event: MouseEvent) => {
   };
 };
 
+const handleCreateSegmentFromContext = (startIndex: number | null) => {
+  if (startIndex === null) {
+    return;
+  }
+
+  const startItem = props.data.kLineList[startIndex];
+  const endItem = props.data.kLineList[startIndex + 5];
+  if (!startItem || !endItem) {
+    return;
+  }
+
+  emit('segment-line-create', {
+    startPoint: {
+      time: startItem.time,
+      value: startItem.close,
+    },
+    endPoint: {
+      time: endItem.time,
+      value: endItem.close,
+    },
+  });
+};
+
+const handleDeleteSegmentFromContext = () => {
+  const segment = selectedSegment.value;
+  if (!segment || segment.segmentRole !== 'confirmed') {
+    return;
+  }
+
+  emit('segment-line-delete', {
+    segment,
+  });
+};
+
+const handleBuildSegmentsFromContext = () => {
+  emit('segment-build-request');
+};
+
+const handleLoadSegmentsFromContext = () => {
+  emit('segment-load-request');
+};
+
 const handleChartContextMenu = (event: MouseEvent) => {
   event.preventDefault();
-  closeContextMenu();
 
   const point = getMousePointInChart(event);
-  if (!point || !chartContainer.value) {
+  if (!point) {
     return;
   }
 
@@ -514,48 +537,43 @@ const handleChartContextMenu = (event: MouseEvent) => {
   }
 
   const nearestKLine = findNearestKLineInfoByCoordinate(point.x);
-  contextMenuState.value = {
-    visible: true,
-    x: point.x,
-    y: point.y,
-    startIndex: nearestKLine?.index ?? null,
-  };
-};
-
-const handleCreateSegmentFromContext = () => {
-  const startIndex = contextMenuState.value.startIndex;
-  if (startIndex === null) {
-    return;
-  }
-
-  const startItem = props.data.kLineList[startIndex];
-  const endItem = props.data.kLineList[startIndex + 5];
-  if (!startItem || !endItem) {
-    return;
-  }
-
-  closeContextMenu();
-  emit('segment-line-create', {
-    startPoint: {
-      time: startItem.time,
-      value: startItem.close,
+  const startIndex = nearestKLine?.index ?? null;
+  const canCreateSegment = startIndex !== null && Boolean(props.data.kLineList[startIndex + 5]);
+  const canDeleteSegment = canDeleteSelectedSegment.value;
+  const menuItems: MenuItem[] = [
+    {
+      label: '创建线段',
+      disabled: !canCreateSegment,
+      onClick: () => handleCreateSegmentFromContext(startIndex),
     },
-    endPoint: {
-      time: endItem.time,
-      value: endItem.close,
+    {
+      label: '删除线段',
+      disabled: !canDeleteSegment,
+      onClick: handleDeleteSegmentFromContext,
     },
-  });
-};
+    {
+      label: '构建段处理',
+      children: [
+        {
+          label: '构建段分析',
+          disabled: !props.canBuildSegments,
+          onClick: handleBuildSegmentsFromContext,
+        },
+        {
+          label: '载入构建段',
+          disabled: !props.canLoadSegments,
+          onClick: handleLoadSegmentsFromContext,
+        },
+      ],
+    },
+  ];
 
-const handleDeleteSegmentFromContext = () => {
-  const segment = selectedSegment.value;
-  if (!segment || segment.segmentRole !== 'confirmed') {
-    return;
-  }
-
-  closeContextMenu();
-  emit('segment-line-delete', {
-    segment,
+  ContextMenu.showContextMenu({
+    x: event.x,
+    y: event.y,
+    theme: 'default',
+    minWidth: 132,
+    items: menuItems,
   });
 };
 
@@ -768,8 +786,6 @@ onMounted(() => {
   applyChartData();
   resizeHandler();
   chartContainer.value.addEventListener('contextmenu', handleChartContextMenu);
-  window.addEventListener('click', closeContextMenu);
-  window.addEventListener('keydown', closeContextMenu);
 
   crosshairMoveHandler = (param) => {
     emit('crosshair-move', getCrosshairKLine(param));
@@ -792,8 +808,6 @@ onUnmounted(() => {
   if (chartContainer.value) {
     chartContainer.value.removeEventListener('contextmenu', handleChartContextMenu);
   }
-  window.removeEventListener('click', closeContextMenu);
-  window.removeEventListener('keydown', closeContextMenu);
   if (chart && crosshairMoveHandler) {
     chart.unsubscribeCrosshairMove(crosshairMoveHandler);
     crosshairMoveHandler = null;
@@ -918,15 +932,6 @@ watch(selectedSegmentId, () => {
         @mousedown="handleEndpointMouseDown($event, item.id, 'end')"
       />
     </template>
-    <KLineChartContextMenu
-      :visible="contextMenuState.visible"
-      :x="contextMenuState.x"
-      :y="contextMenuState.y"
-      :can-create="canCreateSegmentFromContext"
-      :can-delete="canDeleteSelectedSegment"
-      @create="handleCreateSegmentFromContext"
-      @delete="handleDeleteSegmentFromContext"
-    />
     <div class="ema-legend">
       <span class="ema-legend__item ema-legend__item--ema20">EMA20</span>
       <span class="ema-legend__item ema-legend__item--ema120">EMA120</span>
