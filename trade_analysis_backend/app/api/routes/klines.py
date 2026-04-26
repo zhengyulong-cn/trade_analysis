@@ -16,6 +16,10 @@ from app.schemas.kline_data import (
     KlineItemDeleteResult,
     KlineListResult,
     KlinePage,
+    MarketDataBulkSyncRequest,
+    MarketDataBulkSyncResult,
+    MarketDataSyncRequest,
+    MarketDataSyncResult,
     TqSdkBulkSyncRequest,
     TqSdkBulkSyncResult,
     TqSdkSyncRequest,
@@ -40,6 +44,30 @@ def create_klines_batch(
     service: KlineServiceDep,
 ) -> KlineBatchWriteResult:
     return service.create_klines_batch(payload)
+
+
+@router.post(
+    "/sync/market-data",
+    response_model=MarketDataSyncResult,
+    status_code=status.HTTP_201_CREATED,
+)
+def sync_klines_from_market_data(
+    payload: MarketDataSyncRequest,
+    service: KlineServiceDep,
+) -> MarketDataSyncResult:
+    return service.sync_from_market_data(payload)
+
+
+@router.post(
+    "/sync/market-data/bulk",
+    response_model=MarketDataBulkSyncResult,
+    status_code=status.HTTP_201_CREATED,
+)
+def sync_klines_from_market_data_bulk(
+    service: KlineServiceDep,
+    payload: MarketDataBulkSyncRequest | None = None,
+) -> MarketDataBulkSyncResult:
+    return service.sync_bulk_from_market_data(payload or MarketDataBulkSyncRequest())
 
 
 @router.post(

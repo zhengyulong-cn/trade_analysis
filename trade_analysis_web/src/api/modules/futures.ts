@@ -78,7 +78,8 @@ export interface FutureKlineData {
 export interface FutureKlineSyncResult {
   symbol: string
   interval: number
-  tq_symbol: string
+  provider: string
+  provider_symbol: string
   requested: number
   inserted: number
   updated: number
@@ -309,7 +310,7 @@ export const getFutureKlinePageApi = (params: {
 }
 
 export const syncFutureKlinesApi = (params: { symbol: string; interval: number }) => {
-  return axios.post<FutureKlineSyncResult>("/klines/sync/tqsdk", params) as unknown as Promise<
+  return axios.post<FutureKlineSyncResult>("/klines/sync/market-data", params) as unknown as Promise<
     FutureKlineSyncResult
   >
 }

@@ -7,9 +7,17 @@ from app.db.session import get_session
 from app.services.contract_service import ContractService
 from app.services.contract_interval_service import ContractIntervalService
 from app.services.kline_service import KlineService
+from app.services.market_data import KlineProvider, create_kline_provider
 from app.services.strategy_analysis_service import StrategyAnalysisService
 
 SessionDep = Annotated[Session, Depends(get_session)]
+
+
+def get_kline_provider() -> KlineProvider:
+    return create_kline_provider()
+
+
+KlineProviderDep = Annotated[KlineProvider, Depends(get_kline_provider)]
 
 
 def get_contract_service(session: SessionDep) -> ContractService:
@@ -20,8 +28,11 @@ def get_contract_interval_service(session: SessionDep) -> ContractIntervalServic
     return ContractIntervalService(session)
 
 
-def get_kline_service(session: SessionDep) -> KlineService:
-    return KlineService(session)
+def get_kline_service(
+    session: SessionDep,
+    kline_provider: KlineProviderDep,
+) -> KlineService:
+    return KlineService(session, kline_provider=kline_provider)
 
 
 def get_strategy_analysis_service(session: SessionDep) -> StrategyAnalysisService:

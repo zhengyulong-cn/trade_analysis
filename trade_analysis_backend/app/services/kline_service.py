@@ -1,13 +1,8 @@
 from datetime import datetime
-from decimal import Decimal
-import time
 
-import pandas as pd
 from fastapi import HTTPException, status
 from sqlmodel import Session, func, select
-from tqsdk import TqApi, TqAuth
 
-from app.core.config import settings
 from app.models.contract import Contract
 from app.models.contract_interval import ContractInterval
 from app.models.kline_data import KlineData
@@ -24,19 +19,19 @@ from app.schemas.kline_data import (
     KlineListResult,
     KlineDataQueryResult,
     KlinePage,
-    TqSdkBulkSyncError,
-    TqSdkBulkSyncRequest,
-    TqSdkBulkSyncResult,
-    TqSdkSyncRequest,
-    TqSdkSyncResult,
+    MarketDataBulkSyncError,
+    MarketDataBulkSyncRequest,
+    MarketDataBulkSyncResult,
+    MarketDataSyncRequest,
+    MarketDataSyncResult,
 )
-
-SHANGHAI_TIMEZONE = "Asia/Shanghai"
+from app.services.market_data import KlineProvider, MarketKlineBar
 
 
 class KlineService:
-    def __init__(self, session: Session):
+    def __init__(self, session: Session, kline_provider: KlineProvider):
         self.session = session
+        self.kline_provider = kline_provider
 
     def create_kline(self, payload: KlineDataCreate) -> KlineData:
         result = self.create_klines_batch(
@@ -265,23 +260,29 @@ class KlineService:
         kline, contract, interval = row
         return self._map_query_row(kline, contract, interval)
 
-    def sync_from_tqsdk(self, payload: TqSdkSyncRequest) -> TqSdkSyncResult:
+    def sync_from_market_data(
+        self,
+        payload: MarketDataSyncRequest,
+    ) -> MarketDataSyncResult:
         contract = self._get_contract_by_symbol(payload.symbol)
         interval = self._get_interval_by_seconds(payload.interval)
-        tq_symbol = self._build_tqsdk_symbol(contract)
 
         try:
-            dataframe = self._fetch_tqsdk_kline_dataframe(tq_symbol, interval.seconds)
+            fetch_result = self.kline_provider.get_klines(
+                symbol=contract.symbol,
+                exchange=contract.exchange,
+                interval_seconds=interval.seconds,
+            )
         except Exception as exc:
             raise HTTPException(
                 status_code=status.HTTP_502_BAD_GATEWAY,
-                detail=f"Failed to fetch kline data from tqsdk: {exc}",
+                detail=(
+                    "Failed to fetch kline data from "
+                    f"{self.kline_provider.provider}: {exc}"
+                ),
             ) from exc
 
-        fetched_items = self._convert_tqsdk_klines_to_inputs(
-            dataframe,
-            interval.seconds,
-        )
+        fetched_items = self._convert_market_klines_to_inputs(fetch_result.bars)
         latest_kline = self._get_latest_kline_row(
             contract_id=contract.contract_id,
             interval_id=interval.contract_interval_id,
@@ -291,10 +292,11 @@ class KlineService:
             latest_kline=latest_kline,
         )
         if not items:
-            return TqSdkSyncResult(
+            return MarketDataSyncResult(
                 symbol=payload.symbol,
                 interval=payload.interval,
-                tq_symbol=tq_symbol,
+                provider=fetch_result.provider,
+                provider_symbol=fetch_result.provider_symbol,
                 requested=0,
                 inserted=0,
                 updated=0,
@@ -307,36 +309,40 @@ class KlineService:
                 items=items,
             )
         )
-        return TqSdkSyncResult(
+        return MarketDataSyncResult(
             symbol=payload.symbol,
             interval=payload.interval,
-            tq_symbol=tq_symbol,
+            provider=fetch_result.provider,
+            provider_symbol=fetch_result.provider_symbol,
             requested=len(items),
             inserted=write_result.inserted,
             updated=write_result.updated,
         )
 
-    def sync_bulk_from_tqsdk(
+    def sync_from_tqsdk(self, payload: MarketDataSyncRequest) -> MarketDataSyncResult:
+        return self.sync_from_market_data(payload)
+
+    def sync_bulk_from_market_data(
         self,
-        payload: TqSdkBulkSyncRequest,
-    ) -> TqSdkBulkSyncResult:
+        payload: MarketDataBulkSyncRequest,
+    ) -> MarketDataBulkSyncResult:
         contracts = self._list_contracts_for_sync(payload.symbols)
         intervals = self._list_intervals_for_sync(payload.intervals)
         total = len(contracts) * len(intervals)
-        items: list[TqSdkSyncResult] = []
-        errors: list[TqSdkBulkSyncError] = []
+        items: list[MarketDataSyncResult] = []
+        errors: list[MarketDataBulkSyncError] = []
 
         for contract in contracts:
             for interval in intervals:
-                request = TqSdkSyncRequest(
+                request = MarketDataSyncRequest(
                     symbol=contract.symbol,
                     interval=interval.seconds,
                 )
                 try:
-                    items.append(self.sync_from_tqsdk(request))
+                    items.append(self.sync_from_market_data(request))
                 except HTTPException as exc:
                     errors.append(
-                        TqSdkBulkSyncError(
+                        MarketDataBulkSyncError(
                             symbol=contract.symbol,
                             interval=interval.seconds,
                             detail=self._format_exception_detail(exc.detail),
@@ -344,14 +350,14 @@ class KlineService:
                     )
                 except Exception as exc:
                     errors.append(
-                        TqSdkBulkSyncError(
+                        MarketDataBulkSyncError(
                             symbol=contract.symbol,
                             interval=interval.seconds,
                             detail=str(exc),
                         )
                     )
 
-        return TqSdkBulkSyncResult(
+        return MarketDataBulkSyncResult(
             total=total,
             succeeded=len(items),
             failed=len(errors),
@@ -361,6 +367,12 @@ class KlineService:
             items=items,
             errors=errors,
         )
+
+    def sync_bulk_from_tqsdk(
+        self,
+        payload: MarketDataBulkSyncRequest,
+    ) -> MarketDataBulkSyncResult:
+        return self.sync_bulk_from_market_data(payload)
 
     def _build_kline_query(
         self,
@@ -494,100 +506,28 @@ class KlineService:
             )
         return kline
 
-    def _fetch_tqsdk_kline_dataframe(
+    def _convert_market_klines_to_inputs(
         self,
-        tq_symbol: str,
-        interval_seconds: int,
-    ) -> pd.DataFrame:
-        api = TqApi(
-            web_gui=settings.tqsdk_web_gui,
-            auth=TqAuth(settings.tqsdk_username, settings.tqsdk_password),
-        )
-        try:
-            dataframe = api.get_kline_serial(
-                tq_symbol,
-                interval_seconds,
-                data_length=settings.tqsdk_kline_length,
-            )
-            deadline = time.time() + settings.tqsdk_wait_timeout_seconds
-            api.wait_update(deadline=deadline)
-            return dataframe.copy()
-        finally:
-            api.close()
-
-    def _convert_tqsdk_klines_to_inputs(
-        self,
-        dataframe: pd.DataFrame,
-        interval_seconds: int,
+        bars: list[MarketKlineBar],
     ) -> list[KlineBarInput]:
-        items: list[KlineBarInput] = []
-        if dataframe.empty:
-            return items
-
-        datetime_column = "datetime"
-        hold_column = "close_oi" if "close_oi" in dataframe.columns else "hold"
-        filtered = dataframe.dropna(
-            subset=[datetime_column, "open", "close", "high", "low"]
-        ).tail(settings.tqsdk_kline_length)
-        for row in filtered.to_dict(orient="records"):
-            items.append(
-                KlineBarInput(
-                    open=self._to_decimal(row["open"]),
-                    close=self._to_decimal(row["close"]),
-                    high=self._to_decimal(row["high"]),
-                    low=self._to_decimal(row["low"]),
-                    volume=self._to_decimal(row.get("volume", 0)),
-                    hold=self._to_decimal(row.get(hold_column, 0)),
-                    date_time=self._get_tqsdk_kline_close_time(
-                        row[datetime_column],
-                        interval_seconds,
-                    ),
-                )
+        return [
+            KlineBarInput(
+                open=bar.open,
+                close=bar.close,
+                high=bar.high,
+                low=bar.low,
+                volume=bar.volume,
+                hold=bar.hold,
+                date_time=bar.date_time,
             )
-        return items
-
-    def _normalize_tqsdk_datetime(self, raw_datetime: object) -> datetime:
-        if isinstance(raw_datetime, (int, float)) and not pd.isna(raw_datetime):
-            timestamp = pd.to_datetime(
-                raw_datetime,
-                unit="ns",
-                utc=True,
-                errors="coerce",
-            )
-        else:
-            timestamp = pd.to_datetime(raw_datetime, errors="coerce")
-        if pd.isna(timestamp):
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail=f"Invalid tqsdk datetime value: {raw_datetime}",
-            )
-        if timestamp.tzinfo is not None:
-            timestamp = timestamp.tz_convert(SHANGHAI_TIMEZONE)
-        return timestamp.to_pydatetime().replace(tzinfo=None)
-
-    def _get_tqsdk_kline_close_time(
-        self,
-        raw_datetime: object,
-        interval_seconds: int,
-    ) -> datetime:
-        open_time = self._normalize_tqsdk_datetime(raw_datetime)
-        return open_time + pd.Timedelta(seconds=interval_seconds).to_pytimedelta()
-
-    def _build_tqsdk_symbol(self, contract: Contract) -> str:
-        if "." in contract.symbol:
-            return contract.symbol
-        return f"{contract.exchange.upper()}.{contract.symbol}"
+            for bar in bars
+        ]
 
     def _normalize_datetime(self, value: datetime) -> datetime:
         return value.replace(tzinfo=None)
 
     def _canonical_datetime_key(self, value: datetime) -> str:
         return self._normalize_datetime(value).isoformat()
-
-    def _to_decimal(self, value: object) -> Decimal:
-        if value is None or pd.isna(value):
-            return Decimal("0")
-        return Decimal(str(value))
 
     def _get_contract_by_symbol(self, symbol: str) -> Contract:
         statement = select(Contract).where(Contract.symbol == symbol)
