@@ -5,10 +5,6 @@ from fastapi import APIRouter, Query, status
 
 from app.api.dependencies import KlineServiceDep
 from app.schemas.kline_data import (
-    AkshareBulkSyncRequest,
-    AkshareBulkSyncResult,
-    AkshareSyncRequest,
-    AkshareSyncResult,
     KlineBatchCreate,
     KlineBatchWriteResult,
     KlineDataCreate,
@@ -20,6 +16,10 @@ from app.schemas.kline_data import (
     KlineItemDeleteResult,
     KlineListResult,
     KlinePage,
+    TqSdkBulkSyncRequest,
+    TqSdkBulkSyncResult,
+    TqSdkSyncRequest,
+    TqSdkSyncResult,
 )
 
 router = APIRouter()
@@ -43,27 +43,27 @@ def create_klines_batch(
 
 
 @router.post(
-    "/sync/akshare",
-    response_model=AkshareSyncResult,
+    "/sync/tqsdk",
+    response_model=TqSdkSyncResult,
     status_code=status.HTTP_201_CREATED,
 )
-def sync_klines_from_akshare(
-    payload: AkshareSyncRequest,
+def sync_klines_from_tqsdk(
+    payload: TqSdkSyncRequest,
     service: KlineServiceDep,
-) -> AkshareSyncResult:
-    return service.sync_from_akshare(payload)
+) -> TqSdkSyncResult:
+    return service.sync_from_tqsdk(payload)
 
 
 @router.post(
-    "/sync/akshare/bulk",
-    response_model=AkshareBulkSyncResult,
+    "/sync/tqsdk/bulk",
+    response_model=TqSdkBulkSyncResult,
     status_code=status.HTTP_201_CREATED,
 )
-def sync_klines_from_akshare_bulk(
+def sync_klines_from_tqsdk_bulk(
     service: KlineServiceDep,
-    payload: AkshareBulkSyncRequest | None = None,
-) -> AkshareBulkSyncResult:
-    return service.sync_bulk_from_akshare(payload or AkshareBulkSyncRequest())
+    payload: TqSdkBulkSyncRequest | None = None,
+) -> TqSdkBulkSyncResult:
+    return service.sync_bulk_from_tqsdk(payload or TqSdkBulkSyncRequest())
 
 
 @router.post("/delete", response_model=KlineDeleteResult)

@@ -87,37 +87,37 @@ class KlineItemDeleteResult(SQLModel):
     deleted: int
 
 
-class AkshareSyncRequest(SQLModel):
+class TqSdkSyncRequest(SQLModel):
     symbol: str
     interval: int
 
 
-class AkshareSyncResult(SQLModel):
+class TqSdkSyncResult(SQLModel):
     symbol: str
     interval: int
-    ak_symbol: str
+    tq_symbol: str
     requested: int
     inserted: int
     updated: int
 
 
-class AkshareBulkSyncRequest(SQLModel):
+class TqSdkBulkSyncRequest(SQLModel):
     symbols: list[str] | None = None
     intervals: list[int] | None = None
 
 
-class AkshareBulkSyncError(SQLModel):
+class TqSdkBulkSyncError(SQLModel):
     symbol: str
     interval: int
     detail: str
 
 
-class AkshareBulkSyncResult(SQLModel):
+class TqSdkBulkSyncResult(SQLModel):
     total: int
     succeeded: int
     failed: int
     requested: int
     inserted: int
     updated: int
-    items: list[AkshareSyncResult]
-    errors: list[AkshareBulkSyncError]
+    items: list[TqSdkSyncResult]
+    errors: list[TqSdkBulkSyncError]

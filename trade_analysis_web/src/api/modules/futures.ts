@@ -78,7 +78,7 @@ export interface FutureKlineData {
 export interface FutureKlineSyncResult {
   symbol: string
   interval: number
-  ak_symbol: string
+  tq_symbol: string
   requested: number
   inserted: number
   updated: number
@@ -309,7 +309,7 @@ export const getFutureKlinePageApi = (params: {
 }
 
 export const syncFutureKlinesApi = (params: { symbol: string; interval: number }) => {
-  return axios.post<FutureKlineSyncResult>("/klines/sync/akshare", params) as unknown as Promise<
+  return axios.post<FutureKlineSyncResult>("/klines/sync/tqsdk", params) as unknown as Promise<
     FutureKlineSyncResult
   >
 }

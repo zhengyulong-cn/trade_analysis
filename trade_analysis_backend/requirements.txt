@@ -4,4 +4,4 @@ uvicorn
 PyMySQL
 cryptography
 tqsdk
-akshare
+pandas
