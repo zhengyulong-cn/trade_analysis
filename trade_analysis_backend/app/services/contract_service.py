@@ -13,11 +13,14 @@ class ContractService:
         self.session = session
 
     def create_contract(self, payload: ContractCreate) -> Contract:
-        if payload.auto_load_segments not in (0, 1):
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail="auto_load_segments must be 0 or 1",
-            )
+        self._validate_binary_flag(
+            field_name="auto_load_segments",
+            value=payload.auto_load_segments,
+        )
+        self._validate_binary_flag(
+            field_name="is_favorite",
+            value=payload.is_favorite,
+        )
         contract = Contract.model_validate(payload)
         self.session.add(contract)
         try:
@@ -43,10 +46,15 @@ class ContractService:
                 status_code=status.HTTP_400_BAD_REQUEST,
                 detail="No contract fields to update",
             )
-        if "auto_load_segments" in update_data and update_data["auto_load_segments"] not in (0, 1):
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail="auto_load_segments must be 0 or 1",
+        if "auto_load_segments" in update_data:
+            self._validate_binary_flag(
+                field_name="auto_load_segments",
+                value=update_data["auto_load_segments"],
+            )
+        if "is_favorite" in update_data:
+            self._validate_binary_flag(
+                field_name="is_favorite",
+                value=update_data["is_favorite"],
             )
 
         for field_name, value in update_data.items():
@@ -65,7 +73,10 @@ class ContractService:
         return contract
 
     def list_contracts(self) -> list[Contract]:
-        statement = select(Contract).order_by(Contract.symbol)
+        statement = select(Contract).order_by(
+            Contract.is_favorite.desc(),
+            Contract.symbol,
+        )
         return list(self.session.exec(statement).all())
 
     def get_contract_by_id(self, contract_id: int) -> Contract:
@@ -93,3 +104,11 @@ class ContractService:
         self.session.commit()
         self.session.refresh(contract)
         return contract
+
+    def _validate_binary_flag(self, field_name: str, value: int) -> None:
+        if value in (0, 1):
+            return
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"{field_name} must be 0 or 1",
+        )

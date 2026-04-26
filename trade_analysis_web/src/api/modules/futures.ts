@@ -6,6 +6,7 @@ export interface FutureContract {
   symbol: string
   exchange: string
   name: string
+  is_favorite: number
   auto_load_segments: number
   create_at: string
   updated_at: string
@@ -15,6 +16,7 @@ export interface FutureContractCreateParams {
   symbol: string
   exchange: string
   name: string
+  is_favorite?: number
   auto_load_segments?: number
 }
 

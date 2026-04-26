@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import type { ChartOptions, DeepPartial } from 'lightweight-charts'
 import { computed } from 'vue'
+import { Star, StarFilled } from '@element-plus/icons-vue'
 import KLineChart from './KLineChart.vue'
 
 interface KLineItem {
@@ -25,6 +26,7 @@ interface ContractOption {
   label: string
   value: string
   description?: string
+  isFavorite?: boolean
 }
 
 interface PeriodOption {
@@ -78,6 +80,7 @@ const emit = defineEmits<{
   'segmentBuildRequest': []
   'segmentLoadRequest': []
   'segmentAutoLoadToggle': []
+  'contractFavoriteToggle': [value: string]
 }>()
 
 const props = withDefaults(
@@ -131,6 +134,9 @@ const hasContractList = computed(() => props.contractOptions.length > 0)
 const hasToolbar = computed(() => props.periodOptions.length > 0)
 
 const handleContractChange = (value: string) => {
+  if (props.contractDisabled) {
+    return
+  }
   emit('update:selectedContract', value)
 }
 
@@ -164,6 +170,13 @@ const handleSegmentLoadRequest = () => {
 
 const handleSegmentAutoLoadToggle = () => {
   emit('segmentAutoLoadToggle')
+}
+
+const handleContractFavoriteToggle = (value: string) => {
+  if (props.contractDisabled) {
+    return
+  }
+  emit('contractFavoriteToggle', value)
 }
 </script>
 
@@ -222,13 +235,26 @@ const handleSegmentAutoLoadToggle = () => {
             :key="contract.value"
             class="contract-list-item"
             :class="{ 'contract-list-item--active': contract.value === selectedContract }"
-            :disabled="contractDisabled"
             @click="handleContractChange(contract.value)"
           >
-            <span class="contract-list-symbol">{{ contract.value }}</span>
-            <span v-if="contract.description" class="contract-list-name">
-              {{ contract.description }}
-            </span>
+            <div class="contract-list-main">
+              <span class="contract-list-symbol">{{ contract.value }}</span>
+              <span v-if="contract.description" class="contract-list-name">
+                {{ contract.description }}
+              </span>
+            </div>
+            <button
+              type="button"
+              class="contract-favorite-button"
+              :class="{ 'contract-favorite-button--active': contract.isFavorite }"
+              :disabled="contractDisabled"
+              @click.stop="handleContractFavoriteToggle(contract.value)"
+            >
+              <el-icon>
+                <StarFilled v-if="contract.isFavorite" />
+                <Star v-else />
+              </el-icon>
+            </button>
           </div>
         </div>
 
@@ -357,9 +383,9 @@ const handleSegmentAutoLoadToggle = () => {
   background: #fff;
   color: #303133;
   display: flex;
-  flex-direction: row;
-  align-items: flex-start;
-  gap: 4px;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
   text-align: left;
   cursor: pointer;
   transition:
@@ -374,15 +400,18 @@ const handleSegmentAutoLoadToggle = () => {
   background: #f7fbff;
 }
 
-.contract-list-item:disabled {
-  cursor: not-allowed;
-  opacity: 0.68;
-}
-
 .contract-list-item--active {
   border-color: #409eff;
   background: #ecf5ff;
   box-shadow: inset 0 0 0 1px rgba(64, 158, 255, 0.18);
+}
+
+.contract-list-main {
+  min-width: 0;
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  gap: 4px;
 }
 
 .contract-list-symbol {
@@ -395,6 +424,39 @@ const handleSegmentAutoLoadToggle = () => {
   color: #909399;
   font-size: 12px;
   line-height: 1.4;
+}
+
+.contract-favorite-button {
+  width: 28px;
+  height: 28px;
+  flex: 0 0 28px;
+  padding: 0;
+  border: 0;
+  border-radius: 50%;
+  background: transparent;
+  color: #c0c4cc;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  transition:
+    color 0.2s ease,
+    background-color 0.2s ease,
+    transform 0.2s ease;
+}
+
+.contract-favorite-button:hover:not(:disabled) {
+  color: #e6a23c;
+  background: rgba(230, 162, 60, 0.1);
+}
+
+.contract-favorite-button:disabled {
+  cursor: not-allowed;
+  opacity: 0.68;
+}
+
+.contract-favorite-button--active {
+  color: #e6a23c;
 }
 
 .chart-card {
