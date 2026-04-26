@@ -8,6 +8,7 @@ class ContractBase(SQLModel):
     symbol: str
     exchange: str
     name: str
+    is_favorite: int = 0
     auto_load_segments: int = 0
 
 
@@ -20,6 +21,7 @@ class ContractUpdate(SQLModel):
     symbol: str | None = None
     exchange: str | None = None
     name: str | None = None
+    is_favorite: int | None = None
     auto_load_segments: int | None = None
 
 

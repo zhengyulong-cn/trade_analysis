@@ -87,37 +87,45 @@ class KlineItemDeleteResult(SQLModel):
     deleted: int
 
 
-class AkshareSyncRequest(SQLModel):
+class MarketDataSyncRequest(SQLModel):
     symbol: str
     interval: int
 
 
-class AkshareSyncResult(SQLModel):
+class MarketDataSyncResult(SQLModel):
     symbol: str
     interval: int
-    ak_symbol: str
+    provider: str
+    provider_symbol: str
     requested: int
     inserted: int
     updated: int
 
 
-class AkshareBulkSyncRequest(SQLModel):
+class MarketDataBulkSyncRequest(SQLModel):
     symbols: list[str] | None = None
     intervals: list[int] | None = None
 
 
-class AkshareBulkSyncError(SQLModel):
+class MarketDataBulkSyncError(SQLModel):
     symbol: str
     interval: int
     detail: str
 
 
-class AkshareBulkSyncResult(SQLModel):
+class MarketDataBulkSyncResult(SQLModel):
     total: int
     succeeded: int
     failed: int
     requested: int
     inserted: int
     updated: int
-    items: list[AkshareSyncResult]
-    errors: list[AkshareBulkSyncError]
+    items: list[MarketDataSyncResult]
+    errors: list[MarketDataBulkSyncError]
+
+
+TqSdkSyncRequest = MarketDataSyncRequest
+TqSdkSyncResult = MarketDataSyncResult
+TqSdkBulkSyncRequest = MarketDataBulkSyncRequest
+TqSdkBulkSyncResult = MarketDataBulkSyncResult
+TqSdkBulkSyncError = MarketDataBulkSyncError

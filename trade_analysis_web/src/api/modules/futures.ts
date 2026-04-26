@@ -6,6 +6,7 @@ export interface FutureContract {
   symbol: string
   exchange: string
   name: string
+  is_favorite: number
   auto_load_segments: number
   create_at: string
   updated_at: string
@@ -15,6 +16,7 @@ export interface FutureContractCreateParams {
   symbol: string
   exchange: string
   name: string
+  is_favorite?: number
   auto_load_segments?: number
 }
 
@@ -78,7 +80,8 @@ export interface FutureKlineData {
 export interface FutureKlineSyncResult {
   symbol: string
   interval: number
-  ak_symbol: string
+  provider: string
+  provider_symbol: string
   requested: number
   inserted: number
   updated: number
@@ -309,7 +312,7 @@ export const getFutureKlinePageApi = (params: {
 }
 
 export const syncFutureKlinesApi = (params: { symbol: string; interval: number }) => {
-  return axios.post<FutureKlineSyncResult>("/klines/sync/akshare", params) as unknown as Promise<
+  return axios.post<FutureKlineSyncResult>("/klines/sync/market-data", params) as unknown as Promise<
     FutureKlineSyncResult
   >
 }

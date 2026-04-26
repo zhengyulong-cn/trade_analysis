@@ -6,6 +6,7 @@ import {
   type FutureContract,
   type FutureContractCreateParams,
 } from '@/api/modules'
+import { Star, StarFilled } from '@element-plus/icons-vue'
 import { formatDateTime as formatDateTimeByDayjs } from '@/utils/date'
 import { ElMessage, type FormInstance, type FormRules } from 'element-plus'
 import { computed, onMounted, reactive, ref } from 'vue'
@@ -30,6 +31,7 @@ const exchangeOptions = [
 const contracts = ref<FutureContract[]>([])
 const loading = ref(false)
 const submitting = ref(false)
+const favoriteTogglingIds = ref<number[]>([])
 const dialogVisible = ref(false)
 const dialogMode = ref<'create' | 'edit'>('create')
 const formRef = ref<FormInstance>()
@@ -43,11 +45,17 @@ const form = reactive<ContractForm>({
 
 const rules = reactive<FormRules<ContractForm>>({
   symbol: [{ required: true, message: '请输入合约代码', trigger: 'blur' }],
-  exchange: [{ required: true, message: '请输入交易所', trigger: 'blur' }],
-  name: [{ required: true, message: '请输入合约品种名称', trigger: 'blur' }],
+  exchange: [{ required: true, message: '请选择交易所', trigger: 'change' }],
+  name: [{ required: true, message: '请输入合约名称', trigger: 'blur' }],
 })
 
 const dialogTitle = computed(() => (dialogMode.value === 'create' ? '新增合约' : '修改合约'))
+
+const sortContractsBySymbol = (items: FutureContract[]) => {
+  return [...items].sort((first, second) => {
+    return first.symbol.localeCompare(second.symbol, 'zh-CN')
+  })
+}
 
 const resetForm = () => {
   form.contract_id = undefined
@@ -61,7 +69,8 @@ const resetForm = () => {
 const loadContracts = async () => {
   loading.value = true
   try {
-    contracts.value = await getFutureContractList()
+    const response = await getFutureContractList()
+    contracts.value = sortContractsBySymbol(response)
   } catch {
     ElMessage.error('获取期货合约列表失败')
   } finally {
@@ -133,8 +142,33 @@ const formatAutoLoadSegments = (value: number) => {
   return value === 1 ? '自动载入' : '手动载入'
 }
 
+const isFavoriteToggling = (contractId: number) => {
+  return favoriteTogglingIds.value.includes(contractId)
+}
+
+const handleFavoriteToggle = async (row: FutureContract) => {
+  favoriteTogglingIds.value = [...favoriteTogglingIds.value, row.contract_id]
+
+  try {
+    const updatedContract = await updateFutureContract({
+      contract_id: row.contract_id,
+      is_favorite: row.is_favorite === 1 ? 0 : 1,
+    })
+    contracts.value = sortContractsBySymbol(
+      contracts.value.map((item) => {
+        return item.contract_id === updatedContract.contract_id ? updatedContract : item
+      }),
+    )
+    ElMessage.success(updatedContract.is_favorite === 1 ? '已加入收藏' : '已取消收藏')
+  } catch {
+    ElMessage.error('切换合约收藏状态失败')
+  } finally {
+    favoriteTogglingIds.value = favoriteTogglingIds.value.filter((item) => item !== row.contract_id)
+  }
+}
+
 onMounted(() => {
-  loadContracts()
+  void loadContracts()
 })
 </script>
 
@@ -156,10 +190,28 @@ onMounted(() => {
       empty-text="暂无期货合约"
     >
       <el-table-column prop="contract_id" label="ID" width="90" />
-      <el-table-column prop="symbol" label="合约代码" min-width="140" />
+      <el-table-column prop="symbol" label="合约代码" min-width="160">
+        <template #default="{ row }">
+          <div class="symbol-cell">
+            <span class="symbol-text">{{ row.symbol }}</span>
+            <button
+              type="button"
+              class="favorite-button"
+              :class="{ 'favorite-button--active': row.is_favorite === 1 }"
+              :disabled="isFavoriteToggling(row.contract_id)"
+              @click="handleFavoriteToggle(row)"
+            >
+              <el-icon>
+                <StarFilled v-if="row.is_favorite === 1" />
+                <Star v-else />
+              </el-icon>
+            </button>
+          </div>
+        </template>
+      </el-table-column>
       <el-table-column prop="exchange" label="交易所" min-width="120" />
-      <el-table-column prop="name" label="合约品种名称" min-width="180" />
-      <el-table-column prop="auto_load_segments" label="自动载入线段" min-width="120">
+      <el-table-column prop="name" label="合约名称" min-width="180" />
+      <el-table-column prop="auto_load_segments" label="线段载入方式" min-width="120">
         <template #default="{ row }">
           <el-tag :type="row.auto_load_segments === 1 ? 'success' : 'info'">
             {{ formatAutoLoadSegments(row.auto_load_segments) }}
@@ -200,10 +252,10 @@ onMounted(() => {
             />
           </el-select>
         </el-form-item>
-        <el-form-item label="合约品种名称" prop="name">
-          <el-input v-model.trim="form.name" placeholder="请输入合约品种名称" />
+        <el-form-item label="合约名称" prop="name">
+          <el-input v-model.trim="form.name" placeholder="请输入合约名称" />
         </el-form-item>
-        <el-form-item label="自动载入线段" prop="auto_load_segments">
+        <el-form-item label="线段载入方式" prop="auto_load_segments">
           <el-switch
             v-model="form.auto_load_segments"
             :active-value="1"
@@ -243,5 +295,49 @@ onMounted(() => {
   margin: 6px 0 0;
   color: #909399;
   font-size: 13px;
+}
+
+.symbol-cell {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.symbol-text {
+  font-weight: 600;
+  color: #303133;
+}
+
+.favorite-button {
+  width: 28px;
+  height: 28px;
+  flex: 0 0 28px;
+  padding: 0;
+  border: 0;
+  border-radius: 50%;
+  background: transparent;
+  color: #c0c4cc;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  transition:
+    color 0.2s ease,
+    background-color 0.2s ease;
+}
+
+.favorite-button:hover:not(:disabled) {
+  color: #e6a23c;
+  background: rgba(230, 162, 60, 0.1);
+}
+
+.favorite-button:disabled {
+  cursor: not-allowed;
+  opacity: 0.68;
+}
+
+.favorite-button--active {
+  color: #e6a23c;
 }
 </style>

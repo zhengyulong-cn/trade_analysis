@@ -17,6 +17,14 @@ class Settings:
     mysql_port: str = os.getenv("MYSQL_PORT", "3306")
     mysql_database: str = os.getenv("MYSQL_DATABASE", "trade_analysis_mysql")
     sqlalchemy_echo: bool = os.getenv("SQLALCHEMY_ECHO", "false").lower() == "true"
+    market_data_kline_provider: str = os.getenv(
+        "MARKET_DATA_KLINE_PROVIDER", "tqsdk"
+    )
+    tqsdk_username: str = os.getenv("TQSDK_USERNAME", "Zhengyu")
+    tqsdk_password: str = os.getenv("TQSDK_PASSWORD", "lzy523024")
+    tqsdk_web_gui: bool = os.getenv("TQSDK_WEB_GUI", "false").lower() == "true"
+    tqsdk_kline_length: int = int(os.getenv("TQSDK_KLINE_LENGTH", "1000"))
+    tqsdk_wait_timeout_seconds: int = int(os.getenv("TQSDK_WAIT_TIMEOUT_SECONDS", "15"))
 
     @property
     def database_url(self) -> str:

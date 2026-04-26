@@ -1,8 +1,5 @@
 from datetime import datetime
-from decimal import Decimal
 
-import akshare as ak
-import pandas as pd
 from fastapi import HTTPException, status
 from sqlmodel import Session, func, select
 
@@ -10,11 +7,6 @@ from app.models.contract import Contract
 from app.models.contract_interval import ContractInterval
 from app.models.kline_data import KlineData
 from app.schemas.kline_data import (
-    AkshareBulkSyncError,
-    AkshareBulkSyncRequest,
-    AkshareBulkSyncResult,
-    AkshareSyncRequest,
-    AkshareSyncResult,
     KlineBarInput,
     KlineBatchCreate,
     KlineBatchWriteResult,
@@ -27,12 +19,19 @@ from app.schemas.kline_data import (
     KlineListResult,
     KlineDataQueryResult,
     KlinePage,
+    MarketDataBulkSyncError,
+    MarketDataBulkSyncRequest,
+    MarketDataBulkSyncResult,
+    MarketDataSyncRequest,
+    MarketDataSyncResult,
 )
+from app.services.market_data import KlineProvider, MarketKlineBar
 
 
 class KlineService:
-    def __init__(self, session: Session):
+    def __init__(self, session: Session, kline_provider: KlineProvider):
         self.session = session
+        self.kline_provider = kline_provider
 
     def create_kline(self, payload: KlineDataCreate) -> KlineData:
         result = self.create_klines_batch(
@@ -122,7 +121,7 @@ class KlineService:
         self,
         symbol: str,
         interval_seconds: int,
-        limit: int = 500,
+        limit: int = 1000,
         start_time: datetime | None = None,
         end_time: datetime | None = None,
     ) -> KlineListResult:
@@ -261,23 +260,29 @@ class KlineService:
         kline, contract, interval = row
         return self._map_query_row(kline, contract, interval)
 
-    def sync_from_akshare(self, payload: AkshareSyncRequest) -> AkshareSyncResult:
+    def sync_from_market_data(
+        self,
+        payload: MarketDataSyncRequest,
+    ) -> MarketDataSyncResult:
         contract = self._get_contract_by_symbol(payload.symbol)
         interval = self._get_interval_by_seconds(payload.interval)
-        period = self._convert_interval_to_akshare_period(interval.seconds)
 
         try:
-            dataframe = ak.futures_zh_minute_sina(
+            fetch_result = self.kline_provider.get_klines(
                 symbol=contract.symbol,
-                period=period,
+                exchange=contract.exchange,
+                interval_seconds=interval.seconds,
             )
         except Exception as exc:
             raise HTTPException(
                 status_code=status.HTTP_502_BAD_GATEWAY,
-                detail=f"Failed to fetch kline data from akshare: {exc}",
+                detail=(
+                    "Failed to fetch kline data from "
+                    f"{self.kline_provider.provider}: {exc}"
+                ),
             ) from exc
 
-        fetched_items = self._convert_akshare_klines_to_inputs(dataframe)
+        fetched_items = self._convert_market_klines_to_inputs(fetch_result.bars)
         latest_kline = self._get_latest_kline_row(
             contract_id=contract.contract_id,
             interval_id=interval.contract_interval_id,
@@ -287,10 +292,11 @@ class KlineService:
             latest_kline=latest_kline,
         )
         if not items:
-            return AkshareSyncResult(
+            return MarketDataSyncResult(
                 symbol=payload.symbol,
                 interval=payload.interval,
-                ak_symbol=contract.symbol,
+                provider=fetch_result.provider,
+                provider_symbol=fetch_result.provider_symbol,
                 requested=0,
                 inserted=0,
                 updated=0,
@@ -303,36 +309,40 @@ class KlineService:
                 items=items,
             )
         )
-        return AkshareSyncResult(
+        return MarketDataSyncResult(
             symbol=payload.symbol,
             interval=payload.interval,
-            ak_symbol=contract.symbol,
+            provider=fetch_result.provider,
+            provider_symbol=fetch_result.provider_symbol,
             requested=len(items),
             inserted=write_result.inserted,
             updated=write_result.updated,
         )
 
-    def sync_bulk_from_akshare(
+    def sync_from_tqsdk(self, payload: MarketDataSyncRequest) -> MarketDataSyncResult:
+        return self.sync_from_market_data(payload)
+
+    def sync_bulk_from_market_data(
         self,
-        payload: AkshareBulkSyncRequest,
-    ) -> AkshareBulkSyncResult:
+        payload: MarketDataBulkSyncRequest,
+    ) -> MarketDataBulkSyncResult:
         contracts = self._list_contracts_for_sync(payload.symbols)
         intervals = self._list_intervals_for_sync(payload.intervals)
         total = len(contracts) * len(intervals)
-        items: list[AkshareSyncResult] = []
-        errors: list[AkshareBulkSyncError] = []
+        items: list[MarketDataSyncResult] = []
+        errors: list[MarketDataBulkSyncError] = []
 
         for contract in contracts:
             for interval in intervals:
-                request = AkshareSyncRequest(
+                request = MarketDataSyncRequest(
                     symbol=contract.symbol,
                     interval=interval.seconds,
                 )
                 try:
-                    items.append(self.sync_from_akshare(request))
+                    items.append(self.sync_from_market_data(request))
                 except HTTPException as exc:
                     errors.append(
-                        AkshareBulkSyncError(
+                        MarketDataBulkSyncError(
                             symbol=contract.symbol,
                             interval=interval.seconds,
                             detail=self._format_exception_detail(exc.detail),
@@ -340,14 +350,14 @@ class KlineService:
                     )
                 except Exception as exc:
                     errors.append(
-                        AkshareBulkSyncError(
+                        MarketDataBulkSyncError(
                             symbol=contract.symbol,
                             interval=interval.seconds,
                             detail=str(exc),
                         )
                     )
 
-        return AkshareBulkSyncResult(
+        return MarketDataBulkSyncResult(
             total=total,
             succeeded=len(items),
             failed=len(errors),
@@ -357,6 +367,12 @@ class KlineService:
             items=items,
             errors=errors,
         )
+
+    def sync_bulk_from_tqsdk(
+        self,
+        payload: MarketDataBulkSyncRequest,
+    ) -> MarketDataBulkSyncResult:
+        return self.sync_bulk_from_market_data(payload)
 
     def _build_kline_query(
         self,
@@ -490,73 +506,28 @@ class KlineService:
             )
         return kline
 
-    def _convert_akshare_klines_to_inputs(
+    def _convert_market_klines_to_inputs(
         self,
-        dataframe: pd.DataFrame,
+        bars: list[MarketKlineBar],
     ) -> list[KlineBarInput]:
-        items: list[KlineBarInput] = []
-        if dataframe.empty:
-            return items
-
-        filtered = dataframe.dropna(
-            subset=["datetime", "open", "close", "high", "low"]
-        ).tail(500)
-        for row in filtered.to_dict(orient="records"):
-            items.append(
-                KlineBarInput(
-                    open=self._to_decimal(row["open"]),
-                    close=self._to_decimal(row["close"]),
-                    high=self._to_decimal(row["high"]),
-                    low=self._to_decimal(row["low"]),
-                    volume=self._to_decimal(row.get("volume", 0)),
-                    hold=self._to_decimal(row.get("hold", 0)),
-                    date_time=self._normalize_akshare_datetime(row["datetime"]),
-                )
+        return [
+            KlineBarInput(
+                open=bar.open,
+                close=bar.close,
+                high=bar.high,
+                low=bar.low,
+                volume=bar.volume,
+                hold=bar.hold,
+                date_time=bar.date_time,
             )
-        return items
-
-    def _convert_interval_to_akshare_period(self, interval_seconds: int) -> str:
-        if interval_seconds % 60 != 0:
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail=(
-                    "Akshare minute interface requires interval in whole minutes, "
-                    f"got {interval_seconds} seconds"
-                ),
-            )
-
-        period = interval_seconds // 60
-        if period not in {1, 5, 15, 30, 60}:
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail=(
-                    "Akshare futures_zh_minute_sina supports only "
-                    "1, 5, 15, 30, 60 minute periods"
-                ),
-            )
-        return str(period)
-
-    def _normalize_akshare_datetime(self, raw_datetime: object) -> datetime:
-        timestamp = pd.to_datetime(raw_datetime, errors="coerce")
-        if pd.isna(timestamp):
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail=f"Invalid akshare datetime value: {raw_datetime}",
-            )
-        if hasattr(timestamp, "to_pydatetime"):
-            return timestamp.to_pydatetime().replace(tzinfo=None)
-        return timestamp.replace(tzinfo=None)
+            for bar in bars
+        ]
 
     def _normalize_datetime(self, value: datetime) -> datetime:
         return value.replace(tzinfo=None)
 
     def _canonical_datetime_key(self, value: datetime) -> str:
         return self._normalize_datetime(value).isoformat()
-
-    def _to_decimal(self, value: object) -> Decimal:
-        if value is None or pd.isna(value):
-            return Decimal("0")
-        return Decimal(str(value))
 
     def _get_contract_by_symbol(self, symbol: str) -> Contract:
         statement = select(Contract).where(Contract.symbol == symbol)

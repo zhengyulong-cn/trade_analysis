@@ -58,6 +58,10 @@ const PERIOD_OPTIONS = [
   { label: '4H', value: 60 * 60 * 4 },
 ]
 
+const FAVORITE_ON_SUCCESS = '已加入收藏'
+const FAVORITE_OFF_SUCCESS = '已取消收藏'
+const FAVORITE_TOGGLE_ERROR = '切换合约收藏状态失败'
+
 const createEmptyChartData = (): FutureKlineData => ({
   contract_id: 0,
   symbol: '',
@@ -131,6 +135,25 @@ const contractOptions = computed(() => {
 })
 const latestBar = computed(() => {
   return chartData.value.kLineList[chartData.value.kLineList.length - 1]
+})
+const sortedContractOptions = computed(() => {
+  return [...contractOptions.value].sort((first, second) => {
+    const firstContract = contracts.value.find((contract) => contract.symbol === first.value)
+    const secondContract = contracts.value.find((contract) => contract.symbol === second.value)
+    const firstFavorite = firstContract?.is_favorite ?? 0
+    const secondFavorite = secondContract?.is_favorite ?? 0
+
+    if (firstFavorite !== secondFavorite) {
+      return secondFavorite - firstFavorite
+    }
+    return first.value.localeCompare(second.value, 'zh-CN')
+  }).map((option) => {
+    const contract = contracts.value.find((item) => item.symbol === option.value)
+    return {
+      ...option,
+      isFavorite: contract?.is_favorite === 1,
+    }
+  })
 })
 const summaryBar = computed(() => {
   return activeKLineBar.value ?? latestBar.value
@@ -398,6 +421,12 @@ const loadContracts = async () => {
   }
 }
 
+const applyUpdatedContract = (updatedContract: FutureContract) => {
+  contracts.value = contracts.value.map((item) => {
+    return item.contract_id === updatedContract.contract_id ? updatedContract : item
+  })
+}
+
 const loadKLineData = async () => {
   if (!selectedSymbol.value) {
     chartData.value = createEmptyChartData()
@@ -635,9 +664,7 @@ const handleSegmentAutoLoadToggle = async () => {
       contract_id: contract.contract_id,
       auto_load_segments: nextValue,
     })
-    contracts.value = contracts.value.map((item) => {
-      return item.contract_id === updatedContract.contract_id ? updatedContract : item
-    })
+    applyUpdatedContract(updatedContract)
     ElMessage.success(nextValue === 1 ? AUTO_LOAD_SEGMENT_ON_SUCCESS : AUTO_LOAD_SEGMENT_OFF_SUCCESS)
 
     if (nextValue === 1) {
@@ -645,6 +672,24 @@ const handleSegmentAutoLoadToggle = async () => {
     }
   } catch (error) {
     ElMessage.error(extractErrorMessage(error, AUTO_LOAD_SEGMENT_ERROR))
+  }
+}
+
+const handleContractFavoriteToggle = async (symbol: string) => {
+  const contract = contracts.value.find((item) => item.symbol === symbol)
+  if (!contract) {
+    return
+  }
+
+  try {
+    const updatedContract = await updateFutureContract({
+      contract_id: contract.contract_id,
+      is_favorite: contract.is_favorite === 1 ? 0 : 1,
+    })
+    applyUpdatedContract(updatedContract)
+    ElMessage.success(updatedContract.is_favorite === 1 ? FAVORITE_ON_SUCCESS : FAVORITE_OFF_SUCCESS)
+  } catch (error) {
+    ElMessage.error(extractErrorMessage(error, FAVORITE_TOGGLE_ERROR))
   }
 }
 
@@ -672,7 +717,7 @@ onMounted(() => {
       :available="hasContracts"
       :selected-contract="selectedSymbol"
       :selected-period="selectedPeriod"
-      :contract-options="contractOptions"
+      :contract-options="sortedContractOptions"
       :period-options="PERIOD_OPTIONS"
       :contract-loading="contractsLoading"
       :contract-disabled="!hasContracts"
@@ -695,6 +740,7 @@ onMounted(() => {
       @segment-build-request="handleBuildSegments"
       @segment-load-request="handleLoadSegments"
       @segment-auto-load-toggle="handleSegmentAutoLoadToggle"
+      @contract-favorite-toggle="handleContractFavoriteToggle"
     />
   </div>
 </template>
