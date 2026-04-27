@@ -648,6 +648,14 @@ const createWidget = async () => {
       'long_press_floating_tooltip',
     ],
     enabled_features: ['move_logo_to_main_pane'],
+    // 仅仅保留EMA和MACD指标
+    studies_access: {
+      type: 'white',
+      tools: [
+        { name: 'EMA Cross' },
+        { name: 'MACD' },
+      ],
+    },
     overrides: {
       'paneProperties.background': '#ffffff',
       'paneProperties.vertGridProperties.color': '#f0f2f5',
