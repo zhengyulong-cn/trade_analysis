@@ -939,18 +939,12 @@ const createWidget = async () => {
       ],
     },
     overrides: {
-      'paneProperties.background': '#ffffff',
-      'paneProperties.vertGridProperties.color': '#f0f2f5',
-      'paneProperties.horzGridProperties.color': '#f0f2f5',
-      'paneProperties.crossHairProperties.color': '#9ca3af',
-      'scalesProperties.lineColor': '#ebeef5',
-      'scalesProperties.textColor': '#606266',
-      'mainSeriesProperties.candleStyle.upColor': '#f56c6c',
-      'mainSeriesProperties.candleStyle.downColor': '#67c23a',
-      'mainSeriesProperties.candleStyle.borderUpColor': '#f56c6c',
-      'mainSeriesProperties.candleStyle.borderDownColor': '#67c23a',
-      'mainSeriesProperties.candleStyle.wickUpColor': '#f56c6c',
-      'mainSeriesProperties.candleStyle.wickDownColor': '#67c23a',
+      'mainSeriesProperties.candleStyle.upColor': '#F23645',
+      'mainSeriesProperties.candleStyle.downColor': '#089981',
+      'mainSeriesProperties.candleStyle.borderUpColor': '#F23645',
+      'mainSeriesProperties.candleStyle.borderDownColor': '#089981',
+      'mainSeriesProperties.candleStyle.wickUpColor': '#F23645',
+      'mainSeriesProperties.candleStyle.wickDownColor': '#089981',
       'mainSeriesProperties.showPriceLine': true,
       'mainSeriesProperties.priceLineWidth': 1,
       'mainSeriesProperties.priceAxisProperties.autoScale': true,
@@ -962,16 +956,19 @@ const createWidget = async () => {
     if (!currentWidget || token !== createWidgetToken) {
       return
     }
+    const shouldApplyInitialVisibleRange = !persistence?.chart_content
 
     crossHairHandler = (params) => {
       emitCrosshairBar(params.time)
     }
     currentWidget.activeChart().crossHairMoved().subscribe(null, crossHairHandler)
 
-    onDataLoadedHandler = () => {
-      void applyVisibleRange()
+    if (shouldApplyInitialVisibleRange) {
+      onDataLoadedHandler = () => {
+        void applyVisibleRange()
+      }
+      currentWidget.activeChart().onDataLoaded().subscribe(null, onDataLoadedHandler, true)
     }
-    currentWidget.activeChart().onDataLoaded().subscribe(null, onDataLoadedHandler)
 
     onSymbolChangedHandler = (symbol) => {
       const nextSymbol = symbol.ticker || symbol.name
@@ -996,7 +993,11 @@ const createWidget = async () => {
 
     void (async () => {
       await restoreChartPersistence(currentWidget, persistence, token, persistenceSymbol, persistenceInterval)
-      if (token === createWidgetToken && widget === currentWidget) {
+      if (
+        shouldApplyInitialVisibleRange
+        && token === createWidgetToken
+        && widget === currentWidget
+      ) {
         void applyVisibleRange()
       }
     })()
