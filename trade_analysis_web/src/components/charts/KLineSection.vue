@@ -1,6 +1,5 @@
 <script setup lang="ts">
 import type { ChartOptions, DeepPartial } from 'lightweight-charts'
-import { computed } from 'vue'
 import KLineChart from './KLineChart.vue'
 
 interface KLineItem {
@@ -111,8 +110,6 @@ const props = withDefaults(
   },
 )
 
-const hasChartData = computed(() => props.chartData.kLineList.length > 0)
-
 const handleSelectedContractChange = (value: string) => {
   emit('update:selectedContract', value)
 }
@@ -155,7 +152,6 @@ const handleSegmentAutoLoadToggle = () => {
     <template v-if="available">
       <div class="chart-card">
         <KLineChart
-          v-if="hasChartData"
           :data="chartData"
           :selected-contract="selectedContract"
           :selected-period="selectedPeriod"
@@ -176,10 +172,8 @@ const handleSegmentAutoLoadToggle = () => {
           @segment-load-request="handleSegmentLoadRequest"
           @segment-auto-load-toggle="handleSegmentAutoLoadToggle"
         />
-        <el-empty v-else class="chart-empty" :description="emptyDescription" />
       </div>
     </template>
-
     <el-empty v-else :description="unavailableDescription" />
   </section>
 </template>
@@ -197,13 +191,6 @@ const handleSegmentAutoLoadToggle = () => {
   border: 1px solid #ebeef5;
   border-radius: 12px;
   overflow: hidden;
-}
-
-.chart-empty {
-  min-height: 640px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
 }
 
 @media (max-width: 640px) {

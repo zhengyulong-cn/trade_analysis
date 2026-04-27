@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { INITIAL_VISIBLE_K_LINE_COUNT } from '@/constants/chart'
 import { computed, onMounted, onUnmounted, ref, watch } from 'vue'
+import ChartSidebar from './ChartSidebar.vue'
 
 interface KLineItem {
   time: number
@@ -615,11 +616,6 @@ const createWidget = async () => {
   const token = ++createWidgetToken
   const kLineList = getSortedKLineList()
 
-  if (!kLineList.length) {
-    teardownWidget()
-    return
-  }
-
   await loadChartingLibrary()
 
   if (token !== createWidgetToken || !chartContainer.value || !window.TradingView?.widget) {
@@ -646,15 +642,10 @@ const createWidget = async () => {
     fullscreen: false,
     theme: 'Light',
     disabled_features: [
-      'use_localstorage_for_settings',
-      'display_market_status',
-      'compare_symbol',
       'header_compare',
-      'header_undo_redo',
-      'header_screenshot',
-      'header_saveload',
-      'show_object_tree',
-      'go_to_date',
+      'use_localstorage_for_settings',
+      'popup_hints',
+      'long_press_floating_tooltip',
     ],
     enabled_features: ['move_logo_to_main_pane'],
     overrides: {
@@ -762,6 +753,11 @@ defineExpose({
 <template>
   <div class="tv-chart-wrap">
     <div ref="chartContainer" class="tv-chart"></div>
+    <ChartSidebar
+      :contract-options="contractOptions"
+      :selected-contract="selectedContract"
+      @update:selected-contract="emit('update:selectedContract', $event)"
+    />
   </div>
 </template>
 
