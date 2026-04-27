@@ -23,19 +23,11 @@ import { toChartTimestampSeconds } from '@/utils/date'
 import { computed, onMounted, ref, watch } from 'vue'
 
 const DEFAULT_PERIOD = 60 * 5
-const PAGE_TITLE = '期货 K 线'
-const PAGE_SUBTITLE = '选择合约和周期，查看对应的 K 线走势。'
 const CONTRACT_PLACEHOLDER = '请选择合约'
 const CONTRACT_LIST_ERROR = '获取合约列表失败'
 const KLINE_DATA_ERROR = '获取 K 线数据失败'
 const EMPTY_DESCRIPTION = '当前条件下暂无 K 线数据'
 const UNAVAILABLE_DESCRIPTION = '请先在合约管理中创建期货合约'
-const LABEL_OPEN = '开盘'
-const LABEL_CLOSE = '收盘'
-const LABEL_HIGH = '最高'
-const LABEL_LOW = '最低'
-const LABEL_EMA20 = 'EMA20'
-const LABEL_EMA120 = 'EMA120'
 
 const BUILD_SEGMENT_SUCCESS = '构建段分析完成，已打印接口返回'
 const BUILD_SEGMENT_ERROR = '构建段分析失败'
@@ -117,7 +109,6 @@ const loadSegmentLoading = ref(false)
 const updateSegmentLoading = ref(false)
 const chartData = ref<FutureKlineData>(createEmptyChartData())
 const loadedSegmentLines = ref<ChartSegmentLineItem[]>([])
-const activeKLineBar = ref<FutureKlineData['kLineList'][number] | null>(null)
 
 const hasContracts = computed(() => contracts.value.length > 0)
 const canBuildSegments = computed(() => Boolean(selectedSymbol.value))
@@ -132,9 +123,6 @@ const contractOptions = computed(() => {
     value: contract.symbol,
     description: contract.name,
   }))
-})
-const latestBar = computed(() => {
-  return chartData.value.kLineList[chartData.value.kLineList.length - 1]
 })
 const sortedContractOptions = computed(() => {
   return [...contractOptions.value].sort((first, second) => {
@@ -154,60 +142,6 @@ const sortedContractOptions = computed(() => {
       isFavorite: contract?.is_favorite === 1,
     }
   })
-})
-const summaryBar = computed(() => {
-  return activeKLineBar.value ?? latestBar.value
-})
-const summaryTone = computed<'up' | 'down' | 'neutral'>(() => {
-  const bar = summaryBar.value
-
-  if (!bar) {
-    return 'neutral'
-  }
-
-  if (bar.close > bar.open) {
-    return 'up'
-  }
-
-  if (bar.close < bar.open) {
-    return 'down'
-  }
-
-  return 'neutral'
-})
-const summaryItems = computed(() => {
-  return [
-    {
-      label: LABEL_OPEN,
-      value: formatPrice(summaryBar.value?.open),
-      tone: summaryTone.value,
-    },
-    {
-      label: LABEL_CLOSE,
-      value: formatPrice(summaryBar.value?.close),
-      tone: summaryTone.value,
-    },
-    {
-      label: LABEL_HIGH,
-      value: formatPrice(summaryBar.value?.high),
-      tone: summaryTone.value,
-    },
-    {
-      label: LABEL_LOW,
-      value: formatPrice(summaryBar.value?.low),
-      tone: summaryTone.value,
-    },
-    {
-      label: LABEL_EMA20,
-      value: formatPrice(summaryBar.value?.ema20),
-      tone: 'neutral' as const,
-    },
-    {
-      label: LABEL_EMA120,
-      value: formatPrice(summaryBar.value?.ema120),
-      tone: 'neutral' as const,
-    },
-  ]
 })
 const chartOptions = computed<DeepPartial<ChartOptions>>(() => ({
   grid: {
@@ -241,17 +175,6 @@ const extractErrorMessage = (error: unknown, fallback: string) => {
   }
 
   return fallback
-}
-
-const formatPrice = (value?: number) => {
-  if (value === undefined) {
-    return '--'
-  }
-
-  return value.toLocaleString('zh-CN', {
-    minimumFractionDigits: 2,
-    maximumFractionDigits: 4,
-  })
 }
 
 const clearLoadedSegments = () => {
@@ -401,7 +324,6 @@ const loadContracts = async () => {
     if (!response.length) {
       selectedSymbol.value = ''
       chartData.value = createEmptyChartData()
-      activeKLineBar.value = null
       return
     }
 
@@ -430,7 +352,6 @@ const applyUpdatedContract = (updatedContract: FutureContract) => {
 const loadKLineData = async () => {
   if (!selectedSymbol.value) {
     chartData.value = createEmptyChartData()
-    activeKLineBar.value = null
     return
   }
 
@@ -448,7 +369,6 @@ const loadKLineData = async () => {
     }
 
     chartData.value = response
-    activeKLineBar.value = null
 
     if (autoLoadSegments.value) {
       await loadSegmentsForCurrentSelection({ silent: true })
@@ -459,7 +379,6 @@ const loadKLineData = async () => {
     }
 
     chartData.value = createEmptyChartData()
-    activeKLineBar.value = null
     ElMessage.error(KLINE_DATA_ERROR)
   } finally {
     if (requestId === latestRequestId) {
@@ -705,13 +624,6 @@ onMounted(() => {
 
 <template>
   <div class="pageBox future-detail">
-    <header class="page-header">
-      <div>
-        <h2 class="title">{{ PAGE_TITLE }}</h2>
-        <p class="subtitle">{{ PAGE_SUBTITLE }}</p>
-      </div>
-    </header>
-
     <KLineSection
       :loading="chartLoading"
       :available="hasContracts"
@@ -727,27 +639,23 @@ onMounted(() => {
       :can-build-segments="canBuildSegments && !buildSegmentLoading"
       :can-load-segments="canLoadSegments && !loadSegmentLoading"
       :auto-load-segments="autoLoadSegments"
-      :summary-items="summaryItems"
       :chart-options="chartOptions"
       :empty-description="EMPTY_DESCRIPTION"
       :unavailable-description="UNAVAILABLE_DESCRIPTION"
       @update:selected-contract="selectedSymbol = $event"
       @update:selected-period="selectedPeriod = Number($event)"
-      @hover-kline-change="activeKLineBar = $event"
       @segment-line-change="handleSegmentLineChange"
       @segment-line-create="handleSegmentLineCreate"
       @segment-line-delete="handleSegmentLineDelete"
       @segment-build-request="handleBuildSegments"
       @segment-load-request="handleLoadSegments"
       @segment-auto-load-toggle="handleSegmentAutoLoadToggle"
-      @contract-favorite-toggle="handleContractFavoriteToggle"
     />
   </div>
 </template>
 
 <style lang="less" scoped>
 .future-detail {
-  padding: 16px;
   display: flex;
   flex-direction: column;
   gap: 16px;

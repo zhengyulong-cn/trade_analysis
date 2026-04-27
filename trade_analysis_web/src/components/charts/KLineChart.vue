@@ -49,6 +49,18 @@ interface SegmentLineDelete {
   segment: SegmentLineItem
 }
 
+interface ContractOption {
+  label: string
+  value: string
+  description?: string
+  isFavorite?: boolean
+}
+
+interface PeriodOption {
+  label: string
+  value: number | string
+}
+
 interface TradingViewBar {
   time: number
   open: number
@@ -68,6 +80,11 @@ interface TradingViewActiveChart {
     time?: number
   }]>
   onDataLoaded: () => TradingViewSubscription<[]>
+  onSymbolChanged: () => TradingViewSubscription<[{
+    name: string
+    ticker?: string
+  }]>
+  onIntervalChanged: () => TradingViewSubscription<[string, Record<string, unknown>]>
   setVisibleRange: (range: { from: number; to: number }, options?: Record<string, unknown>) => Promise<void>
 }
 
@@ -100,6 +117,10 @@ const props = withDefaults(
       symbol?: string
       name?: string
     }
+    selectedContract?: string
+    selectedPeriod?: number | string
+    contractOptions?: ContractOption[]
+    periodOptions?: PeriodOption[]
     segmentLines?: SegmentLineItem[]
     autosize?: boolean
     canBuildSegments?: boolean
@@ -108,6 +129,10 @@ const props = withDefaults(
     commonChartOptions?: Record<string, unknown>
   }>(),
   {
+    selectedContract: '',
+    selectedPeriod: '',
+    contractOptions: () => [],
+    periodOptions: () => [],
     segmentLines: () => [],
     autosize: true,
     canBuildSegments: true,
@@ -118,6 +143,8 @@ const props = withDefaults(
 )
 
 const emit = defineEmits<{
+  'update:selectedContract': [value: string]
+  'update:selectedPeriod': [value: number | string]
   'crosshair-move': [value: KLineItem | null]
   'segment-line-change': [value: SegmentLineChange]
   'segment-line-create': [value: SegmentLineCreate]
@@ -132,11 +159,13 @@ const chartContainer = ref<HTMLDivElement | null>(null)
 let widget: TradingViewWidget | null = null
 let crossHairHandler: ((params: { time?: number }) => void) | null = null
 let onDataLoadedHandler: (() => void) | null = null
+let onSymbolChangedHandler: ((symbol: { name: string; ticker?: string }) => void) | null = null
+let onIntervalChangedHandler: ((interval: string, timeFrameParameters: Record<string, unknown>) => void) | null = null
 let createWidgetToken = 0
 let libraryPromise: Promise<void> | null = null
 
 const symbolName = computed(() => {
-  return props.data.symbol?.trim() || props.data.name?.trim() || DEFAULT_SYMBOL
+  return props.selectedContract?.trim() || props.data.symbol?.trim() || props.data.name?.trim() || DEFAULT_SYMBOL
 })
 
 const normalizeTimeToMilliseconds = (value: number) => {
@@ -152,7 +181,80 @@ const getSortedKLineList = () => {
   return [...(props.data.kLineList ?? [])].sort((first, second) => first.time - second.time)
 }
 
+const resolutionFromPeriodValue = (value: number | string) => {
+  const period = Number(value)
+  if (!Number.isFinite(period) || period <= 0) {
+    return DEFAULT_RESOLUTION
+  }
+
+  const minutes = Math.round(period / 60)
+  if (minutes <= 0) {
+    return DEFAULT_RESOLUTION
+  }
+
+  if (minutes % (60 * 24) === 0) {
+    const days = minutes / (60 * 24)
+    return days === 1 ? '1D' : `${days}D`
+  }
+
+  return String(minutes)
+}
+
+const periodValueFromResolution = (resolution: string) => {
+  const normalized = resolution.trim().toUpperCase()
+
+  if (/^\d+$/.test(normalized)) {
+    return Number(normalized) * 60
+  }
+
+  const match = normalized.match(/^(\d+)([DWM])$/)
+  if (!match) {
+    return props.selectedPeriod || DEFAULT_RESOLUTION
+  }
+
+  const amount = Number(match[1])
+  const unit = match[2]
+  if (!Number.isFinite(amount) || amount <= 0) {
+    return props.selectedPeriod || DEFAULT_RESOLUTION
+  }
+
+  if (unit === 'D') {
+    return amount * 24 * 60 * 60
+  }
+  if (unit === 'W') {
+    return amount * 7 * 24 * 60 * 60
+  }
+  return amount * 30 * 24 * 60 * 60
+}
+
+const getSupportedResolutions = () => {
+  const resolutions = props.periodOptions
+    .map((option) => resolutionFromPeriodValue(option.value))
+    .filter((value, index, list) => Boolean(value) && list.indexOf(value) === index)
+
+  if (resolutions.length) {
+    return resolutions
+  }
+
+  return ['1', '5', '15', '30', '60', '120', '240', '1D']
+}
+
+const getTimeFrames = () => {
+  const fallbackTexts = ['1D', '5D', '1M', '3M', '6M', '12M']
+
+  return props.periodOptions.map((option, index) => ({
+    text: fallbackTexts[index] ?? '12M',
+    resolution: resolutionFromPeriodValue(option.value),
+    title: option.label,
+    description: option.label,
+  }))
+}
+
 const getBarResolution = (kLineList: KLineItem[]) => {
+  if (props.selectedPeriod !== '' && props.selectedPeriod !== undefined) {
+    return resolutionFromPeriodValue(props.selectedPeriod)
+  }
+
   if (kLineList.length < 2) {
     return DEFAULT_RESOLUTION
   }
@@ -219,14 +321,23 @@ const getTradingViewBars = (kLineList: KLineItem[]): TradingViewBar[] => {
   }))
 }
 
+const getRequestedSymbol = (symbolInfo: Record<string, unknown>) => {
+  const ticker = typeof symbolInfo.ticker === 'string' ? symbolInfo.ticker : ''
+  const name = typeof symbolInfo.name === 'string' ? symbolInfo.name : ''
+  return ticker || name
+}
+
 const createDatafeed = (bars: TradingViewBar[], resolution: string, name: string) => {
   const priceScale = getPriceScale(getSortedKLineList()) || DEFAULT_PRICE_SCALE
+  const supportedResolutions = getSupportedResolutions()
+  const currentSymbol = symbolName.value
+  const availableContracts = props.contractOptions
 
   return {
     onReady(callback: (config: Record<string, unknown>) => void) {
       window.setTimeout(() => {
         callback({
-          supported_resolutions: ['1', '5', '15', '30', '60', '120', '240', '1D'],
+          supported_resolutions: supportedResolutions,
           supports_marks: false,
           supports_timescale_marks: false,
           supports_time: false,
@@ -240,32 +351,38 @@ const createDatafeed = (bars: TradingViewBar[], resolution: string, name: string
       onResult: (items: Array<Record<string, string>>) => void,
     ) {
       const keyword = userInput.trim().toLowerCase()
-      const candidate = {
-        symbol: name,
-        full_name: name,
-        description: name,
-        exchange: 'LOCAL',
-        ticker: name,
-        type: 'futures',
-      }
+      const candidates = (availableContracts.length ? availableContracts : [{ value: name, description: name }])
+        .filter((contract) => {
+          if (!keyword) {
+            return true
+          }
 
-      if (!keyword || name.toLowerCase().includes(keyword)) {
-        onResult([candidate])
-        return
-      }
+          const description = contract.description?.toLowerCase() ?? ''
+          return contract.value.toLowerCase().includes(keyword) || description.includes(keyword)
+        })
+        .map((contract) => ({
+          symbol: contract.value,
+          full_name: contract.value,
+          description: contract.description ?? contract.value,
+          exchange: 'LOCAL',
+          ticker: contract.value,
+          type: 'futures',
+        }))
 
-      onResult([])
+      onResult(candidates)
     },
     resolveSymbol(
       requestedSymbol: string,
       onResolve: (symbolInfo: Record<string, unknown>) => void,
       _onError: (reason: string) => void,
     ) {
+      const matchedContract = availableContracts.find((contract) => contract.value === requestedSymbol)
+
       window.setTimeout(() => {
         onResolve({
           ticker: requestedSymbol,
           name: requestedSymbol,
-          description: requestedSymbol,
+          description: matchedContract?.description ?? requestedSymbol,
           type: 'futures',
           session: '24x7',
           timezone: 'Asia/Shanghai',
@@ -275,19 +392,24 @@ const createDatafeed = (bars: TradingViewBar[], resolution: string, name: string
           has_intraday: true,
           has_daily: true,
           has_weekly_and_monthly: false,
-          supported_resolutions: ['1', '5', '15', '30', '60', '120', '240', '1D'],
+          supported_resolutions: supportedResolutions,
           volume_precision: 0,
           data_status: 'endofday',
         })
       }, 0)
     },
     getBars(
-      _symbolInfo: Record<string, unknown>,
+      symbolInfo: Record<string, unknown>,
       _requestedResolution: string,
       periodParams: { from: number; to: number },
       onResult: (history: TradingViewBar[], meta: { noData?: boolean }) => void,
       _onError: (reason: string) => void,
     ) {
+      if (getRequestedSymbol(symbolInfo) !== currentSymbol) {
+        onResult([], { noData: true })
+        return
+      }
+
       const fromMilliseconds = periodParams.from * 1000
       const toMilliseconds = periodParams.to * 1000
       const filteredBars = bars.filter((bar) => bar.time >= fromMilliseconds && bar.time <= toMilliseconds)
@@ -350,6 +472,14 @@ const teardownWidget = () => {
     if (onDataLoadedHandler) {
       widget.activeChart().onDataLoaded().unsubscribe(null, onDataLoadedHandler)
       onDataLoadedHandler = null
+    }
+    if (onSymbolChangedHandler) {
+      widget.activeChart().onSymbolChanged().unsubscribe(null, onSymbolChangedHandler)
+      onSymbolChangedHandler = null
+    }
+    if (onIntervalChangedHandler) {
+      widget.activeChart().onIntervalChanged().unsubscribe(null, onIntervalChangedHandler)
+      onIntervalChangedHandler = null
     }
     widget.remove()
     widget = null
@@ -433,27 +563,22 @@ const createWidget = async () => {
     datafeed,
     symbol: symbolName.value,
     interval: resolution,
+    time_frames: getTimeFrames(),
     locale: 'zh',
     timezone: 'Asia/Shanghai',
     autosize: props.autosize,
     fullscreen: false,
     theme: 'Light',
     disabled_features: [
-      // 'header_widget',
-      // 'timeframes_toolbar',
-      // 'use_localstorage_for_settings',
-      // 'display_market_status',
-      // 'symbol_search_hot_key',
-      // 'compare_symbol',
-      // 'header_compare',
-      // 'header_symbol_search',
-      // 'header_undo_redo',
-      // 'header_screenshot',
-      // 'header_saveload',
-      // 'header_indicators',
-      // 'header_settings',
-      // 'show_object_tree',
-      // 'go_to_date',
+      'use_localstorage_for_settings',
+      'display_market_status',
+      'compare_symbol',
+      'header_compare',
+      'header_undo_redo',
+      'header_screenshot',
+      'header_saveload',
+      'show_object_tree',
+      'go_to_date',
     ],
     enabled_features: ['move_logo_to_main_pane'],
     overrides: {
@@ -490,6 +615,22 @@ const createWidget = async () => {
     }
     widget.activeChart().onDataLoaded().subscribe(null, onDataLoadedHandler)
 
+    onSymbolChangedHandler = (symbol) => {
+      const nextSymbol = symbol.ticker || symbol.name
+      if (nextSymbol && nextSymbol !== props.selectedContract) {
+        emit('update:selectedContract', nextSymbol)
+      }
+    }
+    widget.activeChart().onSymbolChanged().subscribe(null, onSymbolChangedHandler)
+
+    onIntervalChangedHandler = (interval) => {
+      const nextPeriod = periodValueFromResolution(interval)
+      if (String(nextPeriod) !== String(props.selectedPeriod)) {
+        emit('update:selectedPeriod', nextPeriod)
+      }
+    }
+    widget.activeChart().onIntervalChanged().subscribe(null, onIntervalChangedHandler)
+
     void applyVisibleRange()
   })
 }
@@ -504,7 +645,15 @@ onUnmounted(() => {
 })
 
 watch(
-  () => [props.data.kLineList, props.data.symbol, props.data.name],
+  () => [
+    props.data.kLineList,
+    props.data.symbol,
+    props.data.name,
+    props.selectedContract,
+    props.selectedPeriod,
+    props.contractOptions,
+    props.periodOptions,
+  ],
   () => {
     emit('crosshair-move', null)
     void createWidget()
@@ -544,7 +693,8 @@ defineExpose({
 <style lang="less" scoped>
 .tv-chart-wrap {
   width: 100%;
-  height: 560px;
+  // height: 50rem;
+  height: calc(100vh - 3.5rem);
   position: relative;
   background: #ffffff;
 }
