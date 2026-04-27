@@ -34,7 +34,7 @@ export const RouterModules: RouteRecordRaw[] = [
         component: () => import("@/views/futures/future_data_manager/FutureDataManager.vue"),
         meta: {
           icon: "",
-          title: "期货数据管理",
+          title: "期货K线管理",
         },
       },
       {
