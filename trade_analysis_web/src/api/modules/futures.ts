@@ -239,6 +239,26 @@ export interface FutureStrategyAnalysisDeleteResult {
   deleted: number
 }
 
+export interface FutureChartPersistence {
+  persistence_id: number | null
+  user_key: string
+  symbol: string
+  interval: string
+  chart_content: string | null
+  drawings_content: string | null
+  settings_content: string | null
+  create_at: string | null
+  updated_at: string | null
+}
+
+export interface FutureChartPersistenceSaveParams {
+  symbol: string
+  interval: string
+  chart_content?: string | null
+  drawings_content?: string | null
+  settings_content?: string | null
+}
+
 const mapFutureKlineToChartData = (item: FutureKlineItem): FutureChartKLineItem | null => {
   const timestamp = toChartTimestampSeconds(item.date_time)
   if (timestamp === null) {
@@ -368,5 +388,17 @@ export const deleteFutureStrategySegmentsApi = (params: FutureStrategySegmentBat
 export const deleteFutureStrategyAnalysisApi = (params: FutureStrategyAnalysisDeleteParams) => {
   return axios.post<FutureStrategyAnalysisDeleteResult>("/strategy-analyses/delete", params) as unknown as Promise<
     FutureStrategyAnalysisDeleteResult
+  >
+}
+
+export const getFutureChartPersistenceApi = (params: { symbol: string; interval: string }) => {
+  return axios.get<FutureChartPersistence>("/chart-persistences", params) as unknown as Promise<
+    FutureChartPersistence
+  >
+}
+
+export const saveFutureChartPersistenceApi = (params: FutureChartPersistenceSaveParams) => {
+  return axios.post<FutureChartPersistence>("/chart-persistences/save", params) as unknown as Promise<
+    FutureChartPersistence
   >
 }

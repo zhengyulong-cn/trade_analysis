@@ -1,7 +1,5 @@
 <script setup lang="ts">
 import type { ChartOptions, DeepPartial } from 'lightweight-charts'
-import { computed } from 'vue'
-import { Star, StarFilled } from '@element-plus/icons-vue'
 import KLineChart from './KLineChart.vue'
 
 interface KLineItem {
@@ -12,14 +10,6 @@ interface KLineItem {
   close: number
   ema20?: number
   ema120?: number
-}
-
-interface SummaryItem {
-  label: string
-  value: string | number
-  subvalue?: string
-  wide?: boolean
-  tone?: 'up' | 'down' | 'neutral'
 }
 
 interface ContractOption {
@@ -80,7 +70,6 @@ const emit = defineEmits<{
   'segmentBuildRequest': []
   'segmentLoadRequest': []
   'segmentAutoLoadToggle': []
-  'contractFavoriteToggle': [value: string]
 }>()
 
 const props = withDefaults(
@@ -91,18 +80,15 @@ const props = withDefaults(
     selectedPeriod?: number | string
     contractOptions?: ContractOption[]
     periodOptions?: PeriodOption[]
-    contractLoading?: boolean
-    contractDisabled?: boolean
-    periodDisabled?: boolean
     canBuildSegments?: boolean
     canLoadSegments?: boolean
     autoLoadSegments?: boolean
-    contractPlaceholder?: string
     chartData: {
+      symbol?: string
+      name?: string
       kLineList: KLineItem[]
     }
     segmentLines?: SegmentLineItem[]
-    summaryItems?: SummaryItem[]
     chartOptions?: DeepPartial<ChartOptions>
     emptyDescription?: string
     unavailableDescription?: string
@@ -114,33 +100,21 @@ const props = withDefaults(
     selectedPeriod: '',
     contractOptions: () => [],
     periodOptions: () => [],
-    contractLoading: false,
-    contractDisabled: false,
-    periodDisabled: false,
     canBuildSegments: true,
     canLoadSegments: true,
     autoLoadSegments: false,
-    contractPlaceholder: '请选择合约',
     segmentLines: () => [],
-    summaryItems: () => [],
     chartOptions: () => ({}),
     emptyDescription: '暂无 K 线数据',
     unavailableDescription: '暂无可用数据',
   },
 )
 
-const hasChartData = computed(() => props.chartData.kLineList.length > 0)
-const hasContractList = computed(() => props.contractOptions.length > 0)
-const hasToolbar = computed(() => props.periodOptions.length > 0)
-
-const handleContractChange = (value: string) => {
-  if (props.contractDisabled) {
-    return
-  }
+const handleSelectedContractChange = (value: string) => {
   emit('update:selectedContract', value)
 }
 
-const handlePeriodChange = (value: number | string) => {
+const handleSelectedPeriodChange = (value: number | string) => {
   emit('update:selectedPeriod', value)
 }
 
@@ -171,115 +145,35 @@ const handleSegmentLoadRequest = () => {
 const handleSegmentAutoLoadToggle = () => {
   emit('segmentAutoLoadToggle')
 }
-
-const handleContractFavoriteToggle = (value: string) => {
-  if (props.contractDisabled) {
-    return
-  }
-  emit('contractFavoriteToggle', value)
-}
 </script>
 
 <template>
   <section v-loading="loading" class="chart-section">
     <template v-if="available">
-      <header class="header-info">
-        <div v-if="hasToolbar" class="header-actions">
-          <el-radio-group
-            :model-value="selectedPeriod"
-            class="period-group"
-            :disabled="periodDisabled"
-            @update:model-value="handlePeriodChange"
-          >
-            <el-radio-button
-              v-for="period in periodOptions"
-              :key="period.value"
-              :value="period.value"
-            >
-              {{ period.label }}
-            </el-radio-button>
-          </el-radio-group>
-        </div>
-
-        <div v-if="summaryItems.length" class="summary-bar">
-          <div
-            v-for="(item, index) in summaryItems"
-            :key="`${item.label}-${index}`"
-            class="summary-item"
-            :class="{ 'summary-item--wide': item.wide }"
-          >
-            <span class="summary-label">{{ item.label }}</span>
-            <strong
-              class="summary-value"
-              :class="{
-                'summary-value--up': item.tone === 'up',
-                'summary-value--down': item.tone === 'down',
-                'summary-value--neutral': item.tone === 'neutral',
-              }"
-            >
-              {{ item.value }}
-            </strong>
-            <span v-if="item.subvalue" class="summary-subvalue">{{ item.subvalue }}</span>
-          </div>
-        </div>
-      </header>
-
-      <div class="chart-layout">
-        <div
-          v-if="hasContractList"
-          class="contract-list"
-          :class="{ 'contract-list--loading': contractLoading }"
-        >
-          <div
-            v-for="contract in contractOptions"
-            :key="contract.value"
-            class="contract-list-item"
-            :class="{ 'contract-list-item--active': contract.value === selectedContract }"
-            @click="handleContractChange(contract.value)"
-          >
-            <div class="contract-list-main">
-              <span class="contract-list-symbol">{{ contract.value }}</span>
-              <span v-if="contract.description" class="contract-list-name">
-                {{ contract.description }}
-              </span>
-            </div>
-            <button
-              type="button"
-              class="contract-favorite-button"
-              :class="{ 'contract-favorite-button--active': contract.isFavorite }"
-              :disabled="contractDisabled"
-              @click.stop="handleContractFavoriteToggle(contract.value)"
-            >
-              <el-icon>
-                <StarFilled v-if="contract.isFavorite" />
-                <Star v-else />
-              </el-icon>
-            </button>
-          </div>
-        </div>
-
-        <div class="chart-card">
-          <KLineChart
-            v-if="hasChartData"
-            :data="chartData"
-            :segment-lines="segmentLines"
-            :can-build-segments="canBuildSegments"
-            :can-load-segments="canLoadSegments"
-            :auto-load-segments="autoLoadSegments"
-            :common-chart-options="chartOptions"
-            @crosshair-move="handleCrosshairMove"
-            @segment-line-change="handleSegmentLineChange"
-            @segment-line-create="handleSegmentLineCreate"
-            @segment-line-delete="handleSegmentLineDelete"
-            @segment-build-request="handleSegmentBuildRequest"
-            @segment-load-request="handleSegmentLoadRequest"
-            @segment-auto-load-toggle="handleSegmentAutoLoadToggle"
-          />
-          <el-empty v-else class="chart-empty" :description="emptyDescription" />
-        </div>
+      <div class="chart-card">
+        <KLineChart
+          :data="chartData"
+          :selected-contract="selectedContract"
+          :selected-period="selectedPeriod"
+          :contract-options="contractOptions"
+          :period-options="periodOptions"
+          :segment-lines="segmentLines"
+          :can-build-segments="canBuildSegments"
+          :can-load-segments="canLoadSegments"
+          :auto-load-segments="autoLoadSegments"
+          :common-chart-options="chartOptions"
+          @update:selected-contract="handleSelectedContractChange"
+          @update:selected-period="handleSelectedPeriodChange"
+          @crosshair-move="handleCrosshairMove"
+          @segment-line-change="handleSegmentLineChange"
+          @segment-line-create="handleSegmentLineCreate"
+          @segment-line-delete="handleSegmentLineDelete"
+          @segment-build-request="handleSegmentBuildRequest"
+          @segment-load-request="handleSegmentLoadRequest"
+          @segment-auto-load-toggle="handleSegmentAutoLoadToggle"
+        />
       </div>
     </template>
-
     <el-empty v-else :description="unavailableDescription" />
   </section>
 </template>
@@ -287,227 +181,21 @@ const handleContractFavoriteToggle = (value: string) => {
 <style lang="less" scoped>
 .chart-section {
   min-height: 40rem;
-  padding: 16px;
   border-radius: 12px;
   background: #ffffff;
   box-shadow: 0 8px 24px rgba(15, 23, 42, 0.06);
-
-  .header-info {
-    display: flex;
-    align-items: flex-start;
-    justify-content: space-between;
-    gap: 16px;
-    margin-bottom: 14px;
-
-    .header-actions {
-      flex: 0 0 auto;
-    }
-
-    .summary-bar {
-      display: flex;
-      align-items: center;
-      flex-wrap: nowrap;
-      gap: 8px;
-      margin-left: auto;
-      overflow-x: auto;
-      scrollbar-width: thin;
-      .summary-item {
-        padding: 6px 12px;
-        border-radius: 999px;
-        display: inline-flex;
-        align-items: center;
-        gap: 6px;
-        flex: 0 0 auto;
-        max-width: none;
-        .summary-label {
-          color: #909399;
-          font-size: 12px;
-          white-space: nowrap;
-        }
-
-        .summary-value {
-          color: #303133;
-          font-size: 14px;
-          line-height: 1;
-          white-space: nowrap;
-        }
-        .summary-value--up {
-          color: #f56c6c;
-        }
-        .summary-value--down {
-          color: #67c23a;
-        }
-        .summary-value--neutral {
-          color: #303133;
-        }
-        .summary-subvalue {
-          color: #606266;
-          font-size: 12px;
-          white-space: nowrap;
-          overflow: hidden;
-          text-overflow: ellipsis;
-        }
-      }
-      .summary-item--wide {
-        padding-right: 14px;
-      }
-    }
-  }
-}
-
-.chart-layout {
-  display: flex;
-  gap: .75rem;
-  align-items: stretch;
-}
-
-.contract-list {
-  width: 8rem;
-  flex: 0 0 180px;
-  display: flex;
-  flex-direction: column;
-  gap: .5rem;
-  max-height: 38rem;
-  padding-right: 4px;
-  overflow-y: auto;
-}
-
-.contract-list--loading {
-  opacity: 0.72;
-}
-
-.contract-list-item {
-  padding: 0.75rem;
-  border: 1px solid #ebeef5;
-  border-radius: 8px;
-  background: #fff;
-  color: #303133;
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 8px;
-  text-align: left;
-  cursor: pointer;
-  transition:
-    border-color 0.2s ease,
-    background-color 0.2s ease,
-    box-shadow 0.2s ease,
-    color 0.2s ease;
-}
-
-.contract-list-item:hover:not(:disabled) {
-  border-color: #c6e2ff;
-  background: #f7fbff;
-}
-
-.contract-list-item--active {
-  border-color: #409eff;
-  background: #ecf5ff;
-  box-shadow: inset 0 0 0 1px rgba(64, 158, 255, 0.18);
-}
-
-.contract-list-main {
-  min-width: 0;
-  display: flex;
-  flex: 1;
-  flex-direction: column;
-  gap: 4px;
-}
-
-.contract-list-symbol {
-  font-size: 14px;
-  font-weight: 600;
-  line-height: 1.2;
-}
-
-.contract-list-name {
-  color: #909399;
-  font-size: 12px;
-  line-height: 1.4;
-}
-
-.contract-favorite-button {
-  width: 28px;
-  height: 28px;
-  flex: 0 0 28px;
-  padding: 0;
-  border: 0;
-  border-radius: 50%;
-  background: transparent;
-  color: #c0c4cc;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  cursor: pointer;
-  transition:
-    color 0.2s ease,
-    background-color 0.2s ease,
-    transform 0.2s ease;
-}
-
-.contract-favorite-button:hover:not(:disabled) {
-  color: #e6a23c;
-  background: rgba(230, 162, 60, 0.1);
-}
-
-.contract-favorite-button:disabled {
-  cursor: not-allowed;
-  opacity: 0.68;
-}
-
-.contract-favorite-button--active {
-  color: #e6a23c;
 }
 
 .chart-card {
-  flex: 1;
   min-width: 0;
   border: 1px solid #ebeef5;
   border-radius: 12px;
   overflow: hidden;
 }
 
-.chart-empty {
-  min-height: 640px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-}
-
 @media (max-width: 640px) {
   .chart-section {
     padding: 12px;
-  }
-
-  .header-info {
-    flex-direction: column;
-    align-items: stretch;
-  }
-
-  .header-actions {
-    justify-content: flex-start;
-  }
-
-  .summary-bar {
-    gap: 8px;
-    margin-left: 0;
-  }
-
-  .summary-item {
-    border-radius: 999px;
-  }
-
-  .chart-layout {
-    flex-direction: column;
-  }
-
-  .contract-list {
-    width: 100%;
-    flex: initial;
-    max-height: none;
-    padding-right: 0;
-    display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(132px, 1fr));
   }
 }
 </style>

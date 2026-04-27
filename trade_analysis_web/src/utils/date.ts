@@ -1,19 +1,49 @@
 import dayjs, { type Dayjs } from 'dayjs'
+import customParseFormat from 'dayjs/plugin/customParseFormat'
+import timezone from 'dayjs/plugin/timezone'
 import utc from 'dayjs/plugin/utc'
 import { DEFAULT_DATE_TIME_FORMAT } from '@/constants/date'
 
+dayjs.extend(customParseFormat)
+dayjs.extend(timezone)
 dayjs.extend(utc)
+
+const SHANGHAI_TIMEZONE = 'Asia/Shanghai'
+
+const hasExplicitTimezone = (value: string) => {
+  return /([zZ]|[+-]\d{2}:\d{2}|[+-]\d{4})$/.test(value)
+}
+
+const parseDateTime = (value?: string | number | Date | Dayjs | null) => {
+  if (!value) {
+    return null
+  }
+
+  if (typeof value === 'string') {
+    const trimmed = value.trim()
+    if (!trimmed) {
+      return null
+    }
+
+    if (hasExplicitTimezone(trimmed)) {
+      const parsed = dayjs(trimmed)
+      return parsed.isValid() ? parsed : null
+    }
+
+    const parsed = dayjs.tz(trimmed, DEFAULT_DATE_TIME_FORMAT, SHANGHAI_TIMEZONE)
+    return parsed.isValid() ? parsed : null
+  }
+
+  const parsed = dayjs(value)
+  return parsed.isValid() ? parsed : null
+}
 
 export const formatDateTime = (
   value?: string | number | Date | Dayjs | null,
   format = DEFAULT_DATE_TIME_FORMAT,
 ) => {
-  if (!value) {
-    return '-'
-  }
-
-  const parsed = dayjs(value)
-  if (!parsed.isValid()) {
+  const parsed = parseDateTime(value)
+  if (!parsed) {
     return '-'
   }
 
@@ -21,12 +51,8 @@ export const formatDateTime = (
 }
 
 export const toUnixTimestampSeconds = (value?: string | number | Date | null) => {
-  if (!value) {
-    return null
-  }
-
-  const parsed = dayjs(value)
-  if (!parsed.isValid()) {
+  const parsed = parseDateTime(value)
+  if (!parsed) {
     return null
   }
 
@@ -34,16 +60,12 @@ export const toUnixTimestampSeconds = (value?: string | number | Date | null) =>
 }
 
 export const toChartTimestampSeconds = (value?: string | number | Date | null) => {
-  if (!value) {
+  const parsed = parseDateTime(value)
+  if (!parsed) {
     return null
   }
 
-  const parsed = dayjs(value)
-  if (!parsed.isValid()) {
-    return null
-  }
-
-  return dayjs.utc(parsed.format(DEFAULT_DATE_TIME_FORMAT)).unix()
+  return parsed.utc().unix()
 }
 
 export const createRecentDateRange = (days: number) => {
@@ -57,12 +79,8 @@ export const getLatestDateTime = (values: Array<string | null | undefined>) => {
   let latest: dayjs.Dayjs | null = null
 
   for (const value of values) {
-    if (!value) {
-      continue
-    }
-
-    const parsed = dayjs(value)
-    if (!parsed.isValid()) {
+    const parsed = parseDateTime(value)
+    if (!parsed) {
       continue
     }
 

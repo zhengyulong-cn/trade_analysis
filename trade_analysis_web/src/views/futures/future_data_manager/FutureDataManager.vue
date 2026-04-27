@@ -30,7 +30,7 @@ interface OverviewRow {
 }
 
 const TEXT = {
-  pageTitle: '期货数据管理',
+  pageTitle: '期货K线管理',
   pageSubtitle: '左侧展示合约-周期汇总，右侧展示对应 K 线明细。',
   refreshOverview: '刷新合约汇总数据',
   batchUpdate: '批量更新',
