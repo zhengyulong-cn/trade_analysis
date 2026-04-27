@@ -1,4 +1,10 @@
 <script setup lang="ts">
+import {
+  getFutureChartPersistenceApi,
+  saveFutureChartPersistenceApi,
+  type FutureChartPersistence,
+  type FutureChartPersistenceSaveParams,
+} from '@/api/modules'
 import { INITIAL_VISIBLE_K_LINE_COUNT } from '@/constants/chart'
 import { computed, onMounted, onUnmounted, ref, watch } from 'vue'
 import ChartSidebar from './ChartSidebar.vue'
@@ -86,13 +92,25 @@ interface TradingViewActiveChart {
     ticker?: string
   }]>
   onIntervalChanged: () => TradingViewSubscription<[string, Record<string, unknown>]>
+  getLineToolsState?: () => TradingViewLineToolsAndGroupsState
+  applyLineToolsState?: (state: TradingViewLineToolsAndGroupsState) => Promise<void>
   setVisibleRange: (range: { from: number; to: number }, options?: Record<string, unknown>) => Promise<void>
 }
 
 interface TradingViewWidget {
   onChartReady: (callback: () => void) => void
+  subscribe: (event: string, callback: () => void) => void
+  unsubscribe: (event: string, callback: () => void) => void
   activeChart: () => TradingViewActiveChart
+  save: (callback: (state: object) => void, options?: { includeDrawings?: boolean }) => void
+  load: (state: object, extendedData?: { uid: number; name: string; description: string }) => Promise<void>
   remove: () => void
+}
+
+interface TradingViewLineToolsAndGroupsState {
+  sources: Map<string, unknown | null> | null
+  groups: Map<string, unknown | null>
+  symbol?: string
 }
 
 type TradingViewConstructor = new (options: Record<string, unknown>) => TradingViewWidget
@@ -162,12 +180,144 @@ let crossHairHandler: ((params: { time?: number }) => void) | null = null
 let onDataLoadedHandler: (() => void) | null = null
 let onSymbolChangedHandler: ((symbol: { name: string; ticker?: string }) => void) | null = null
 let onIntervalChangedHandler: ((interval: string, timeFrameParameters: Record<string, unknown>) => void) | null = null
+let onAutoSaveNeededHandler: (() => void) | null = null
 let createWidgetToken = 0
 let libraryPromise: Promise<void> | null = null
+let chartAutoSaveTimeoutId: number | null = null
+let isRestoringPersistence = false
+let chartRestoreToken = 0
 
 const symbolName = computed(() => {
   return props.selectedContract?.trim() || props.data.symbol?.trim() || props.data.name?.trim() || DEFAULT_SYMBOL
 })
+
+const MAP_SERIALIZATION_TYPE = '__tradingViewMap'
+
+const isRecord = (value: unknown): value is Record<string, unknown> => {
+  return typeof value === 'object' && value !== null && !Array.isArray(value)
+}
+
+const isMapLike = (value: unknown): value is Map<unknown, unknown> => {
+  return (
+    Object.prototype.toString.call(value) === '[object Map]'
+    && typeof (value as Map<unknown, unknown>).entries === 'function'
+  )
+}
+
+const stringifyChartJson = (value: unknown) => {
+  try {
+    return JSON.stringify(value, (_key, item) => {
+      if (isMapLike(item)) {
+        return {
+          type: MAP_SERIALIZATION_TYPE,
+          entries: Array.from(item.entries()),
+        }
+      }
+
+      return item
+    })
+  } catch (error) {
+    console.warn('Failed to stringify chart persistence content', error)
+    return null
+  }
+}
+
+const parseChartJson = <T,>(content?: string | null): T | null => {
+  if (!content) {
+    return null
+  }
+
+  try {
+    return JSON.parse(content, (_key, item) => {
+      if (
+        isRecord(item)
+        && item.type === MAP_SERIALIZATION_TYPE
+        && Array.isArray(item.entries)
+      ) {
+        return new Map(item.entries as Array<[unknown, unknown]>)
+      }
+
+      return item
+    }) as T
+  } catch (error) {
+    console.warn('Failed to parse chart persistence content', error)
+    return null
+  }
+}
+
+const parseSettingsContent = (content?: string | null) => {
+  const parsedSettings = parseChartJson<Record<string, unknown>>(content)
+  if (!parsedSettings || !isRecord(parsedSettings)) {
+    return {}
+  }
+
+  return Object.fromEntries(
+    Object.entries(parsedSettings).filter((entry): entry is [string, string] => typeof entry[1] === 'string'),
+  )
+}
+
+const getPersistenceInterval = (resolution: string) => {
+  if (props.selectedPeriod !== '' && props.selectedPeriod !== undefined && props.selectedPeriod !== null) {
+    return String(props.selectedPeriod)
+  }
+
+  return resolution
+}
+
+const loadChartPersistence = async (symbol: string, interval: string) => {
+  try {
+    return await getFutureChartPersistenceApi({ symbol, interval })
+  } catch (error) {
+    console.warn('Failed to load chart persistence', error)
+    return null
+  }
+}
+
+const saveChartPersistence = async (payload: FutureChartPersistenceSaveParams) => {
+  try {
+    await saveFutureChartPersistenceApi(payload)
+  } catch (error) {
+    console.warn('Failed to save chart persistence', error)
+  }
+}
+
+const createSettingsAdapter = (
+  symbol: string,
+  interval: string,
+  persistence: FutureChartPersistence | null,
+) => {
+  let settingsCache = parseSettingsContent(persistence?.settings_content)
+
+  const saveSettings = () => {
+    const settingsContent = stringifyChartJson(settingsCache)
+    if (!settingsContent) {
+      return
+    }
+
+    void saveChartPersistence({
+      symbol,
+      interval,
+      settings_content: settingsContent,
+    })
+  }
+
+  return {
+    initialSettings: { ...settingsCache },
+    setValue(key: string, value: string) {
+      settingsCache = {
+        ...settingsCache,
+        [key]: value,
+      }
+      saveSettings()
+    },
+    removeValue(key: string) {
+      const nextSettings = { ...settingsCache }
+      delete nextSettings[key]
+      settingsCache = nextSettings
+      saveSettings()
+    },
+  }
+}
 
 const normalizeTimeToMilliseconds = (value: number) => {
   return value >= 1_000_000_000_000 ? value : value * 1000
@@ -519,16 +669,134 @@ const loadChartingLibrary = () => {
   return libraryPromise
 }
 
+const clearChartAutoSaveTimeout = () => {
+  if (chartAutoSaveTimeoutId === null) {
+    return
+  }
+
+  window.clearTimeout(chartAutoSaveTimeoutId)
+  chartAutoSaveTimeoutId = null
+}
+
+const getChartStateContent = (currentWidget: TradingViewWidget) => {
+  return new Promise<string | null>((resolve) => {
+    try {
+      currentWidget.save(
+        (state) => {
+          resolve(stringifyChartJson(state))
+        },
+        {
+          includeDrawings: false,
+        },
+      )
+    } catch (error) {
+      console.warn('Failed to collect chart layout state', error)
+      resolve(null)
+    }
+  })
+}
+
+const getDrawingsStateContent = (currentWidget: TradingViewWidget) => {
+  const activeChart = currentWidget.activeChart()
+  if (!activeChart.getLineToolsState) {
+    return null
+  }
+
+  try {
+    return stringifyChartJson(activeChart.getLineToolsState())
+  } catch (error) {
+    console.warn('Failed to collect chart drawings state', error)
+    return null
+  }
+}
+
+const saveCurrentChartState = async (token: number, symbol: string, interval: string) => {
+  const currentWidget = widget
+  if (!currentWidget || token !== createWidgetToken || isRestoringPersistence) {
+    return
+  }
+
+  const chartContent = await getChartStateContent(currentWidget)
+  if (!chartContent || token !== createWidgetToken) {
+    return
+  }
+
+  const drawingsContent = getDrawingsStateContent(currentWidget)
+  await saveChartPersistence({
+    symbol,
+    interval,
+    chart_content: chartContent,
+    ...(drawingsContent ? { drawings_content: drawingsContent } : {}),
+  })
+}
+
+const scheduleChartAutoSave = (token: number, symbol: string, interval: string) => {
+  if (isRestoringPersistence) {
+    return
+  }
+
+  clearChartAutoSaveTimeout()
+  chartAutoSaveTimeoutId = window.setTimeout(() => {
+    chartAutoSaveTimeoutId = null
+    void saveCurrentChartState(token, symbol, interval)
+  }, 800)
+}
+
+const restoreChartPersistence = async (
+  currentWidget: TradingViewWidget,
+  persistence: FutureChartPersistence | null,
+  token: number,
+  symbol: string,
+  interval: string,
+) => {
+  if (!persistence) {
+    return
+  }
+
+  const restoreToken = ++chartRestoreToken
+  isRestoringPersistence = true
+  try {
+    const chartState = parseChartJson<object>(persistence.chart_content)
+    if (chartState && token === createWidgetToken && widget === currentWidget) {
+      await currentWidget.load(chartState, {
+        uid: 1,
+        name: `${symbol}-${interval}`,
+        description: symbol,
+      })
+    }
+
+    const activeChart = currentWidget.activeChart()
+    const applyLineToolsState = activeChart.applyLineToolsState
+    const drawingsState = parseChartJson<TradingViewLineToolsAndGroupsState>(persistence.drawings_content)
+    if (
+      drawingsState
+      && token === createWidgetToken
+      && widget === currentWidget
+      && applyLineToolsState
+    ) {
+      await applyLineToolsState.call(activeChart, drawingsState)
+    }
+  } catch (error) {
+    console.warn('Failed to restore chart persistence', error)
+  } finally {
+    if (restoreToken === chartRestoreToken) {
+      isRestoringPersistence = false
+    }
+  }
+}
+
 const resetWidgetHandlers = () => {
   crossHairHandler = null
   onDataLoadedHandler = null
   onSymbolChangedHandler = null
   onIntervalChangedHandler = null
+  onAutoSaveNeededHandler = null
 }
 
 const teardownWidget = () => {
   const currentWidget = widget
   widget = null
+  clearChartAutoSaveTimeout()
 
   if (!currentWidget) {
     resetWidgetHandlers()
@@ -549,6 +817,9 @@ const teardownWidget = () => {
     }
     if (onIntervalChangedHandler) {
       activeChart.onIntervalChanged().unsubscribe(null, onIntervalChangedHandler)
+    }
+    if (onAutoSaveNeededHandler) {
+      currentWidget.unsubscribe('onAutoSaveNeeded', onAutoSaveNeededHandler)
     }
   } catch {
     // Ignore disposal races when the library has already torn down its internals.
@@ -627,13 +898,22 @@ const createWidget = async () => {
 
   const bars = getTradingViewBars(kLineList)
   const resolution = getBarResolution(kLineList)
-  const datafeed = createDatafeed(bars, resolution, symbolName.value)
+  const persistenceSymbol = symbolName.value
+  const persistenceInterval = getPersistenceInterval(resolution)
+  const persistence = await loadChartPersistence(persistenceSymbol, persistenceInterval)
+
+  if (token !== createWidgetToken || !chartContainer.value || !window.TradingView?.widget) {
+    return
+  }
+
+  const datafeed = createDatafeed(bars, resolution, persistenceSymbol)
+  const settingsAdapter = createSettingsAdapter(persistenceSymbol, persistenceInterval, persistence)
 
   widget = new window.TradingView.widget({
     container: chartContainer.value,
     library_path: TRADING_VIEW_LIBRARY_PATH,
     datafeed,
-    symbol: symbolName.value,
+    symbol: persistenceSymbol,
     interval: resolution,
     time_frames: getTimeFrames(),
     locale: 'zh',
@@ -641,13 +921,15 @@ const createWidget = async () => {
     autosize: props.autosize,
     fullscreen: false,
     theme: 'Light',
+    auto_save_delay: 1,
+    settings_adapter: settingsAdapter,
     disabled_features: [
       'header_compare',
       'use_localstorage_for_settings',
       'popup_hints',
       'long_press_floating_tooltip',
     ],
-    enabled_features: ['move_logo_to_main_pane'],
+    enabled_features: ['move_logo_to_main_pane', 'saveload_separate_drawings_storage'],
     // 仅仅保留EMA和MACD指标
     studies_access: {
       type: 'white',
@@ -676,19 +958,20 @@ const createWidget = async () => {
   })
 
   widget.onChartReady(() => {
-    if (!widget || token !== createWidgetToken) {
+    const currentWidget = widget
+    if (!currentWidget || token !== createWidgetToken) {
       return
     }
 
     crossHairHandler = (params) => {
       emitCrosshairBar(params.time)
     }
-    widget.activeChart().crossHairMoved().subscribe(null, crossHairHandler)
+    currentWidget.activeChart().crossHairMoved().subscribe(null, crossHairHandler)
 
     onDataLoadedHandler = () => {
       void applyVisibleRange()
     }
-    widget.activeChart().onDataLoaded().subscribe(null, onDataLoadedHandler)
+    currentWidget.activeChart().onDataLoaded().subscribe(null, onDataLoadedHandler)
 
     onSymbolChangedHandler = (symbol) => {
       const nextSymbol = symbol.ticker || symbol.name
@@ -696,7 +979,7 @@ const createWidget = async () => {
         emit('update:selectedContract', nextSymbol)
       }
     }
-    widget.activeChart().onSymbolChanged().subscribe(null, onSymbolChangedHandler)
+    currentWidget.activeChart().onSymbolChanged().subscribe(null, onSymbolChangedHandler)
 
     onIntervalChangedHandler = (interval) => {
       const nextPeriod = periodValueFromResolution(interval)
@@ -704,9 +987,19 @@ const createWidget = async () => {
         emit('update:selectedPeriod', nextPeriod)
       }
     }
-    widget.activeChart().onIntervalChanged().subscribe(null, onIntervalChangedHandler)
+    currentWidget.activeChart().onIntervalChanged().subscribe(null, onIntervalChangedHandler)
 
-    void applyVisibleRange()
+    onAutoSaveNeededHandler = () => {
+      scheduleChartAutoSave(token, persistenceSymbol, persistenceInterval)
+    }
+    currentWidget.subscribe('onAutoSaveNeeded', onAutoSaveNeededHandler)
+
+    void (async () => {
+      await restoreChartPersistence(currentWidget, persistence, token, persistenceSymbol, persistenceInterval)
+      if (token === createWidgetToken && widget === currentWidget) {
+        void applyVisibleRange()
+      }
+    })()
   })
 }
 

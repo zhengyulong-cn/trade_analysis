@@ -4,6 +4,7 @@ from fastapi import Depends
 from sqlmodel import Session
 
 from app.db.session import get_session
+from app.services.chart_persistence_service import ChartPersistenceService
 from app.services.contract_service import ContractService
 from app.services.contract_interval_service import ContractIntervalService
 from app.services.kline_service import KlineService
@@ -24,6 +25,10 @@ def get_contract_service(session: SessionDep) -> ContractService:
     return ContractService(session)
 
 
+def get_chart_persistence_service(session: SessionDep) -> ChartPersistenceService:
+    return ChartPersistenceService(session)
+
+
 def get_contract_interval_service(session: SessionDep) -> ContractIntervalService:
     return ContractIntervalService(session)
 
@@ -40,6 +45,9 @@ def get_strategy_analysis_service(session: SessionDep) -> StrategyAnalysisServic
 
 
 ContractServiceDep = Annotated[ContractService, Depends(get_contract_service)]
+ChartPersistenceServiceDep = Annotated[
+    ChartPersistenceService, Depends(get_chart_persistence_service)
+]
 ContractIntervalServiceDep = Annotated[
     ContractIntervalService, Depends(get_contract_interval_service)
 ]
