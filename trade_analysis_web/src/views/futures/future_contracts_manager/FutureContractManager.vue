@@ -40,7 +40,7 @@ const form = reactive<ContractForm>({
   symbol: '',
   exchange: '',
   name: '',
-  auto_load_segments: 0,
+  auto_load_segments: 1,
 })
 
 const rules = reactive<FormRules<ContractForm>>({
@@ -62,7 +62,7 @@ const resetForm = () => {
   form.symbol = ''
   form.exchange = ''
   form.name = ''
-  form.auto_load_segments = 0
+  form.auto_load_segments = 1
   formRef.value?.clearValidate()
 }
 

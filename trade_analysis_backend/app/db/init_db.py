@@ -32,15 +32,20 @@ def ensure_contract_auto_load_segments_column() -> None:
             ),
             {"database_name": settings.mysql_database},
         ).scalar_one()
-        if column_exists:
-            return
-
-        connection.execute(
-            text(
-                "ALTER TABLE contracts "
-                "ADD COLUMN auto_load_segments INT NOT NULL DEFAULT 0"
+        if not column_exists:
+            connection.execute(
+                text(
+                    "ALTER TABLE contracts "
+                    "ADD COLUMN auto_load_segments INT NOT NULL DEFAULT 1"
+                )
             )
-        )
+        else:
+            connection.execute(
+                text(
+                    "ALTER TABLE contracts "
+                    "ALTER COLUMN auto_load_segments SET DEFAULT 1"
+                )
+            )
         connection.commit()
         logger.info("Column ensured: contracts.auto_load_segments")
 

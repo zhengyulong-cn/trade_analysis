@@ -9,7 +9,7 @@ class ContractBase(SQLModel):
     exchange: str
     name: str
     is_favorite: int = 0
-    auto_load_segments: int = 0
+    auto_load_segments: int = 1
 
 
 class ContractCreate(ContractBase):
