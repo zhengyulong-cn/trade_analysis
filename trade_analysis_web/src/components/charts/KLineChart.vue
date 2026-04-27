@@ -92,6 +92,8 @@ interface TradingViewActiveChart {
     ticker?: string
   }]>
   onIntervalChanged: () => TradingViewSubscription<[string, Record<string, unknown>]>
+  createStudyTemplate?: (options?: { saveSymbol?: boolean; saveInterval?: boolean }) => object
+  applyStudyTemplate?: (template: object) => void
   getLineToolsState?: () => TradingViewLineToolsAndGroupsState
   applyLineToolsState?: (state: TradingViewLineToolsAndGroupsState) => Promise<void>
   setVisibleRange: (range: { from: number; to: number }, options?: Record<string, unknown>) => Promise<void>
@@ -102,8 +104,6 @@ interface TradingViewWidget {
   subscribe: (event: string, callback: () => void) => void
   unsubscribe: (event: string, callback: () => void) => void
   activeChart: () => TradingViewActiveChart
-  save: (callback: (state: object) => void, options?: { includeDrawings?: boolean }) => void
-  load: (state: object, extendedData?: { uid: number; name: string; description: string }) => Promise<void>
   remove: () => void
 }
 
@@ -128,6 +128,7 @@ const DEFAULT_SYMBOL = 'FUTURES'
 const DEFAULT_RESOLUTION = '5'
 const DEFAULT_PRICE_SCALE = 100
 const SCRIPT_ID = 'tradingview-charting-library-script'
+const LOCAL_STUDY_TEMPLATE_KEY = 'trade-analysis:charting-library:study-template'
 
 const props = withDefaults(
   defineProps<{
@@ -245,17 +246,6 @@ const parseChartJson = <T,>(content?: string | null): T | null => {
   }
 }
 
-const parseSettingsContent = (content?: string | null) => {
-  const parsedSettings = parseChartJson<Record<string, unknown>>(content)
-  if (!parsedSettings || !isRecord(parsedSettings)) {
-    return {}
-  }
-
-  return Object.fromEntries(
-    Object.entries(parsedSettings).filter((entry): entry is [string, string] => typeof entry[1] === 'string'),
-  )
-}
-
 const getPersistenceInterval = (resolution: string) => {
   if (props.selectedPeriod !== '' && props.selectedPeriod !== undefined && props.selectedPeriod !== null) {
     return String(props.selectedPeriod)
@@ -281,41 +271,34 @@ const saveChartPersistence = async (payload: FutureChartPersistenceSaveParams) =
   }
 }
 
-const createSettingsAdapter = (
-  symbol: string,
-  interval: string,
-  persistence: FutureChartPersistence | null,
-) => {
-  let settingsCache = parseSettingsContent(persistence?.settings_content)
+const loadLocalStudyTemplate = () => {
+  try {
+    return parseChartJson<object>(window.localStorage.getItem(LOCAL_STUDY_TEMPLATE_KEY))
+  } catch (error) {
+    console.warn('Failed to load local study template', error)
+    return null
+  }
+}
 
-  const saveSettings = () => {
-    const settingsContent = stringifyChartJson(settingsCache)
-    if (!settingsContent) {
-      return
-    }
-
-    void saveChartPersistence({
-      symbol,
-      interval,
-      settings_content: settingsContent,
-    })
+const saveLocalStudyTemplate = (currentWidget: TradingViewWidget) => {
+  const activeChart = currentWidget.activeChart()
+  const createStudyTemplate = activeChart.createStudyTemplate
+  if (!createStudyTemplate) {
+    return
   }
 
-  return {
-    initialSettings: { ...settingsCache },
-    setValue(key: string, value: string) {
-      settingsCache = {
-        ...settingsCache,
-        [key]: value,
-      }
-      saveSettings()
-    },
-    removeValue(key: string) {
-      const nextSettings = { ...settingsCache }
-      delete nextSettings[key]
-      settingsCache = nextSettings
-      saveSettings()
-    },
+  try {
+    const content = stringifyChartJson(
+      createStudyTemplate.call(activeChart, {
+        saveSymbol: false,
+        saveInterval: false,
+      }),
+    )
+    if (content) {
+      window.localStorage.setItem(LOCAL_STUDY_TEMPLATE_KEY, content)
+    }
+  } catch (error) {
+    console.warn('Failed to save local study template', error)
   }
 }
 
@@ -678,24 +661,6 @@ const clearChartAutoSaveTimeout = () => {
   chartAutoSaveTimeoutId = null
 }
 
-const getChartStateContent = (currentWidget: TradingViewWidget) => {
-  return new Promise<string | null>((resolve) => {
-    try {
-      currentWidget.save(
-        (state) => {
-          resolve(stringifyChartJson(state))
-        },
-        {
-          includeDrawings: false,
-        },
-      )
-    } catch (error) {
-      console.warn('Failed to collect chart layout state', error)
-      resolve(null)
-    }
-  })
-}
-
 const getDrawingsStateContent = (currentWidget: TradingViewWidget) => {
   const activeChart = currentWidget.activeChart()
   if (!activeChart.getLineToolsState) {
@@ -716,17 +681,17 @@ const saveCurrentChartState = async (token: number, symbol: string, interval: st
     return
   }
 
-  const chartContent = await getChartStateContent(currentWidget)
-  if (!chartContent || token !== createWidgetToken) {
+  saveLocalStudyTemplate(currentWidget)
+
+  const drawingsContent = getDrawingsStateContent(currentWidget)
+  if (!drawingsContent || token !== createWidgetToken) {
     return
   }
 
-  const drawingsContent = getDrawingsStateContent(currentWidget)
   await saveChartPersistence({
     symbol,
     interval,
-    chart_content: chartContent,
-    ...(drawingsContent ? { drawings_content: drawingsContent } : {}),
+    drawings_content: drawingsContent,
   })
 }
 
@@ -746,28 +711,24 @@ const restoreChartPersistence = async (
   currentWidget: TradingViewWidget,
   persistence: FutureChartPersistence | null,
   token: number,
-  symbol: string,
-  interval: string,
 ) => {
-  if (!persistence) {
-    return
-  }
-
   const restoreToken = ++chartRestoreToken
   isRestoringPersistence = true
   try {
-    const chartState = parseChartJson<object>(persistence.chart_content)
-    if (chartState && token === createWidgetToken && widget === currentWidget) {
-      await currentWidget.load(chartState, {
-        uid: 1,
-        name: `${symbol}-${interval}`,
-        description: symbol,
-      })
+    const activeChart = currentWidget.activeChart()
+    const localStudyTemplate = loadLocalStudyTemplate()
+    const applyStudyTemplate = activeChart.applyStudyTemplate
+    if (
+      localStudyTemplate
+      && token === createWidgetToken
+      && widget === currentWidget
+      && applyStudyTemplate
+    ) {
+      applyStudyTemplate.call(activeChart, localStudyTemplate)
     }
 
-    const activeChart = currentWidget.activeChart()
     const applyLineToolsState = activeChart.applyLineToolsState
-    const drawingsState = parseChartJson<TradingViewLineToolsAndGroupsState>(persistence.drawings_content)
+    const drawingsState = parseChartJson<TradingViewLineToolsAndGroupsState>(persistence?.drawings_content)
     if (
       drawingsState
       && token === createWidgetToken
@@ -907,7 +868,6 @@ const createWidget = async () => {
   }
 
   const datafeed = createDatafeed(bars, resolution, persistenceSymbol)
-  const settingsAdapter = createSettingsAdapter(persistenceSymbol, persistenceInterval, persistence)
 
   widget = new window.TradingView.widget({
     container: chartContainer.value,
@@ -922,10 +882,8 @@ const createWidget = async () => {
     fullscreen: false,
     theme: 'Light',
     auto_save_delay: 1,
-    settings_adapter: settingsAdapter,
     disabled_features: [
       'header_compare',
-      'use_localstorage_for_settings',
       'popup_hints',
       'long_press_floating_tooltip',
     ],
@@ -956,7 +914,7 @@ const createWidget = async () => {
     if (!currentWidget || token !== createWidgetToken) {
       return
     }
-    const shouldApplyInitialVisibleRange = !persistence?.chart_content
+    const shouldApplyInitialVisibleRange = true
 
     crossHairHandler = (params) => {
       emitCrosshairBar(params.time)
@@ -992,7 +950,7 @@ const createWidget = async () => {
     currentWidget.subscribe('onAutoSaveNeeded', onAutoSaveNeededHandler)
 
     void (async () => {
-      await restoreChartPersistence(currentWidget, persistence, token, persistenceSymbol, persistenceInterval)
+      await restoreChartPersistence(currentWidget, persistence, token)
       if (
         shouldApplyInitialVisibleRange
         && token === createWidgetToken

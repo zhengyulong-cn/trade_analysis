@@ -244,9 +244,7 @@ export interface FutureChartPersistence {
   user_key: string
   symbol: string
   interval: string
-  chart_content: string | null
   drawings_content: string | null
-  settings_content: string | null
   create_at: string | null
   updated_at: string | null
 }
@@ -254,9 +252,7 @@ export interface FutureChartPersistence {
 export interface FutureChartPersistenceSaveParams {
   symbol: string
   interval: string
-  chart_content?: string | null
   drawings_content?: string | null
-  settings_content?: string | null
 }
 
 const mapFutureKlineToChartData = (item: FutureKlineItem): FutureChartKLineItem | null => {

@@ -10,11 +10,7 @@ from app.schemas.chart_persistence import ChartPersistenceSave
 
 
 PERSISTENCE_USER_KEY = "default"
-JSON_CONTENT_FIELDS = {
-    "chart_content",
-    "drawings_content",
-    "settings_content",
-}
+JSON_CONTENT_FIELDS = {"drawings_content"}
 
 
 class ChartPersistenceService:

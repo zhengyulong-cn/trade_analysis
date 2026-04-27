@@ -24,15 +24,7 @@ class ChartPersistence(SQLModel, table=True):
     user_key: str = Field(default="default", max_length=100, nullable=False)
     symbol: str = Field(index=True, min_length=1, max_length=100)
     interval: str = Field(index=True, min_length=1, max_length=50)
-    chart_content: str | None = Field(
-        default=None,
-        sa_column=Column(LONGTEXT, nullable=True),
-    )
     drawings_content: str | None = Field(
-        default=None,
-        sa_column=Column(LONGTEXT, nullable=True),
-    )
-    settings_content: str | None = Field(
         default=None,
         sa_column=Column(LONGTEXT, nullable=True),
     )
