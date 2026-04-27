@@ -3,7 +3,6 @@ from decimal import Decimal
 import time
 
 import pandas as pd
-from tqsdk import TqApi, TqAuth
 
 from app.core.config import settings
 from app.services.market_data.base import (
@@ -11,6 +10,7 @@ from app.services.market_data.base import (
     MarketDataProviderName,
     MarketKlineBar,
 )
+from app.services.market_data.tqsdk_client import tqsdk_client_manager
 
 SHANGHAI_TIMEZONE = "Asia/Shanghai"
 
@@ -43,11 +43,7 @@ class TqSdkMarketDataProvider:
         provider_symbol: str,
         interval_seconds: int,
     ) -> pd.DataFrame:
-        api = TqApi(
-            web_gui=settings.tqsdk_web_gui,
-            auth=TqAuth(settings.tqsdk_username, settings.tqsdk_password),
-        )
-        try:
+        with tqsdk_client_manager.session() as api:
             dataframe = api.get_kline_serial(
                 provider_symbol,
                 interval_seconds,
@@ -56,8 +52,6 @@ class TqSdkMarketDataProvider:
             deadline = time.time() + settings.tqsdk_wait_timeout_seconds
             api.wait_update(deadline=deadline)
             return dataframe.copy()
-        finally:
-            api.close()
 
     def _convert_klines_to_bars(
         self,

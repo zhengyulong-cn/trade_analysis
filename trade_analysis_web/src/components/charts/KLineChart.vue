@@ -3,6 +3,7 @@ import {
   CandlestickSeries,
   ColorType,
   createChart,
+  HistogramSeries,
   LineStyle,
   LineSeries,
   type ChartOptions,
@@ -68,6 +69,20 @@ interface SegmentOverlayItem {
   isSelected: boolean
 }
 
+interface MacdDataPoint {
+  time: number
+  dif?: number
+  dea?: number
+  macd?: number
+}
+
+const MACD_SHORT_PERIOD = 20
+const MACD_LONG_PERIOD = 120
+const MACD_SIGNAL_PERIOD = 12
+const MAIN_CHART_HEIGHT = 420
+const MACD_CHART_HEIGHT = 140
+const SHARED_RIGHT_PRICE_SCALE_WIDTH = 72
+
 const props = withDefaults(
   defineProps<{
     data: {
@@ -101,16 +116,24 @@ const emit = defineEmits<{
 }>()
 
 const chartContainer = ref<HTMLDivElement | null>(null);
+const macdChartContainer = ref<HTMLDivElement | null>(null);
 let chart: IChartApi | null = null;
+let macdChart: IChartApi | null = null;
 let kSeries: any = null;
 let ema20Series: any = null;
 let ema120Series: any = null;
+let difSeries: any = null;
+let deaSeries: any = null;
+let macdHistogramSeries: any = null;
 let segmentSeriesList: any[] = [];
 let crosshairMoveHandler: ((param: any) => void) | null = null;
 let clickHandler: ((param: any) => void) | null = null;
 let logicalRangeChangeHandler: (() => void) | null = null;
+let mainLogicalRangeSyncHandler: (() => void) | null = null;
 let timeScaleSizeChangeHandler: (() => void) | null = null;
+let macdLogicalRangeChangeHandler: (() => void) | null = null;
 let chartOptionsBeforeDrag: Pick<ChartOptions, 'handleScroll' | 'handleScale'> | null = null;
+let syncingVisibleRange = false;
 
 const selectedSegmentId = ref<string | null>(null);
 const overlayItems = ref<SegmentOverlayItem[]>([]);
@@ -192,10 +215,82 @@ const calculateEmaData = (kLineList: KLineItem[], period: number): LineData<numb
   return emaData;
 };
 
+const calculateMacdData = (kLineList: KLineItem[]): MacdDataPoint[] => {
+  if (!kLineList.length) {
+    return [];
+  }
+
+  const shortMultiplier = 2 / (MACD_SHORT_PERIOD + 1);
+  const longMultiplier = 2 / (MACD_LONG_PERIOD + 1);
+  const signalMultiplier = 2 / (MACD_SIGNAL_PERIOD + 1);
+
+  const shortSeed = kLineList
+    .slice(0, MACD_SHORT_PERIOD)
+    .reduce((sum, item) => sum + item.close, 0) / MACD_SHORT_PERIOD;
+  const longSeed = kLineList
+    .slice(0, MACD_LONG_PERIOD)
+    .reduce((sum, item) => sum + item.close, 0) / MACD_LONG_PERIOD;
+
+  let shortEma = shortSeed;
+  let longEma = longSeed;
+  let dea = 0;
+  let hasDeaSeed = false;
+  const difBuffer: number[] = [];
+  const macdData: MacdDataPoint[] = kLineList.map((item) => ({
+    time: item.time,
+  }));
+
+  for (let index = 0; index < kLineList.length; index += 1) {
+    const item = kLineList[index];
+    if (!item) {
+      continue;
+    }
+
+    if (index >= MACD_SHORT_PERIOD) {
+      shortEma = (item.close - shortEma) * shortMultiplier + shortEma;
+    }
+
+    if (index < MACD_LONG_PERIOD - 1) {
+      continue;
+    }
+
+    if (index > MACD_LONG_PERIOD - 1) {
+      longEma = (item.close - longEma) * longMultiplier + longEma;
+    }
+
+    const dif = shortEma - longEma;
+    difBuffer.push(dif);
+
+    if (!hasDeaSeed) {
+      if (difBuffer.length < MACD_SIGNAL_PERIOD) {
+        continue;
+      }
+      dea = difBuffer.reduce((sum, value) => sum + value, 0) / MACD_SIGNAL_PERIOD;
+      hasDeaSeed = true;
+    } else {
+      dea = (dif - dea) * signalMultiplier + dea;
+    }
+
+    const macd = (dif - dea) * 2;
+    macdData[index] = {
+      time: item.time,
+      dif: Number(dif.toFixed(4)),
+      dea: Number(dea.toFixed(4)),
+      macd: Number(macd.toFixed(4)),
+    };
+  }
+
+  return macdData;
+};
+
 const resizeHandler = () => {
   if (!chart || !chartContainer.value) return;
   const dimensions = chartContainer.value.getBoundingClientRect();
-  chart.resize(dimensions.width, dimensions.height);
+  chart.resize(dimensions.width, dimensions.height || MAIN_CHART_HEIGHT);
+  if (macdChart && macdChartContainer.value) {
+    const macdDimensions = macdChartContainer.value.getBoundingClientRect();
+    macdChart.resize(macdDimensions.width, macdDimensions.height || MACD_CHART_HEIGHT);
+  }
   syncOverlaySize();
   updateSegmentOverlayItems();
 };
@@ -205,21 +300,53 @@ const applyVisibleRange = (kLineList: KLineItem[]) => {
 
   if (kLineList.length <= INITIAL_VISIBLE_K_LINE_COUNT) {
     chart.timeScale().fitContent();
+    macdChart?.timeScale().fitContent();
     return;
   }
 
-  chart.timeScale().setVisibleLogicalRange({
+  const range = {
     from: kLineList.length - INITIAL_VISIBLE_K_LINE_COUNT,
     to: kLineList.length - 1,
-  });
+  };
+  chart.timeScale().setVisibleLogicalRange(range);
+  macdChart?.timeScale().setVisibleLogicalRange(range);
 };
 
 const applyChartData = () => {
   if (!kSeries) return;
   const kLineList = props.data.kLineList ?? [];
+  const macdData = calculateMacdData(kLineList);
   kSeries.setData(kLineList);
   ema20Series?.setData(calculateEmaData(kLineList, 20));
   ema120Series?.setData(calculateEmaData(kLineList, 120));
+  difSeries?.setData(
+    macdData.map((item) => {
+      if (item.dif === undefined) {
+        return { time: item.time };
+      }
+      return { time: item.time, value: item.dif };
+    }),
+  );
+  deaSeries?.setData(
+    macdData.map((item) => {
+      if (item.dea === undefined) {
+        return { time: item.time };
+      }
+      return { time: item.time, value: item.dea };
+    }),
+  );
+  macdHistogramSeries?.setData(
+    macdData.map((item) => {
+      if (item.macd === undefined) {
+        return { time: item.time };
+      }
+      return {
+        time: item.time,
+        value: item.macd,
+        color: item.macd >= 0 ? '#f56c6c' : '#67c23a',
+      };
+    }),
+  );
   applySegmentLines();
   applyVisibleRange(kLineList);
 };
@@ -609,6 +736,10 @@ const setChartDragEnabled = (enabled: boolean) => {
       handleScroll: false,
       handleScale: false,
     });
+    macdChart?.applyOptions({
+      handleScroll: false,
+      handleScale: false,
+    });
     return;
   }
 
@@ -621,6 +752,25 @@ const setChartDragEnabled = (enabled: boolean) => {
     handleScroll: true,
     handleScale: true,
   });
+  macdChart?.applyOptions({
+    handleScroll: true,
+    handleScale: true,
+  });
+};
+
+const syncVisibleRangeBetweenCharts = (source: IChartApi, target: IChartApi) => {
+  if (syncingVisibleRange) {
+    return;
+  }
+
+  const visibleRange = source.timeScale().getVisibleLogicalRange();
+  if (!visibleRange) {
+    return;
+  }
+
+  syncingVisibleRange = true;
+  target.timeScale().setVisibleLogicalRange(visibleRange);
+  syncingVisibleRange = false;
 };
 
 const cleanupEndpointDrag = () => {
@@ -740,19 +890,56 @@ const getCrosshairKLine = (param: any): KLineItem | null => {
 }
 
 onMounted(() => {
-  if (!chartContainer.value) return;
+  if (!chartContainer.value || !macdChartContainer.value) return;
 
   chart = createChart(chartContainer.value, {
     width: chartContainer.value.clientWidth,
-    height: chartContainer.value.clientHeight || 560,
+    height: chartContainer.value.clientHeight || MAIN_CHART_HEIGHT,
     layout: {
       background: { type: ColorType.Solid, color: "#ffffff" },
       textColor: "#606266",
     },
+    rightPriceScale: {
+      borderColor: '#ebeef5',
+      minimumWidth: SHARED_RIGHT_PRICE_SCALE_WIDTH,
+    },
+    timeScale: {
+      visible: false,
+    },
     ...props.commonChartOptions,
+  });
+  macdChart = createChart(macdChartContainer.value, {
+    width: macdChartContainer.value.clientWidth,
+    height: macdChartContainer.value.clientHeight || MACD_CHART_HEIGHT,
+    layout: {
+      background: { type: ColorType.Solid, color: "#ffffff" },
+      textColor: "#606266",
+    },
+    rightPriceScale: {
+      borderColor: '#ebeef5',
+      minimumWidth: SHARED_RIGHT_PRICE_SCALE_WIDTH,
+    },
+    timeScale: {
+      borderColor: '#ebeef5',
+      timeVisible: true,
+      secondsVisible: false,
+    },
+    grid: {
+      vertLines: { color: '#f0f2f5' },
+      horzLines: { color: '#f0f2f5' },
+    },
+    crosshair: {
+      vertLine: {
+        visible: true,
+      },
+      horzLine: {
+        visible: false,
+      },
+    },
   });
 
   const chartInstance = chart as any;
+  const macdChartInstance = macdChart as any;
   kSeries =
     typeof chartInstance.addCandlestickSeries === "function"
       ? chartInstance.addCandlestickSeries({
@@ -806,6 +993,53 @@ onMounted(() => {
           lastValueVisible: true,
         });
 
+  difSeries =
+    typeof macdChartInstance.addLineSeries === "function"
+      ? macdChartInstance.addLineSeries({
+          title: "DIF",
+          color: "#f59e0b",
+          lineWidth: 1,
+          priceLineVisible: false,
+          lastValueVisible: true,
+        })
+      : macdChartInstance.addSeries(LineSeries, {
+          title: "DIF",
+          color: "#f59e0b",
+          lineWidth: 1,
+          priceLineVisible: false,
+          lastValueVisible: true,
+        });
+
+  deaSeries =
+    typeof macdChartInstance.addLineSeries === "function"
+      ? macdChartInstance.addLineSeries({
+          title: "DEA",
+          color: "#7c3aed",
+          lineWidth: 1,
+          priceLineVisible: false,
+          lastValueVisible: true,
+        })
+      : macdChartInstance.addSeries(LineSeries, {
+          title: "DEA",
+          color: "#7c3aed",
+          lineWidth: 1,
+          priceLineVisible: false,
+          lastValueVisible: true,
+        });
+
+  macdHistogramSeries =
+    typeof macdChartInstance.addHistogramSeries === "function"
+      ? macdChartInstance.addHistogramSeries({
+          priceLineVisible: false,
+          lastValueVisible: false,
+          base: 0,
+        })
+      : macdChartInstance.addSeries(HistogramSeries, {
+          priceLineVisible: false,
+          lastValueVisible: false,
+          base: 0,
+        });
+
   applyChartData();
   resizeHandler();
   chartContainer.value.addEventListener('contextmenu', handleChartContextMenu);
@@ -820,6 +1054,21 @@ onMounted(() => {
   timeScaleSizeChangeHandler = () => updateSegmentOverlayItems();
   chart.timeScale().subscribeVisibleLogicalRangeChange(logicalRangeChangeHandler);
   chart.timeScale().subscribeSizeChange(timeScaleSizeChangeHandler);
+  macdLogicalRangeChangeHandler = () => {
+    if (!chart || !macdChart) {
+      return;
+    }
+    syncVisibleRangeBetweenCharts(macdChart, chart);
+    updateSegmentOverlayItems();
+  };
+  mainLogicalRangeSyncHandler = () => {
+    if (!chart || !macdChart) {
+      return;
+    }
+    syncVisibleRangeBetweenCharts(chart, macdChart);
+  };
+  chart.timeScale().subscribeVisibleLogicalRangeChange(mainLogicalRangeSyncHandler);
+  macdChart.timeScale().subscribeVisibleLogicalRangeChange(macdLogicalRangeChangeHandler);
 
   if (props.autosize) {
     window.addEventListener("resize", resizeHandler);
@@ -843,6 +1092,14 @@ onUnmounted(() => {
     chart.timeScale().unsubscribeVisibleLogicalRangeChange(logicalRangeChangeHandler);
     logicalRangeChangeHandler = null;
   }
+  if (chart && mainLogicalRangeSyncHandler) {
+    chart.timeScale().unsubscribeVisibleLogicalRangeChange(mainLogicalRangeSyncHandler);
+    mainLogicalRangeSyncHandler = null;
+  }
+  if (macdChart && macdLogicalRangeChangeHandler) {
+    macdChart.timeScale().unsubscribeVisibleLogicalRangeChange(macdLogicalRangeChangeHandler);
+    macdLogicalRangeChangeHandler = null;
+  }
   if (chart && timeScaleSizeChangeHandler) {
     chart.timeScale().unsubscribeSizeChange(timeScaleSizeChangeHandler);
     timeScaleSizeChangeHandler = null;
@@ -850,6 +1107,10 @@ onUnmounted(() => {
   if (chart) {
     chart.remove();
     chart = null;
+  }
+  if (macdChart) {
+    macdChart.remove();
+    macdChart = null;
   }
   if (kSeries) {
     kSeries = null;
@@ -860,6 +1121,15 @@ onUnmounted(() => {
   if (ema120Series) {
     ema120Series = null;
   }
+  if (difSeries) {
+    difSeries = null;
+  }
+  if (deaSeries) {
+    deaSeries = null;
+  }
+  if (macdHistogramSeries) {
+    macdHistogramSeries = null;
+  }
   segmentSeriesList = [];
   window.removeEventListener("resize", resizeHandler);
 });
@@ -869,6 +1139,7 @@ defineExpose({
   getKSeries: () => kSeries,
   getEma20Series: () => ema20Series,
   getEma120Series: () => ema120Series,
+  getMacdChart: () => macdChart,
 });
 
 watch(
@@ -919,45 +1190,57 @@ watch(selectedSegmentId, () => {
 
 <template>
   <div class="lw-chart-wrap">
-    <div class="lw-chart" ref="chartContainer"></div>
-    <svg
-      class="segment-overlay"
-      :width="overlaySize.width"
-      :height="overlaySize.height"
-      :viewBox="`0 0 ${overlaySize.width} ${overlaySize.height}`"
-      :style="{ cursor: overlayCursor }"
-    >
-      <g v-for="item in overlayItems" :key="item.id">
-        <line
-          class="segment-overlay__line"
-          :class="{ 'segment-overlay__line--selected': item.isSelected }"
-          :x1="item.x1"
-          :y1="item.y1"
-          :x2="item.x2"
-          :y2="item.y2"
-          :stroke-dasharray="item.segment.lineStyle === 'dashed' ? '8 5' : undefined"
+    <div class="lw-chart-main">
+      <div class="lw-chart" ref="chartContainer"></div>
+      <svg
+        class="segment-overlay"
+        :width="overlaySize.width"
+        :height="overlaySize.height"
+        :viewBox="`0 0 ${overlaySize.width} ${overlaySize.height}`"
+        :style="{ cursor: overlayCursor }"
+      >
+        <g v-for="item in overlayItems" :key="item.id">
+          <line
+            class="segment-overlay__line"
+            :class="{ 'segment-overlay__line--selected': item.isSelected }"
+            :x1="item.x1"
+            :y1="item.y1"
+            :x2="item.x2"
+            :y2="item.y2"
+            :stroke-dasharray="item.segment.lineStyle === 'dashed' ? '8 5' : undefined"
+          />
+        </g>
+      </svg>
+      <template v-for="item in overlayItems" :key="`handles-${item.id}`">
+        <button
+          v-if="item.isSelected"
+          class="segment-handle"
+          type="button"
+          :style="{ left: `${item.x1}px`, top: `${item.y1}px` }"
+          @mousedown="handleEndpointMouseDown($event, item.id, 'start')"
         />
-      </g>
-    </svg>
-    <template v-for="item in overlayItems" :key="`handles-${item.id}`">
-      <button
-        v-if="item.isSelected"
-        class="segment-handle"
-        type="button"
-        :style="{ left: `${item.x1}px`, top: `${item.y1}px` }"
-        @mousedown="handleEndpointMouseDown($event, item.id, 'start')"
-      />
-      <button
-        v-if="item.isSelected"
-        class="segment-handle"
-        type="button"
-        :style="{ left: `${item.x2}px`, top: `${item.y2}px` }"
-        @mousedown="handleEndpointMouseDown($event, item.id, 'end')"
-      />
-    </template>
-    <div class="ema-legend">
-      <span class="ema-legend__item ema-legend__item--ema20">EMA20</span>
-      <span class="ema-legend__item ema-legend__item--ema120">EMA120</span>
+        <button
+          v-if="item.isSelected"
+          class="segment-handle"
+          type="button"
+          :style="{ left: `${item.x2}px`, top: `${item.y2}px` }"
+          @mousedown="handleEndpointMouseDown($event, item.id, 'end')"
+        />
+      </template>
+      <div class="ema-legend">
+        <span class="ema-legend__item ema-legend__item--ema20">EMA20</span>
+        <span class="ema-legend__item ema-legend__item--ema120">EMA120</span>
+      </div>
+    </div>
+    <div class="lw-chart-macd">
+      <div class="lw-chart lw-chart--macd" ref="macdChartContainer"></div>
+      <div class="macd-legend">
+        <span class="macd-legend__item macd-legend__item--dif">DIF</span>
+        <span class="macd-legend__item macd-legend__item--dea">DEA</span>
+        <span class="macd-legend__item macd-legend__item--macd">
+          MACD(20,120,12)
+        </span>
+      </div>
     </div>
   </div>
 </template>
@@ -965,7 +1248,18 @@ watch(selectedSegmentId, () => {
 <style lang="less" scoped>
 .lw-chart-wrap {
   width: 100%;
-  height: 560px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.lw-chart-main {
+  height: 420px;
+  position: relative;
+}
+
+.lw-chart-macd {
+  height: 140px;
   position: relative;
 }
 
@@ -1050,5 +1344,47 @@ watch(selectedSegmentId, () => {
   .ema-legend__item--ema120::before {
     background: #7c3aed;
   }
+}
+
+.macd-legend {
+  position: absolute;
+  top: 10px;
+  left: 12px;
+  z-index: 2;
+  display: flex;
+  gap: 12px;
+  padding: 4px 8px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.86);
+  color: #303133;
+  font-size: 12px;
+  line-height: 1;
+  pointer-events: none;
+}
+
+.macd-legend__item {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  white-space: nowrap;
+}
+
+.macd-legend__item::before {
+  content: "";
+  width: 16px;
+  height: 2px;
+  border-radius: 999px;
+}
+
+.macd-legend__item--dif::before {
+  background: #f59e0b;
+}
+
+.macd-legend__item--dea::before {
+  background: #7c3aed;
+}
+
+.macd-legend__item--macd::before {
+  background: #909399;
 }
 </style>
