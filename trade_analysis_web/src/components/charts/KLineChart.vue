@@ -327,9 +327,48 @@ const getRequestedSymbol = (symbolInfo: Record<string, unknown>) => {
   return ticker || name
 }
 
+const getIntradayMultipliers = (resolutions: string[]) => {
+  return resolutions.filter((resolution) => /^\d+$/.test(resolution))
+}
+
+const getDailyMultipliers = (resolutions: string[]) => {
+  return resolutions
+    .filter((resolution) => /^\d+D$/i.test(resolution))
+    .map((resolution) => resolution.replace(/D$/i, ''))
+}
+
+const getBarsInRange = (
+  sourceBars: TradingViewBar[],
+  periodParams: { from: number; to: number; countBack?: number },
+) => {
+  const fromMilliseconds = periodParams.from * 1000
+  const toMilliseconds = periodParams.to * 1000
+  const barsBeforeTo = sourceBars.filter((bar) => bar.time <= toMilliseconds)
+  const barsInRange = barsBeforeTo.filter((bar) => bar.time >= fromMilliseconds)
+  const countBack = Number(periodParams.countBack)
+
+  if (Number.isFinite(countBack) && countBack > barsInRange.length) {
+    const missingCount = countBack - barsInRange.length
+    const barsBeforeRange = barsBeforeTo.filter((bar) => bar.time < fromMilliseconds)
+    return [...barsBeforeRange.slice(-missingCount), ...barsInRange]
+  }
+
+  if (barsInRange.length) {
+    return barsInRange
+  }
+
+  if (Number.isFinite(countBack) && countBack > 0 && barsBeforeTo.length) {
+    return barsBeforeTo.slice(-countBack)
+  }
+
+  return []
+}
+
 const createDatafeed = (bars: TradingViewBar[], resolution: string, name: string) => {
   const priceScale = getPriceScale(getSortedKLineList()) || DEFAULT_PRICE_SCALE
   const supportedResolutions = getSupportedResolutions()
+  const intradayMultipliers = getIntradayMultipliers(supportedResolutions)
+  const dailyMultipliers = getDailyMultipliers(supportedResolutions)
   const currentSymbol = symbolName.value
   const availableContracts = props.contractOptions
 
@@ -341,6 +380,10 @@ const createDatafeed = (bars: TradingViewBar[], resolution: string, name: string
           supports_marks: false,
           supports_timescale_marks: false,
           supports_time: false,
+          has_intraday: intradayMultipliers.length > 0,
+          intraday_multipliers: intradayMultipliers,
+          has_daily: dailyMultipliers.length > 0,
+          daily_multipliers: dailyMultipliers,
         })
       }, 0)
     },
@@ -389,9 +432,12 @@ const createDatafeed = (bars: TradingViewBar[], resolution: string, name: string
           exchange: 'LOCAL',
           minmov: 1,
           pricescale: priceScale,
-          has_intraday: true,
-          has_daily: true,
+          has_intraday: intradayMultipliers.length > 0,
+          intraday_multipliers: intradayMultipliers,
+          has_daily: dailyMultipliers.length > 0,
+          daily_multipliers: dailyMultipliers,
           has_weekly_and_monthly: false,
+          visible_plots_set: 'ohlc',
           supported_resolutions: supportedResolutions,
           volume_precision: 0,
           data_status: 'endofday',
@@ -400,26 +446,35 @@ const createDatafeed = (bars: TradingViewBar[], resolution: string, name: string
     },
     getBars(
       symbolInfo: Record<string, unknown>,
-      _requestedResolution: string,
-      periodParams: { from: number; to: number },
+      requestedResolution: string,
+      periodParams: { from: number; to: number; countBack?: number },
       onResult: (history: TradingViewBar[], meta: { noData?: boolean }) => void,
-      _onError: (reason: string) => void,
+      onError: (reason: string) => void,
     ) {
       if (getRequestedSymbol(symbolInfo) !== currentSymbol) {
         onResult([], { noData: true })
         return
       }
 
-      const fromMilliseconds = periodParams.from * 1000
-      const toMilliseconds = periodParams.to * 1000
-      const filteredBars = bars.filter((bar) => bar.time >= fromMilliseconds && bar.time <= toMilliseconds)
+      const normalizedRequestedResolution = requestedResolution.trim().toUpperCase()
+      if (normalizedRequestedResolution && normalizedRequestedResolution !== resolution.toUpperCase()) {
+        const requestedPeriod = periodValueFromResolution(normalizedRequestedResolution)
+        if (String(requestedPeriod) !== String(props.selectedPeriod)) {
+          emit('update:selectedPeriod', requestedPeriod)
+        }
+
+        onResult([], { noData: true })
+        return
+      }
+
+      const filteredBars = getBarsInRange(bars, periodParams)
 
       if (filteredBars.length) {
         onResult(filteredBars, { noData: false })
         return
       }
 
-      onResult(bars, { noData: bars.length === 0 })
+      onResult([], { noData: true })
     },
     subscribeBars() {
       return undefined
@@ -463,26 +518,47 @@ const loadChartingLibrary = () => {
   return libraryPromise
 }
 
+const resetWidgetHandlers = () => {
+  crossHairHandler = null
+  onDataLoadedHandler = null
+  onSymbolChangedHandler = null
+  onIntervalChangedHandler = null
+}
+
 const teardownWidget = () => {
-  if (widget) {
+  const currentWidget = widget
+  widget = null
+
+  if (!currentWidget) {
+    resetWidgetHandlers()
+    return
+  }
+
+  try {
+    const activeChart = currentWidget.activeChart()
+
     if (crossHairHandler) {
-      widget.activeChart().crossHairMoved().unsubscribe(null, crossHairHandler)
-      crossHairHandler = null
+      activeChart.crossHairMoved().unsubscribe(null, crossHairHandler)
     }
     if (onDataLoadedHandler) {
-      widget.activeChart().onDataLoaded().unsubscribe(null, onDataLoadedHandler)
-      onDataLoadedHandler = null
+      activeChart.onDataLoaded().unsubscribe(null, onDataLoadedHandler)
     }
     if (onSymbolChangedHandler) {
-      widget.activeChart().onSymbolChanged().unsubscribe(null, onSymbolChangedHandler)
-      onSymbolChangedHandler = null
+      activeChart.onSymbolChanged().unsubscribe(null, onSymbolChangedHandler)
     }
     if (onIntervalChangedHandler) {
-      widget.activeChart().onIntervalChanged().unsubscribe(null, onIntervalChangedHandler)
-      onIntervalChangedHandler = null
+      activeChart.onIntervalChanged().unsubscribe(null, onIntervalChangedHandler)
     }
-    widget.remove()
-    widget = null
+  } catch {
+    // Ignore disposal races when the library has already torn down its internals.
+  } finally {
+    resetWidgetHandlers()
+  }
+
+  try {
+    currentWidget.remove()
+  } catch {
+    // Ignore repeated widget disposal during route changes.
   }
 }
 
@@ -649,7 +725,6 @@ watch(
     props.data.kLineList,
     props.data.symbol,
     props.data.name,
-    props.selectedContract,
     props.selectedPeriod,
     props.contractOptions,
     props.periodOptions,

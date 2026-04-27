@@ -3,31 +3,30 @@ import { type RouteRecordRaw } from "vue-router"
 export const RouterModules: RouteRecordRaw[] = [
   {
     path: "/",
-    redirect: "/futures/detail",
+    redirect: "/market_conditions",
   },
   {
-    path: "/home",
-    name: "Home",
-    component: () => import("@/views/Home.vue"),
+    path: "/market_conditions",
+    component: () => import("@/views/market_conditions/MarketConditions.vue"),
     meta: {
-      icon: "HomeFilled",
-      title: "\u9996\u9875",
+      icon: "TrendCharts",
+      title: "市场行情",
     },
   },
   {
     path: "/futures",
     name: "Futures",
     meta: {
-      icon: "TrendCharts",
-      title: "\u671f\u8d27",
+      icon: "Menu",
+      title: "期货数据管理",
     },
     children: [
       {
-        path: "/futures/detail",
-        component: () => import("@/views/futures/future_detail/FutureDetail.vue"),
+        path: "/futures/contract_manager",
+        component: () => import("@/views/futures/future_contracts_manager/FutureContractManager.vue"),
         meta: {
           icon: "",
-          title: "K\u7ebf\u884c\u60c5",
+          title: "期货合约管理",
         },
       },
       {
@@ -35,15 +34,7 @@ export const RouterModules: RouteRecordRaw[] = [
         component: () => import("@/views/futures/future_data_manager/FutureDataManager.vue"),
         meta: {
           icon: "",
-          title: "\u671f\u8d27\u6570\u636e\u7ba1\u7406",
-        },
-      },
-      {
-        path: "/futures/contract_manager",
-        component: () => import("@/views/futures/future_contracts_manager/FutureContractManager.vue"),
-        meta: {
-          icon: "",
-          title: "\u671f\u8d27\u5408\u7ea6\u7ba1\u7406",
+          title: "期货数据管理",
         },
       },
       {
@@ -51,7 +42,7 @@ export const RouterModules: RouteRecordRaw[] = [
         component: () => import("@/views/futures/future_strategy_analysis_manager/FutureStrategyAnalysisManager.vue"),
         meta: {
           icon: "",
-          title: "\u671f\u8d27\u7b56\u7565\u5206\u6790\u7ba1\u7406",
+          title: "期货策略分析管理",
         },
       },
     ],
