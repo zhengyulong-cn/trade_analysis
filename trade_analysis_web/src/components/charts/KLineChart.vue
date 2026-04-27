@@ -4,15 +4,15 @@ import {
   ColorType,
   createChart,
   HistogramSeries,
-  LineStyle,
   LineSeries,
+  LineStyle,
   type ChartOptions,
   type DeepPartial,
-  type LineData,
   type IChartApi,
-} from "lightweight-charts";
-import { INITIAL_VISIBLE_K_LINE_COUNT } from "@/constants/chart";
-import { computed, h, onMounted, onUnmounted, ref, watch } from "vue";
+  type LineData,
+} from 'lightweight-charts'
+import { INITIAL_VISIBLE_K_LINE_COUNT } from '@/constants/chart'
+import { computed, h, onMounted, onUnmounted, ref, watch } from 'vue'
 import ContextMenu, { type MenuItem } from '@imengyu/vue3-context-menu'
 import { Check, Close, Delete, EditPen } from '@element-plus/icons-vue'
 
@@ -79,8 +79,8 @@ interface MacdDataPoint {
 const MACD_SHORT_PERIOD = 20
 const MACD_LONG_PERIOD = 120
 const MACD_SIGNAL_PERIOD = 12
-const MAIN_CHART_HEIGHT = 420
-const MACD_CHART_HEIGHT = 140
+const MAIN_PANE_HEIGHT = 420
+const MACD_PANE_HEIGHT = 140
 const SHARED_RIGHT_PRICE_SCALE_WIDTH = 72
 
 const props = withDefaults(
@@ -102,8 +102,8 @@ const props = withDefaults(
     canLoadSegments: true,
     autoLoadSegments: false,
     commonChartOptions: () => ({}),
-  }
-);
+  },
+)
 
 const emit = defineEmits<{
   'crosshair-move': [value: KLineItem | null]
@@ -115,32 +115,27 @@ const emit = defineEmits<{
   'segment-auto-load-toggle': []
 }>()
 
-const chartContainer = ref<HTMLDivElement | null>(null);
-const macdChartContainer = ref<HTMLDivElement | null>(null);
-let chart: IChartApi | null = null;
-let macdChart: IChartApi | null = null;
-let kSeries: any = null;
-let ema20Series: any = null;
-let ema120Series: any = null;
-let difSeries: any = null;
-let deaSeries: any = null;
-let macdHistogramSeries: any = null;
-let segmentSeriesList: any[] = [];
-let crosshairMoveHandler: ((param: any) => void) | null = null;
-let clickHandler: ((param: any) => void) | null = null;
-let logicalRangeChangeHandler: (() => void) | null = null;
-let mainLogicalRangeSyncHandler: (() => void) | null = null;
-let timeScaleSizeChangeHandler: (() => void) | null = null;
-let macdLogicalRangeChangeHandler: (() => void) | null = null;
-let chartOptionsBeforeDrag: Pick<ChartOptions, 'handleScroll' | 'handleScale'> | null = null;
-let syncingVisibleRange = false;
+const chartContainer = ref<HTMLDivElement | null>(null)
+let chart: IChartApi | null = null
+let kSeries: any = null
+let ema20Series: any = null
+let ema120Series: any = null
+let difSeries: any = null
+let deaSeries: any = null
+let macdHistogramSeries: any = null
+let segmentSeriesList: any[] = []
+let crosshairMoveHandler: ((param: any) => void) | null = null
+let clickHandler: ((param: any) => void) | null = null
+let logicalRangeChangeHandler: (() => void) | null = null
+let timeScaleSizeChangeHandler: (() => void) | null = null
+let chartOptionsBeforeDrag: Pick<ChartOptions, 'handleScroll' | 'handleScale'> | null = null
 
-const selectedSegmentId = ref<string | null>(null);
-const overlayItems = ref<SegmentOverlayItem[]>([]);
+const selectedSegmentId = ref<string | null>(null)
+const overlayItems = ref<SegmentOverlayItem[]>([])
 const overlaySize = ref({
   width: 0,
   height: 0,
-});
+})
 const dragState = ref<{
   segmentId: string
   endpoint: 'start' | 'end'
@@ -148,48 +143,57 @@ const dragState = ref<{
     time: number
     value: number
   }
-} | null>(null);
+} | null>(null)
 
-const overlayCursor = computed(() => (dragState.value ? 'grabbing' : 'default'));
+const overlayCursor = computed(() => (dragState.value ? 'grabbing' : 'default'))
 const selectedSegment = computed(() => {
   if (!selectedSegmentId.value) {
-    return null;
+    return null
   }
 
-  return props.segmentLines.find((segment) => segment.id === selectedSegmentId.value) ?? null;
-});
-const canDeleteSelectedSegment = computed(() => selectedSegment.value?.segmentRole === 'confirmed');
+  return props.segmentLines.find((segment) => segment.id === selectedSegmentId.value) ?? null
+})
+const canDeleteSelectedSegment = computed(() => selectedSegment.value?.segmentRole === 'confirmed')
 
 const syncOverlaySize = () => {
   if (!chartContainer.value) {
     overlaySize.value = {
       width: 0,
       height: 0,
-    };
-    return;
+    }
+    return
   }
 
-  const dimensions = chartContainer.value.getBoundingClientRect();
+  const dimensions = chartContainer.value.getBoundingClientRect()
   overlaySize.value = {
     width: dimensions.width,
     height: dimensions.height,
-  };
-};
+  }
+}
+
+const getMainPaneHeight = () => {
+  if (!chart) {
+    return MAIN_PANE_HEIGHT
+  }
+  return chart.panes()[0]?.getHeight() ?? MAIN_PANE_HEIGHT
+}
+
+const isPointInMainPane = (y: number) => y <= getMainPaneHeight()
 
 const calculateEmaData = (kLineList: KLineItem[], period: number): LineData<number>[] => {
   if (kLineList.length < period) {
-    return [];
+    return []
   }
 
-  const multiplier = 2 / (period + 1);
+  const multiplier = 2 / (period + 1)
   const initialSum = kLineList
     .slice(0, period)
-    .reduce((sum, item) => sum + item.close, 0);
-  let previousEma = initialSum / period;
-  const initialItem = kLineList[period - 1];
+    .reduce((sum, item) => sum + item.close, 0)
+  let previousEma = initialSum / period
+  const initialItem = kLineList[period - 1]
 
   if (!initialItem) {
-    return [];
+    return []
   }
 
   const emaData: LineData<number>[] = [
@@ -197,245 +201,263 @@ const calculateEmaData = (kLineList: KLineItem[], period: number): LineData<numb
       time: initialItem.time,
       value: Number(previousEma.toFixed(4)),
     },
-  ];
+  ]
 
   for (let index = period; index < kLineList.length; index += 1) {
-    const item = kLineList[index];
+    const item = kLineList[index]
     if (!item) {
-      continue;
+      continue
     }
 
-    previousEma = (item.close - previousEma) * multiplier + previousEma;
+    previousEma = (item.close - previousEma) * multiplier + previousEma
     emaData.push({
       time: item.time,
       value: Number(previousEma.toFixed(4)),
-    });
+    })
   }
 
-  return emaData;
-};
+  return emaData
+}
 
 const calculateMacdData = (kLineList: KLineItem[]): MacdDataPoint[] => {
   if (!kLineList.length) {
-    return [];
+    return []
   }
 
-  const shortMultiplier = 2 / (MACD_SHORT_PERIOD + 1);
-  const longMultiplier = 2 / (MACD_LONG_PERIOD + 1);
-  const signalMultiplier = 2 / (MACD_SIGNAL_PERIOD + 1);
+  const shortMultiplier = 2 / (MACD_SHORT_PERIOD + 1)
+  const longMultiplier = 2 / (MACD_LONG_PERIOD + 1)
+  const signalMultiplier = 2 / (MACD_SIGNAL_PERIOD + 1)
+
+  const macdData: MacdDataPoint[] = kLineList.map((item) => ({
+    time: item.time,
+  }))
+
+  if (kLineList.length < MACD_LONG_PERIOD) {
+    return macdData
+  }
 
   const shortSeed = kLineList
     .slice(0, MACD_SHORT_PERIOD)
-    .reduce((sum, item) => sum + item.close, 0) / MACD_SHORT_PERIOD;
+    .reduce((sum, item) => sum + item.close, 0) / MACD_SHORT_PERIOD
   const longSeed = kLineList
     .slice(0, MACD_LONG_PERIOD)
-    .reduce((sum, item) => sum + item.close, 0) / MACD_LONG_PERIOD;
+    .reduce((sum, item) => sum + item.close, 0) / MACD_LONG_PERIOD
 
-  let shortEma = shortSeed;
-  let longEma = longSeed;
-  let dea = 0;
-  let hasDeaSeed = false;
-  const difBuffer: number[] = [];
-  const macdData: MacdDataPoint[] = kLineList.map((item) => ({
-    time: item.time,
-  }));
+  let shortEma = shortSeed
+  let longEma = longSeed
+  let dea = 0
+  let hasDeaSeed = false
+  const difBuffer: number[] = []
 
   for (let index = 0; index < kLineList.length; index += 1) {
-    const item = kLineList[index];
+    const item = kLineList[index]
     if (!item) {
-      continue;
+      continue
     }
 
     if (index >= MACD_SHORT_PERIOD) {
-      shortEma = (item.close - shortEma) * shortMultiplier + shortEma;
+      shortEma = (item.close - shortEma) * shortMultiplier + shortEma
     }
 
     if (index < MACD_LONG_PERIOD - 1) {
-      continue;
+      continue
     }
 
     if (index > MACD_LONG_PERIOD - 1) {
-      longEma = (item.close - longEma) * longMultiplier + longEma;
+      longEma = (item.close - longEma) * longMultiplier + longEma
     }
 
-    const dif = shortEma - longEma;
-    difBuffer.push(dif);
+    const dif = shortEma - longEma
+    difBuffer.push(dif)
 
     if (!hasDeaSeed) {
       if (difBuffer.length < MACD_SIGNAL_PERIOD) {
-        continue;
+        continue
       }
-      dea = difBuffer.reduce((sum, value) => sum + value, 0) / MACD_SIGNAL_PERIOD;
-      hasDeaSeed = true;
+      dea = difBuffer.reduce((sum, value) => sum + value, 0) / MACD_SIGNAL_PERIOD
+      hasDeaSeed = true
     } else {
-      dea = (dif - dea) * signalMultiplier + dea;
+      dea = (dif - dea) * signalMultiplier + dea
     }
 
-    const macd = (dif - dea) * 2;
+    const macd = (dif - dea) * 2
     macdData[index] = {
       time: item.time,
       dif: Number(dif.toFixed(4)),
       dea: Number(dea.toFixed(4)),
       macd: Number(macd.toFixed(4)),
-    };
+    }
   }
 
-  return macdData;
-};
+  return macdData
+}
 
 const resizeHandler = () => {
-  if (!chart || !chartContainer.value) return;
-  const dimensions = chartContainer.value.getBoundingClientRect();
-  chart.resize(dimensions.width, dimensions.height || MAIN_CHART_HEIGHT);
-  if (macdChart && macdChartContainer.value) {
-    const macdDimensions = macdChartContainer.value.getBoundingClientRect();
-    macdChart.resize(macdDimensions.width, macdDimensions.height || MACD_CHART_HEIGHT);
+  if (!chart || !chartContainer.value) {
+    return
   }
-  syncOverlaySize();
-  updateSegmentOverlayItems();
-};
+
+  const dimensions = chartContainer.value.getBoundingClientRect()
+  chart.resize(dimensions.width, dimensions.height)
+  syncOverlaySize()
+  updateSegmentOverlayItems()
+}
 
 const applyVisibleRange = (kLineList: KLineItem[]) => {
-  if (!chart) return;
-
-  if (kLineList.length <= INITIAL_VISIBLE_K_LINE_COUNT) {
-    chart.timeScale().fitContent();
-    macdChart?.timeScale().fitContent();
-    return;
+  if (!chart) {
+    return
   }
 
-  const range = {
+  if (kLineList.length <= INITIAL_VISIBLE_K_LINE_COUNT) {
+    chart.timeScale().fitContent()
+    return
+  }
+
+  chart.timeScale().setVisibleLogicalRange({
     from: kLineList.length - INITIAL_VISIBLE_K_LINE_COUNT,
     to: kLineList.length - 1,
-  };
-  chart.timeScale().setVisibleLogicalRange(range);
-  macdChart?.timeScale().setVisibleLogicalRange(range);
-};
+  })
+}
 
 const applyChartData = () => {
-  if (!kSeries) return;
-  const kLineList = props.data.kLineList ?? [];
-  const macdData = calculateMacdData(kLineList);
-  kSeries.setData(kLineList);
-  ema20Series?.setData(calculateEmaData(kLineList, 20));
-  ema120Series?.setData(calculateEmaData(kLineList, 120));
+  if (!kSeries) {
+    return
+  }
+
+  const kLineList = props.data.kLineList ?? []
+  const macdData = calculateMacdData(kLineList)
+
+  kSeries.setData(kLineList)
+  ema20Series?.setData(calculateEmaData(kLineList, 20))
+  ema120Series?.setData(calculateEmaData(kLineList, 120))
   difSeries?.setData(
     macdData.map((item) => {
       if (item.dif === undefined) {
-        return { time: item.time };
+        return { time: item.time }
       }
-      return { time: item.time, value: item.dif };
+      return { time: item.time, value: item.dif }
     }),
-  );
+  )
   deaSeries?.setData(
     macdData.map((item) => {
       if (item.dea === undefined) {
-        return { time: item.time };
+        return { time: item.time }
       }
-      return { time: item.time, value: item.dea };
+      return { time: item.time, value: item.dea }
     }),
-  );
+  )
   macdHistogramSeries?.setData(
     macdData.map((item) => {
       if (item.macd === undefined) {
-        return { time: item.time };
+        return { time: item.time }
       }
       return {
         time: item.time,
         value: item.macd,
         color: item.macd >= 0 ? '#f56c6c' : '#67c23a',
-      };
+      }
     }),
-  );
-  applySegmentLines();
-  applyVisibleRange(kLineList);
-};
+  )
+
+  applySegmentLines()
+  applyVisibleRange(kLineList)
+}
 
 const clearSegmentLines = () => {
   if (!chart || !segmentSeriesList.length) {
-    segmentSeriesList = [];
-    return;
+    segmentSeriesList = []
+    return
   }
 
   for (const series of segmentSeriesList) {
-    chart.removeSeries(series);
+    chart.removeSeries(series)
   }
-  segmentSeriesList = [];
-};
+  segmentSeriesList = []
+}
 
-const createLineSeries = (chartInstance: any, options: Record<string, unknown>) => {
-  return typeof chartInstance.addLineSeries === "function"
-    ? chartInstance.addLineSeries(options)
-    : chartInstance.addSeries(LineSeries, options);
-};
+const addSeriesToPane = (
+  seriesType: typeof CandlestickSeries | typeof LineSeries | typeof HistogramSeries,
+  options: Record<string, unknown>,
+  paneIndex = 0,
+) => {
+  if (!chart) {
+    return null
+  }
+  return (chart as any).addSeries(seriesType, options, paneIndex)
+}
 
 const applySegmentLines = () => {
   if (!chart) {
-    return;
+    return
   }
 
-  clearSegmentLines();
+  clearSegmentLines()
 
-  const chartInstance = chart as any;
-  const segmentLines = props.segmentLines ?? [];
+  const segmentLines = props.segmentLines ?? []
   for (const segment of segmentLines) {
     if (!segment.points?.length) {
-      continue;
+      continue
     }
 
-    const lineSeries = createLineSeries(chartInstance, {
-      title: '',
-      color: "#000000",
-      lineWidth: 2,
-      lineStyle:
-        segment.lineStyle === "dashed" ? LineStyle.Dashed : LineStyle.Solid,
-      priceLineVisible: false,
-      lastValueVisible: false,
-      crosshairMarkerVisible: false,
-    });
-    lineSeries.setData(segment.points);
-    segmentSeriesList.push(lineSeries);
+    const lineSeries = addSeriesToPane(
+      LineSeries,
+      {
+        title: '',
+        color: '#000000',
+        lineWidth: 2,
+        lineStyle: segment.lineStyle === 'dashed' ? LineStyle.Dashed : LineStyle.Solid,
+        priceLineVisible: false,
+        lastValueVisible: false,
+        crosshairMarkerVisible: false,
+      },
+      0,
+    )
+
+    lineSeries?.setData(segment.points)
+    if (lineSeries) {
+      segmentSeriesList.push(lineSeries)
+    }
   }
 
-  updateSegmentOverlayItems();
-};
+  updateSegmentOverlayItems()
+}
 
 const getSegmentDisplayPoints = (segment: SegmentLineItem) => {
   const points = segment.points.map((point) => ({
     time: Number(point.time),
     value: Number(point.value ?? 0),
-  }));
-  const preview = dragState.value;
+  }))
+  const preview = dragState.value
 
   if (preview?.segmentId !== segment.id) {
-    return points;
+    return points
   }
 
-  const nextPoints = [...points];
-  nextPoints[preview.endpoint === 'start' ? 0 : 1] = preview.previewPoint;
-  return nextPoints;
-};
+  const nextPoints = [...points]
+  nextPoints[preview.endpoint === 'start' ? 0 : 1] = preview.previewPoint
+  return nextPoints
+}
 
 const updateSegmentOverlayItems = () => {
   if (!chart || !kSeries) {
-    overlayItems.value = [];
-    return;
+    overlayItems.value = []
+    return
   }
 
-  const nextItems: SegmentOverlayItem[] = [];
+  const nextItems: SegmentOverlayItem[] = []
   for (const segment of props.segmentLines ?? []) {
-    const [startPoint, endPoint] = getSegmentDisplayPoints(segment);
+    const [startPoint, endPoint] = getSegmentDisplayPoints(segment)
     if (!startPoint || !endPoint) {
-      continue;
+      continue
     }
 
-    const x1 = chart.timeScale().timeToCoordinate(startPoint.time as any);
-    const x2 = chart.timeScale().timeToCoordinate(endPoint.time as any);
-    const y1 = kSeries.priceToCoordinate(startPoint.value);
-    const y2 = kSeries.priceToCoordinate(endPoint.value);
+    const x1 = chart.timeScale().timeToCoordinate(startPoint.time as any)
+    const x2 = chart.timeScale().timeToCoordinate(endPoint.time as any)
+    const y1 = kSeries.priceToCoordinate(startPoint.value)
+    const y2 = kSeries.priceToCoordinate(endPoint.value)
 
     if (x1 === null || x2 === null || y1 === null || y2 === null) {
-      continue;
+      continue
     }
 
     nextItems.push({
@@ -446,59 +468,65 @@ const updateSegmentOverlayItems = () => {
       x2: Number(x2),
       y2: Number(y2),
       isSelected: selectedSegmentId.value === segment.id,
-    });
+    })
   }
 
-  overlayItems.value = nextItems;
-};
+  overlayItems.value = nextItems
+}
 
 const selectSegment = (segmentId: string) => {
-  selectedSegmentId.value = segmentId;
-  updateSegmentOverlayItems();
-};
+  selectedSegmentId.value = segmentId
+  updateSegmentOverlayItems()
+}
 
 const clearSelectedSegment = () => {
-  selectedSegmentId.value = null;
-  updateSegmentOverlayItems();
-};
+  selectedSegmentId.value = null
+  updateSegmentOverlayItems()
+}
 
 const getDistanceToLineSegment = (
   point: { x: number; y: number },
   lineStart: { x: number; y: number },
   lineEnd: { x: number; y: number },
 ) => {
-  const deltaX = lineEnd.x - lineStart.x;
-  const deltaY = lineEnd.y - lineStart.y;
-  const lengthSquared = deltaX * deltaX + deltaY * deltaY;
+  const deltaX = lineEnd.x - lineStart.x
+  const deltaY = lineEnd.y - lineStart.y
+  const lengthSquared = deltaX * deltaX + deltaY * deltaY
 
   if (lengthSquared === 0) {
-    return Math.hypot(point.x - lineStart.x, point.y - lineStart.y);
+    return Math.hypot(point.x - lineStart.x, point.y - lineStart.y)
   }
 
   const projection = Math.max(
     0,
     Math.min(1, ((point.x - lineStart.x) * deltaX + (point.y - lineStart.y) * deltaY) / lengthSquared),
-  );
-  const projectedX = lineStart.x + projection * deltaX;
-  const projectedY = lineStart.y + projection * deltaY;
+  )
+  const projectedX = lineStart.x + projection * deltaX
+  const projectedY = lineStart.y + projection * deltaY
 
-  return Math.hypot(point.x - projectedX, point.y - projectedY);
-};
+  return Math.hypot(point.x - projectedX, point.y - projectedY)
+}
 
 const handleChartClick = (param: any) => {
   if (dragState.value) {
-    return;
+    return
   }
 
   if (!param?.point) {
-    clearSelectedSegment();
-    return;
+    clearSelectedSegment()
+    return
   }
 
   const clickPoint = {
     x: Number(param.point.x),
     y: Number(param.point.y),
-  };
+  }
+
+  if (!isPointInMainPane(clickPoint.y)) {
+    clearSelectedSegment()
+    return
+  }
+
   const nearestSegment = overlayItems.value
     .map((item) => ({
       item,
@@ -508,111 +536,111 @@ const handleChartClick = (param: any) => {
         { x: item.x2, y: item.y2 },
       ),
     }))
-    .sort((first, second) => first.distance - second.distance)[0];
+    .sort((first, second) => first.distance - second.distance)[0]
 
   if (nearestSegment && nearestSegment.distance <= 8) {
-    selectSegment(nearestSegment.item.id);
-    return;
+    selectSegment(nearestSegment.item.id)
+    return
   }
 
-  clearSelectedSegment();
-};
+  clearSelectedSegment()
+}
 
 const findNearestKLineInfoByCoordinate = (x: number) => {
   if (!chart) {
-    return null;
+    return null
   }
 
-  let nearestItem: KLineItem | null = null;
-  let nearestIndex: number | null = null;
-  let nearestDistance = Number.POSITIVE_INFINITY;
+  let nearestItem: KLineItem | null = null
+  let nearestIndex: number | null = null
+  let nearestDistance = Number.POSITIVE_INFINITY
 
   for (let index = 0; index < (props.data.kLineList ?? []).length; index += 1) {
-    const item = props.data.kLineList[index];
+    const item = props.data.kLineList[index]
     if (!item) {
-      continue;
+      continue
     }
 
-    const coordinate = chart.timeScale().timeToCoordinate(item.time as any);
+    const coordinate = chart.timeScale().timeToCoordinate(item.time as any)
     if (coordinate === null) {
-      continue;
+      continue
     }
 
-    const distance = Math.abs(Number(coordinate) - x);
+    const distance = Math.abs(Number(coordinate) - x)
     if (distance < nearestDistance) {
-      nearestDistance = distance;
-      nearestItem = item;
-      nearestIndex = index;
+      nearestDistance = distance
+      nearestItem = item
+      nearestIndex = index
     }
   }
 
   if (!nearestItem || nearestIndex === null) {
-    return null;
+    return null
   }
 
   return {
     item: nearestItem,
     index: nearestIndex,
-  };
-};
+  }
+}
 
 const findNearestKLineByCoordinate = (x: number) => {
-  return findNearestKLineInfoByCoordinate(x)?.item ?? null;
-};
+  return findNearestKLineInfoByCoordinate(x)?.item ?? null
+}
 
 const getNearestPriceOnKLine = (item: KLineItem, y: number) => {
-  const price = kSeries?.coordinateToPrice(y);
-  const candidatePrices = [item.open, item.high, item.low, item.close];
+  const price = kSeries?.coordinateToPrice(y)
+  const candidatePrices = [item.open, item.high, item.low, item.close]
 
   if (price === null || price === undefined || !Number.isFinite(Number(price))) {
-    return item.close;
+    return item.close
   }
 
   return candidatePrices.reduce((nearestPrice: number, currentPrice) => {
     return Math.abs(currentPrice - Number(price)) < Math.abs(nearestPrice - Number(price))
       ? currentPrice
-      : nearestPrice;
-  }, item.open);
-};
+      : nearestPrice
+  }, item.open)
+}
 
 const getMousePointInChart = (event: MouseEvent) => {
   if (!chartContainer.value) {
-    return null;
+    return null
   }
 
-  const rect = chartContainer.value.getBoundingClientRect();
+  const rect = chartContainer.value.getBoundingClientRect()
   return {
     x: event.clientX - rect.left,
     y: event.clientY - rect.top,
-  };
-};
+  }
+}
 
 const getSnappedSegmentPoint = (event: MouseEvent) => {
-  const point = getMousePointInChart(event);
-  if (!point) {
-    return null;
+  const point = getMousePointInChart(event)
+  if (!point || !isPointInMainPane(point.y)) {
+    return null
   }
 
-  const nearestKLine = findNearestKLineByCoordinate(point.x);
+  const nearestKLine = findNearestKLineByCoordinate(point.x)
   if (!nearestKLine) {
-    return null;
+    return null
   }
 
   return {
     time: nearestKLine.time,
     value: getNearestPriceOnKLine(nearestKLine, point.y),
-  };
-};
+  }
+}
 
 const handleCreateSegmentFromContext = (startIndex: number | null) => {
   if (startIndex === null) {
-    return;
+    return
   }
 
-  const startItem = props.data.kLineList[startIndex];
-  const endItem = props.data.kLineList[startIndex + 5];
+  const startItem = props.data.kLineList[startIndex]
+  const endItem = props.data.kLineList[startIndex + 5]
   if (!startItem || !endItem) {
-    return;
+    return
   }
 
   emit('segment-line-create', {
@@ -624,38 +652,38 @@ const handleCreateSegmentFromContext = (startIndex: number | null) => {
       time: endItem.time,
       value: endItem.close,
     },
-  });
-};
+  })
+}
 
 const handleDeleteSegmentFromContext = () => {
-  const segment = selectedSegment.value;
+  const segment = selectedSegment.value
   if (!segment || segment.segmentRole !== 'confirmed') {
-    return;
+    return
   }
 
   emit('segment-line-delete', {
     segment,
-  });
-};
+  })
+}
 
 const handleBuildSegmentsFromContext = () => {
-  emit('segment-build-request');
-};
+  emit('segment-build-request')
+}
 
 const handleLoadSegmentsFromContext = () => {
-  emit('segment-load-request');
-};
+  emit('segment-load-request')
+}
 
 const handleToggleAutoLoadSegmentsFromContext = () => {
-  emit('segment-auto-load-toggle');
-};
+  emit('segment-auto-load-toggle')
+}
 
 const handleChartContextMenu = (event: MouseEvent) => {
-  event.preventDefault();
+  event.preventDefault()
 
-  const point = getMousePointInChart(event);
-  if (!point) {
-    return;
+  const point = getMousePointInChart(event)
+  if (!point || !isPointInMainPane(point.y)) {
+    return
   }
 
   const nearestSegment = overlayItems.value
@@ -667,16 +695,16 @@ const handleChartContextMenu = (event: MouseEvent) => {
         { x: item.x2, y: item.y2 },
       ),
     }))
-    .sort((first, second) => first.distance - second.distance)[0];
+    .sort((first, second) => first.distance - second.distance)[0]
 
   if (nearestSegment && nearestSegment.distance <= 8) {
-    selectSegment(nearestSegment.item.id);
+    selectSegment(nearestSegment.item.id)
   }
 
-  const nearestKLine = findNearestKLineInfoByCoordinate(point.x);
-  const startIndex = nearestKLine?.index ?? null;
-  const canCreateSegment = startIndex !== null && Boolean(props.data.kLineList[startIndex + 5]);
-  const canDeleteSegment = canDeleteSelectedSegment.value;
+  const nearestKLine = findNearestKLineInfoByCoordinate(point.x)
+  const startIndex = nearestKLine?.index ?? null
+  const canCreateSegment = startIndex !== null && Boolean(props.data.kLineList[startIndex + 5])
+  const canDeleteSegment = canDeleteSelectedSegment.value
   const menuItems: MenuItem[] = [
     {
       label: '创建线段',
@@ -690,16 +718,16 @@ const handleChartContextMenu = (event: MouseEvent) => {
       onClick: handleDeleteSegmentFromContext,
     },
     {
-      label: '构建段处理',
+      label: '构建线段处理',
       icon: h(EditPen),
       children: [
         {
-          label: '构建段分析',
+          label: '构建线段分析',
           disabled: !props.canBuildSegments,
           onClick: handleBuildSegmentsFromContext,
         },
         {
-          label: '手动载入构建段',
+          label: '手动载入构建线段',
           disabled: !props.canLoadSegments,
           onClick: handleLoadSegmentsFromContext,
         },
@@ -710,7 +738,7 @@ const handleChartContextMenu = (event: MouseEvent) => {
         },
       ],
     },
-  ];
+  ]
 
   ContextMenu.showContextMenu({
     x: event.x,
@@ -718,141 +746,119 @@ const handleChartContextMenu = (event: MouseEvent) => {
     theme: 'default',
     minWidth: 132,
     items: menuItems,
-  });
-};
+  })
+}
 
 const setChartDragEnabled = (enabled: boolean) => {
   if (!chart) {
-    return;
+    return
   }
 
   if (!enabled) {
-    const currentOptions = chart.options();
+    const currentOptions = chart.options()
     chartOptionsBeforeDrag = {
       handleScroll: currentOptions.handleScroll,
       handleScale: currentOptions.handleScale,
-    };
+    }
     chart.applyOptions({
       handleScroll: false,
       handleScale: false,
-    });
-    macdChart?.applyOptions({
-      handleScroll: false,
-      handleScale: false,
-    });
-    return;
+    })
+    return
   }
 
   if (chartOptionsBeforeDrag) {
-    chart.applyOptions(chartOptionsBeforeDrag);
-    chartOptionsBeforeDrag = null;
+    chart.applyOptions(chartOptionsBeforeDrag)
+    chartOptionsBeforeDrag = null
+    return
   }
 
   chart.applyOptions({
     handleScroll: true,
     handleScale: true,
-  });
-  macdChart?.applyOptions({
-    handleScroll: true,
-    handleScale: true,
-  });
-};
-
-const syncVisibleRangeBetweenCharts = (source: IChartApi, target: IChartApi) => {
-  if (syncingVisibleRange) {
-    return;
-  }
-
-  const visibleRange = source.timeScale().getVisibleLogicalRange();
-  if (!visibleRange) {
-    return;
-  }
-
-  syncingVisibleRange = true;
-  target.timeScale().setVisibleLogicalRange(visibleRange);
-  syncingVisibleRange = false;
-};
+  })
+}
 
 const cleanupEndpointDrag = () => {
-  dragState.value = null;
-  setChartDragEnabled(true);
-  window.removeEventListener('mousemove', handleEndpointMouseMove);
-  window.removeEventListener('mouseup', handleEndpointMouseUp);
-  updateSegmentOverlayItems();
-};
+  dragState.value = null
+  setChartDragEnabled(true)
+  window.removeEventListener('mousemove', handleEndpointMouseMove)
+  window.removeEventListener('mouseup', handleEndpointMouseUp)
+  updateSegmentOverlayItems()
+}
 
 const handleEndpointMouseDown = (
   event: MouseEvent,
   segmentId: string,
   endpoint: 'start' | 'end',
 ) => {
-  event.preventDefault();
-  event.stopPropagation();
-  selectSegment(segmentId);
+  event.preventDefault()
+  event.stopPropagation()
+  selectSegment(segmentId)
 
-  const previewPoint = getSnappedSegmentPoint(event);
+  const previewPoint = getSnappedSegmentPoint(event)
   if (!previewPoint) {
-    return;
+    return
   }
 
   dragState.value = {
     segmentId,
     endpoint,
     previewPoint,
-  };
-  setChartDragEnabled(false);
-  window.addEventListener('mousemove', handleEndpointMouseMove);
-  window.addEventListener('mouseup', handleEndpointMouseUp);
-};
+  }
+  setChartDragEnabled(false)
+  window.addEventListener('mousemove', handleEndpointMouseMove)
+  window.addEventListener('mouseup', handleEndpointMouseUp)
+}
 
 const handleEndpointMouseMove = (event: MouseEvent) => {
   if (!dragState.value) {
-    return;
+    return
   }
 
-  const previewPoint = getSnappedSegmentPoint(event);
+  const previewPoint = getSnappedSegmentPoint(event)
   if (!previewPoint) {
-    return;
+    return
   }
 
   dragState.value = {
     ...dragState.value,
     previewPoint,
-  };
-  updateSegmentOverlayItems();
-};
+  }
+  updateSegmentOverlayItems()
+}
 
 const handleEndpointMouseUp = (event: MouseEvent) => {
   if (!dragState.value) {
-    return;
+    return
   }
 
-  const currentDragState = dragState.value;
-  const finalPoint = getSnappedSegmentPoint(event) ?? dragState.value.previewPoint;
-  const segment = props.segmentLines.find((item) => item.id === currentDragState.segmentId);
-  let changePayload: SegmentLineChange | null = null;
+  const currentDragState = dragState.value
+  const finalPoint = getSnappedSegmentPoint(event) ?? dragState.value.previewPoint
+  const segment = props.segmentLines.find((item) => item.id === currentDragState.segmentId)
+  let changePayload: SegmentLineChange | null = null
 
   if (segment) {
     const points = segment.points.map((point) => ({
       time: Number(point.time),
       value: Number(point.value ?? 0),
-    }));
-    points[currentDragState.endpoint === 'start' ? 0 : 1] = finalPoint;
-    points.sort((first, second) => first.time - second.time);
+    }))
+    points[currentDragState.endpoint === 'start' ? 0 : 1] = finalPoint
+    points.sort((first, second) => first.time - second.time)
 
     changePayload = {
       segment,
       endpoint: currentDragState.endpoint,
       points,
-    };
+    }
   }
 
-  cleanupEndpointDrag();
+  cleanupEndpointDrag()
 
   if (changePayload) {
-    emit('segment-line-change', changePayload);
+    emit('segment-line-change', changePayload)
   }
-};
+}
 
 const getCrosshairKLine = (param: any): KLineItem | null => {
   if (!kSeries || !param?.time) {
@@ -864,7 +870,7 @@ const getCrosshairKLine = (param: any): KLineItem | null => {
     return null
   }
 
-  const time = typeof seriesData.time === "number" ? seriesData.time : param.time
+  const time = typeof seriesData.time === 'number' ? seriesData.time : param.time
   const open = Number(seriesData.open)
   const high = Number(seriesData.high)
   const low = Number(seriesData.low)
@@ -890,357 +896,263 @@ const getCrosshairKLine = (param: any): KLineItem | null => {
 }
 
 onMounted(() => {
-  if (!chartContainer.value || !macdChartContainer.value) return;
+  if (!chartContainer.value) {
+    return
+  }
 
   chart = createChart(chartContainer.value, {
     width: chartContainer.value.clientWidth,
-    height: chartContainer.value.clientHeight || MAIN_CHART_HEIGHT,
+    height: chartContainer.value.clientHeight || MAIN_PANE_HEIGHT + MACD_PANE_HEIGHT,
     layout: {
-      background: { type: ColorType.Solid, color: "#ffffff" },
-      textColor: "#606266",
+      background: { type: ColorType.Solid, color: '#ffffff' },
+      textColor: '#606266',
+      panes: {
+        enableResize: false,
+        separatorColor: '#ebeef5',
+        separatorHoverColor: '#dcdfe6',
+      },
     },
     rightPriceScale: {
       borderColor: '#ebeef5',
       minimumWidth: SHARED_RIGHT_PRICE_SCALE_WIDTH,
-    },
-    timeScale: {
-      visible: false,
     },
     ...props.commonChartOptions,
-  });
-  macdChart = createChart(macdChartContainer.value, {
-    width: macdChartContainer.value.clientWidth,
-    height: macdChartContainer.value.clientHeight || MACD_CHART_HEIGHT,
-    layout: {
-      background: { type: ColorType.Solid, color: "#ffffff" },
-      textColor: "#606266",
+  })
+
+  kSeries = addSeriesToPane(
+    CandlestickSeries,
+    {
+      upColor: '#f56c6c',
+      downColor: '#67c23a',
+      borderUpColor: '#f56c6c',
+      borderDownColor: '#67c23a',
+      wickUpColor: '#f56c6c',
+      wickDownColor: '#67c23a',
     },
-    rightPriceScale: {
-      borderColor: '#ebeef5',
-      minimumWidth: SHARED_RIGHT_PRICE_SCALE_WIDTH,
+    0,
+  )
+
+  ema20Series = addSeriesToPane(
+    LineSeries,
+    {
+      title: 'EMA20',
+      color: '#ff30d4',
+      lineWidth: 1,
+      priceLineVisible: false,
+      lastValueVisible: true,
     },
-    timeScale: {
-      borderColor: '#ebeef5',
-      timeVisible: true,
-      secondsVisible: false,
+    0,
+  )
+
+  ema120Series = addSeriesToPane(
+    LineSeries,
+    {
+      title: 'EMA120',
+      color: '#1811ff',
+      lineWidth: 1,
+      priceLineVisible: false,
+      lastValueVisible: true,
     },
-    grid: {
-      vertLines: { color: '#f0f2f5' },
-      horzLines: { color: '#f0f2f5' },
+    0,
+  )
+
+  difSeries = addSeriesToPane(
+    LineSeries,
+    {
+      title: 'DIF',
+      color: '#f59e0b',
+      lineWidth: 1,
+      priceLineVisible: false,
+      lastValueVisible: true,
     },
-    crosshair: {
-      vertLine: {
-        visible: true,
-      },
-      horzLine: {
-        visible: false,
-      },
+    1,
+  )
+
+  deaSeries = addSeriesToPane(
+    LineSeries,
+    {
+      title: 'DEA',
+      color: '#7c3aed',
+      lineWidth: 1,
+      priceLineVisible: false,
+      lastValueVisible: true,
     },
-  });
+    1,
+  )
 
-  const chartInstance = chart as any;
-  const macdChartInstance = macdChart as any;
-  kSeries =
-    typeof chartInstance.addCandlestickSeries === "function"
-      ? chartInstance.addCandlestickSeries({
-          upColor: "#f56c6c",
-          downColor: "#67c23a",
-          borderUpColor: "#f56c6c",
-          borderDownColor: "#67c23a",
-          wickUpColor: "#f56c6c",
-          wickDownColor: "#67c23a",
-        })
-      : chartInstance.addSeries(CandlestickSeries, {
-          upColor: "#f56c6c",
-          downColor: "#67c23a",
-          borderUpColor: "#f56c6c",
-          borderDownColor: "#67c23a",
-          wickUpColor: "#f56c6c",
-          wickDownColor: "#67c23a",
-        });
+  macdHistogramSeries = addSeriesToPane(
+    HistogramSeries,
+    {
+      priceLineVisible: false,
+      lastValueVisible: false,
+      base: 0,
+    },
+    1,
+  )
 
-  ema20Series =
-    typeof chartInstance.addLineSeries === "function"
-      ? chartInstance.addLineSeries({
-          title: "EMA20",
-          color: "#ff30d4",
-          lineWidth: 1,
-          priceLineVisible: false,
-          lastValueVisible: true,
-        })
-      : chartInstance.addSeries(LineSeries, {
-          title: "EMA20",
-          color: "#ff30d4",
-          lineWidth: 1,
-          priceLineVisible: false,
-          lastValueVisible: true,
-        });
+  chart.panes()[0]?.setHeight(MAIN_PANE_HEIGHT)
+  chart.panes()[1]?.setHeight(MACD_PANE_HEIGHT)
 
-  ema120Series =
-    typeof chartInstance.addLineSeries === "function"
-      ? chartInstance.addLineSeries({
-          title: "EMA120",
-          color: "#1811ff",
-          lineWidth: 1,
-          priceLineVisible: false,
-          lastValueVisible: true,
-        })
-      : chartInstance.addSeries(LineSeries, {
-          title: "EMA120",
-          color: "#1811ff",
-          lineWidth: 1,
-          priceLineVisible: false,
-          lastValueVisible: true,
-        });
-
-  difSeries =
-    typeof macdChartInstance.addLineSeries === "function"
-      ? macdChartInstance.addLineSeries({
-          title: "DIF",
-          color: "#f59e0b",
-          lineWidth: 1,
-          priceLineVisible: false,
-          lastValueVisible: true,
-        })
-      : macdChartInstance.addSeries(LineSeries, {
-          title: "DIF",
-          color: "#f59e0b",
-          lineWidth: 1,
-          priceLineVisible: false,
-          lastValueVisible: true,
-        });
-
-  deaSeries =
-    typeof macdChartInstance.addLineSeries === "function"
-      ? macdChartInstance.addLineSeries({
-          title: "DEA",
-          color: "#7c3aed",
-          lineWidth: 1,
-          priceLineVisible: false,
-          lastValueVisible: true,
-        })
-      : macdChartInstance.addSeries(LineSeries, {
-          title: "DEA",
-          color: "#7c3aed",
-          lineWidth: 1,
-          priceLineVisible: false,
-          lastValueVisible: true,
-        });
-
-  macdHistogramSeries =
-    typeof macdChartInstance.addHistogramSeries === "function"
-      ? macdChartInstance.addHistogramSeries({
-          priceLineVisible: false,
-          lastValueVisible: false,
-          base: 0,
-        })
-      : macdChartInstance.addSeries(HistogramSeries, {
-          priceLineVisible: false,
-          lastValueVisible: false,
-          base: 0,
-        });
-
-  applyChartData();
-  resizeHandler();
-  chartContainer.value.addEventListener('contextmenu', handleChartContextMenu);
+  applyChartData()
+  resizeHandler()
+  chartContainer.value.addEventListener('contextmenu', handleChartContextMenu)
 
   crosshairMoveHandler = (param) => {
-    emit('crosshair-move', getCrosshairKLine(param));
-  };
-  chart.subscribeCrosshairMove(crosshairMoveHandler);
-  clickHandler = handleChartClick;
-  chart.subscribeClick(clickHandler);
-  logicalRangeChangeHandler = () => updateSegmentOverlayItems();
-  timeScaleSizeChangeHandler = () => updateSegmentOverlayItems();
-  chart.timeScale().subscribeVisibleLogicalRangeChange(logicalRangeChangeHandler);
-  chart.timeScale().subscribeSizeChange(timeScaleSizeChangeHandler);
-  macdLogicalRangeChangeHandler = () => {
-    if (!chart || !macdChart) {
-      return;
-    }
-    syncVisibleRangeBetweenCharts(macdChart, chart);
-    updateSegmentOverlayItems();
-  };
-  mainLogicalRangeSyncHandler = () => {
-    if (!chart || !macdChart) {
-      return;
-    }
-    syncVisibleRangeBetweenCharts(chart, macdChart);
-  };
-  chart.timeScale().subscribeVisibleLogicalRangeChange(mainLogicalRangeSyncHandler);
-  macdChart.timeScale().subscribeVisibleLogicalRangeChange(macdLogicalRangeChangeHandler);
+    emit('crosshair-move', getCrosshairKLine(param))
+  }
+  chart.subscribeCrosshairMove(crosshairMoveHandler)
+
+  clickHandler = handleChartClick
+  chart.subscribeClick(clickHandler)
+
+  logicalRangeChangeHandler = () => updateSegmentOverlayItems()
+  timeScaleSizeChangeHandler = () => updateSegmentOverlayItems()
+  chart.timeScale().subscribeVisibleLogicalRangeChange(logicalRangeChangeHandler)
+  chart.timeScale().subscribeSizeChange(timeScaleSizeChangeHandler)
 
   if (props.autosize) {
-    window.addEventListener("resize", resizeHandler);
+    window.addEventListener('resize', resizeHandler)
   }
-});
+})
 
 onUnmounted(() => {
-  cleanupEndpointDrag();
+  cleanupEndpointDrag()
+
   if (chartContainer.value) {
-    chartContainer.value.removeEventListener('contextmenu', handleChartContextMenu);
+    chartContainer.value.removeEventListener('contextmenu', handleChartContextMenu)
   }
   if (chart && crosshairMoveHandler) {
-    chart.unsubscribeCrosshairMove(crosshairMoveHandler);
-    crosshairMoveHandler = null;
+    chart.unsubscribeCrosshairMove(crosshairMoveHandler)
+    crosshairMoveHandler = null
   }
   if (chart && clickHandler) {
-    chart.unsubscribeClick(clickHandler);
-    clickHandler = null;
+    chart.unsubscribeClick(clickHandler)
+    clickHandler = null
   }
   if (chart && logicalRangeChangeHandler) {
-    chart.timeScale().unsubscribeVisibleLogicalRangeChange(logicalRangeChangeHandler);
-    logicalRangeChangeHandler = null;
-  }
-  if (chart && mainLogicalRangeSyncHandler) {
-    chart.timeScale().unsubscribeVisibleLogicalRangeChange(mainLogicalRangeSyncHandler);
-    mainLogicalRangeSyncHandler = null;
-  }
-  if (macdChart && macdLogicalRangeChangeHandler) {
-    macdChart.timeScale().unsubscribeVisibleLogicalRangeChange(macdLogicalRangeChangeHandler);
-    macdLogicalRangeChangeHandler = null;
+    chart.timeScale().unsubscribeVisibleLogicalRangeChange(logicalRangeChangeHandler)
+    logicalRangeChangeHandler = null
   }
   if (chart && timeScaleSizeChangeHandler) {
-    chart.timeScale().unsubscribeSizeChange(timeScaleSizeChangeHandler);
-    timeScaleSizeChangeHandler = null;
+    chart.timeScale().unsubscribeSizeChange(timeScaleSizeChangeHandler)
+    timeScaleSizeChangeHandler = null
   }
   if (chart) {
-    chart.remove();
-    chart = null;
+    chart.remove()
+    chart = null
   }
-  if (macdChart) {
-    macdChart.remove();
-    macdChart = null;
-  }
-  if (kSeries) {
-    kSeries = null;
-  }
-  if (ema20Series) {
-    ema20Series = null;
-  }
-  if (ema120Series) {
-    ema120Series = null;
-  }
-  if (difSeries) {
-    difSeries = null;
-  }
-  if (deaSeries) {
-    deaSeries = null;
-  }
-  if (macdHistogramSeries) {
-    macdHistogramSeries = null;
-  }
-  segmentSeriesList = [];
-  window.removeEventListener("resize", resizeHandler);
-});
+
+  kSeries = null
+  ema20Series = null
+  ema120Series = null
+  difSeries = null
+  deaSeries = null
+  macdHistogramSeries = null
+  segmentSeriesList = []
+  window.removeEventListener('resize', resizeHandler)
+})
 
 defineExpose({
   getChart: () => chart,
   getKSeries: () => kSeries,
   getEma20Series: () => ema20Series,
   getEma120Series: () => ema120Series,
-  getMacdChart: () => macdChart,
-});
+})
 
 watch(
   () => props.autosize,
   (enabled) => {
     if (!enabled) {
-      window.removeEventListener("resize", resizeHandler);
-      return;
+      window.removeEventListener('resize', resizeHandler)
+      return
     }
-    window.addEventListener("resize", resizeHandler);
-  }
-);
+    window.addEventListener('resize', resizeHandler)
+  },
+)
 
 watch(
   () => props.commonChartOptions,
   (newOptions) => {
-    if (!chart) return;
-    chart.applyOptions(newOptions);
+    if (!chart) {
+      return
+    }
+    chart.applyOptions(newOptions)
   },
-  { deep: true }
-);
+  { deep: true },
+)
 
 watch(
   () => props.data.kLineList,
   () => {
-    applyChartData();
-    emit('crosshair-move', null);
-    selectedSegmentId.value = null;
+    applyChartData()
+    emit('crosshair-move', null)
+    selectedSegmentId.value = null
   },
-  { deep: true }
-);
+  { deep: true },
+)
 
 watch(
   () => props.segmentLines,
   () => {
-    applySegmentLines();
+    applySegmentLines()
     if (!props.segmentLines.some((segment) => segment.id === selectedSegmentId.value)) {
-      selectedSegmentId.value = null;
+      selectedSegmentId.value = null
     }
   },
-  { deep: true }
-);
+  { deep: true },
+)
 
 watch(selectedSegmentId, () => {
-  updateSegmentOverlayItems();
-});
+  updateSegmentOverlayItems()
+})
 </script>
 
 <template>
   <div class="lw-chart-wrap">
-    <div class="lw-chart-main">
-      <div class="lw-chart" ref="chartContainer"></div>
-      <svg
-        class="segment-overlay"
-        :width="overlaySize.width"
-        :height="overlaySize.height"
-        :viewBox="`0 0 ${overlaySize.width} ${overlaySize.height}`"
-        :style="{ cursor: overlayCursor }"
-      >
-        <g v-for="item in overlayItems" :key="item.id">
-          <line
-            class="segment-overlay__line"
-            :class="{ 'segment-overlay__line--selected': item.isSelected }"
-            :x1="item.x1"
-            :y1="item.y1"
-            :x2="item.x2"
-            :y2="item.y2"
-            :stroke-dasharray="item.segment.lineStyle === 'dashed' ? '8 5' : undefined"
-          />
-        </g>
-      </svg>
-      <template v-for="item in overlayItems" :key="`handles-${item.id}`">
-        <button
-          v-if="item.isSelected"
-          class="segment-handle"
-          type="button"
-          :style="{ left: `${item.x1}px`, top: `${item.y1}px` }"
-          @mousedown="handleEndpointMouseDown($event, item.id, 'start')"
+    <div class="lw-chart" ref="chartContainer"></div>
+    <svg
+      class="segment-overlay"
+      :width="overlaySize.width"
+      :height="overlaySize.height"
+      :viewBox="`0 0 ${overlaySize.width} ${overlaySize.height}`"
+      :style="{ cursor: overlayCursor }"
+    >
+      <g v-for="item in overlayItems" :key="item.id">
+        <line
+          class="segment-overlay__line"
+          :class="{ 'segment-overlay__line--selected': item.isSelected }"
+          :x1="item.x1"
+          :y1="item.y1"
+          :x2="item.x2"
+          :y2="item.y2"
+          :stroke-dasharray="item.segment.lineStyle === 'dashed' ? '8 5' : undefined"
         />
-        <button
-          v-if="item.isSelected"
-          class="segment-handle"
-          type="button"
-          :style="{ left: `${item.x2}px`, top: `${item.y2}px` }"
-          @mousedown="handleEndpointMouseDown($event, item.id, 'end')"
-        />
-      </template>
-      <div class="ema-legend">
-        <span class="ema-legend__item ema-legend__item--ema20">EMA20</span>
-        <span class="ema-legend__item ema-legend__item--ema120">EMA120</span>
-      </div>
+      </g>
+    </svg>
+    <template v-for="item in overlayItems" :key="`handles-${item.id}`">
+      <button
+        v-if="item.isSelected"
+        class="segment-handle"
+        type="button"
+        :style="{ left: `${item.x1}px`, top: `${item.y1}px` }"
+        @mousedown="handleEndpointMouseDown($event, item.id, 'start')"
+      />
+      <button
+        v-if="item.isSelected"
+        class="segment-handle"
+        type="button"
+        :style="{ left: `${item.x2}px`, top: `${item.y2}px` }"
+        @mousedown="handleEndpointMouseDown($event, item.id, 'end')"
+      />
+    </template>
+    <div class="ema-legend">
+      <span class="ema-legend__item ema-legend__item--ema20">EMA20</span>
+      <span class="ema-legend__item ema-legend__item--ema120">EMA120</span>
     </div>
-    <div class="lw-chart-macd">
-      <div class="lw-chart lw-chart--macd" ref="macdChartContainer"></div>
-      <div class="macd-legend">
-        <span class="macd-legend__item macd-legend__item--dif">DIF</span>
-        <span class="macd-legend__item macd-legend__item--dea">DEA</span>
-        <span class="macd-legend__item macd-legend__item--macd">
-          MACD(20,120,12)
-        </span>
-      </div>
+    <div class="macd-legend">
+      <span class="macd-legend__item macd-legend__item--dif">DIF</span>
+      <span class="macd-legend__item macd-legend__item--dea">DEA</span>
+      <span class="macd-legend__item macd-legend__item--macd">MACD(20,120,12)</span>
     </div>
   </div>
 </template>
@@ -1248,18 +1160,7 @@ watch(selectedSegmentId, () => {
 <style lang="less" scoped>
 .lw-chart-wrap {
   width: 100%;
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-}
-
-.lw-chart-main {
-  height: 420px;
-  position: relative;
-}
-
-.lw-chart-macd {
-  height: 140px;
+  height: 560px;
   position: relative;
 }
 
@@ -1287,7 +1188,6 @@ watch(selectedSegmentId, () => {
     stroke: #f59e0b;
     stroke-width: 3;
   }
-
 }
 
 .segment-handle {
@@ -1308,9 +1208,9 @@ watch(selectedSegmentId, () => {
   cursor: grabbing;
 }
 
-.ema-legend {
+.ema-legend,
+.macd-legend {
   position: absolute;
-  top: 10px;
   left: 12px;
   z-index: 3;
   display: flex;
@@ -1322,46 +1222,17 @@ watch(selectedSegmentId, () => {
   font-size: 12px;
   line-height: 1;
   pointer-events: none;
+}
 
-  .ema-legend__item {
-    display: inline-flex;
-    align-items: center;
-    gap: 4px;
-    white-space: nowrap;
-  }
-
-  .ema-legend__item::before {
-    content: "";
-    width: 16px;
-    height: 2px;
-    border-radius: 999px;
-  }
-
-  .ema-legend__item--ema20::before {
-    background: #f59e0b;
-  }
-
-  .ema-legend__item--ema120::before {
-    background: #7c3aed;
-  }
+.ema-legend {
+  top: 10px;
 }
 
 .macd-legend {
-  position: absolute;
-  top: 10px;
-  left: 12px;
-  z-index: 2;
-  display: flex;
-  gap: 12px;
-  padding: 4px 8px;
-  border-radius: 999px;
-  background: rgba(255, 255, 255, 0.86);
-  color: #303133;
-  font-size: 12px;
-  line-height: 1;
-  pointer-events: none;
+  bottom: 10px;
 }
 
+.ema-legend__item,
 .macd-legend__item {
   display: inline-flex;
   align-items: center;
@@ -1369,17 +1240,20 @@ watch(selectedSegmentId, () => {
   white-space: nowrap;
 }
 
+.ema-legend__item::before,
 .macd-legend__item::before {
-  content: "";
+  content: '';
   width: 16px;
   height: 2px;
   border-radius: 999px;
 }
 
+.ema-legend__item--ema20::before,
 .macd-legend__item--dif::before {
   background: #f59e0b;
 }
 
+.ema-legend__item--ema120::before,
 .macd-legend__item--dea::before {
   background: #7c3aed;
 }
