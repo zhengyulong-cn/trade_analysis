@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { ChatDotSquare, Collection } from '@element-plus/icons-vue'
 import { computed, ref } from 'vue'
+import ContractListPanel from './sidebar_panel/ContractListPanel.vue'
 
 interface ContractOption {
   label: string
@@ -43,25 +44,13 @@ const handleContractSelect = (contractValue: string) => {
 
 <template>
   <div class="chart-sidebar">
-    <div
+    <ContractListPanel
       v-if="isContractPanelOpen"
-      class="sidebar-panel contract-panel"
-    >
-      <div class="panel-header">合约列表</div>
-      <div class="contract-list">
-        <button
-          v-for="contract in contractOptions"
-          :key="contract.value"
-          type="button"
-          class="contract-item"
-          :class="{ 'is-active': contract.value === selectedContract }"
-          @click="handleContractSelect(contract.value)"
-        >
-          <span class="contract-code">{{ contract.value }}</span>
-          <span class="contract-name">{{ contract.description || contract.label }}</span>
-        </button>
-      </div>
-    </div>
+      :contract-options="contractOptions"
+      :selected-contract="selectedContract"
+      @close="toggleSidePanel('contracts')"
+      @select="handleContractSelect"
+    />
 
     <div class="sidebar-actions">
       <el-tooltip content="合约列表" placement="left">
@@ -76,7 +65,7 @@ const handleContractSelect = (contractValue: string) => {
         </button>
       </el-tooltip>
 
-      <el-tooltip content="快讯" placement="left">
+      <el-tooltip content="资讯" placement="left">
         <button
           type="button"
           class="sidebar-action"
@@ -101,12 +90,8 @@ const handleContractSelect = (contractValue: string) => {
   pointer-events: none;
 }
 
-.sidebar-actions,
-.sidebar-panel {
-  pointer-events: auto;
-}
-
 .sidebar-actions {
+  pointer-events: auto;
   display: flex;
   flex-direction: column;
   gap: 10px;
@@ -144,72 +129,6 @@ const handleContractSelect = (contractValue: string) => {
   font-size: 18px;
 }
 
-.sidebar-panel {
-  width: min(240px, calc(100vw - 96px));
-  max-height: 100%;
-  border: 1px solid rgba(15, 23, 42, 0.08);
-  border-radius: 8px;
-  background: rgba(255, 255, 255, 0.96);
-  box-shadow: 0 20px 40px rgba(15, 23, 42, 0.14);
-  backdrop-filter: blur(12px);
-  overflow: hidden;
-}
-
-.panel-header {
-  padding: 12px 14px;
-  border-bottom: 1px solid #e5e7eb;
-  color: #111827;
-  font-size: 13px;
-  font-weight: 600;
-}
-
-.contract-list {
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
-  padding: 10px;
-  max-height: calc(100vh - 10rem);
-  overflow-y: auto;
-}
-
-.contract-item {
-  width: 100%;
-  border: 1px solid transparent;
-  border-radius: 8px;
-  background: #f8fafc;
-  padding: 10px 12px;
-  text-align: left;
-  color: #0f172a;
-  cursor: pointer;
-  display: flex;
-  flex-direction: column;
-  gap: 2px;
-  transition: background-color 0.2s ease, border-color 0.2s ease, transform 0.2s ease;
-}
-
-.contract-item:hover {
-  background: #eff6ff;
-  border-color: #bfdbfe;
-  transform: translateX(-2px);
-}
-
-.contract-item.is-active {
-  background: #111827;
-  border-color: #111827;
-  color: #ffffff;
-}
-
-.contract-code {
-  font-size: 13px;
-  font-weight: 600;
-}
-
-.contract-name {
-  font-size: 12px;
-  color: inherit;
-  opacity: 0.78;
-}
-
 @media (max-width: 768px) {
   .chart-sidebar {
     top: 12px;
@@ -217,11 +136,6 @@ const handleContractSelect = (contractValue: string) => {
     left: 12px;
     bottom: auto;
     justify-content: flex-end;
-  }
-
-  .sidebar-panel {
-    width: min(220px, calc(100vw - 84px));
-    max-height: calc(100vh - 11rem);
   }
 }
 </style>
