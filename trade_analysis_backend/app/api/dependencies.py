@@ -1,6 +1,7 @@
 from typing import Annotated
 
 from fastapi import Depends
+from redis import Redis
 from sqlmodel import Session
 
 from app.db.session import get_session
@@ -9,6 +10,7 @@ from app.services.contract_service import ContractService
 from app.services.contract_interval_service import ContractIntervalService
 from app.services.kline_service import KlineService
 from app.services.market_data import KlineProvider, create_kline_provider
+from app.services.redis_client import redis_client_manager
 from app.services.strategy_analysis_service import StrategyAnalysisService
 
 SessionDep = Annotated[Session, Depends(get_session)]
@@ -19,6 +21,13 @@ def get_kline_provider() -> KlineProvider:
 
 
 KlineProviderDep = Annotated[KlineProvider, Depends(get_kline_provider)]
+
+
+def get_redis_client() -> Redis:
+    return redis_client_manager.get_client()
+
+
+RedisClientDep = Annotated[Redis, Depends(get_redis_client)]
 
 
 def get_contract_service(session: SessionDep) -> ContractService:
