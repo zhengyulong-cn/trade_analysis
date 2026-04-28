@@ -1,26 +1,36 @@
 <script setup lang="ts">
-import {
-  getFutureChartPersistenceApi,
-  getFutureRealtimeBarApi,
-  mapRealtimeBarToChartData,
-  saveFutureChartPersistenceApi,
-  type FutureChartPersistence,
-  type FutureChartPersistenceSaveParams,
-} from '@/api/modules'
 import { INITIAL_VISIBLE_K_LINE_COUNT } from '@/constants/chart'
 import { computed, onMounted, onUnmounted, ref, watch } from 'vue'
-import ChartSidebar from './ChartSidebar.vue'
-
-interface KLineItem {
-  time: number
-  open: number
-  high: number
-  low: number
-  close: number
-  ema20?: number
-  ema120?: number
-  volume?: number
-}
+import ChartSidebar from '@/components/charts/sidebar_panel/ChartSidebar.vue'
+import type { ContractOption, KLineItem, PeriodOption } from '@/components/charts/chartModels'
+import {
+  createDatafeed,
+  getBarResolution,
+  getPersistenceInterval,
+  getTimeFrames,
+  getTradingViewBars,
+  normalizeTimeToMilliseconds,
+  normalizeTimeToSeconds,
+  periodValueFromResolution,
+} from '@/components/charts/chartDatafeed'
+import {
+  getDrawingsStateContent,
+  loadChartPersistence,
+  restoreChartPersistence,
+  saveChartPersistence,
+  saveLocalStudyTemplate,
+  type FutureChartPersistence,
+} from '@/components/charts/chartPersistence'
+import {
+  addDefaultCustomStudies,
+  getCustomIndicators,
+  getWhitelistedStudyTools,
+} from '@/components/charts/customStudies'
+import type {
+  TradingViewActiveChart,
+  TradingViewLineToolsAndGroupsState,
+  TradingViewWidget,
+} from '@/components/charts/tradingViewTypes'
 
 interface SegmentLineItem {
   id: string
@@ -58,79 +68,9 @@ interface SegmentLineDelete {
   segment: SegmentLineItem
 }
 
-interface ContractOption {
-  label: string
-  value: string
-  description?: string
-  isFavorite?: boolean
-}
-
-interface PeriodOption {
-  label: string
-  value: number | string
-}
-
-interface TradingViewBar {
-  time: number
-  open: number
-  high: number
-  low: number
-  close: number
-  volume?: number
-}
-
-interface TradingViewSubscription<TArgs extends unknown[]> {
-  subscribe: (context: object | null, handler: (...args: TArgs) => void, singleshot?: boolean) => void
-  unsubscribe: (context: object | null, handler: (...args: TArgs) => void) => void
-}
-
-interface TradingViewActiveChart {
-  crossHairMoved: () => TradingViewSubscription<[{
-    time?: number
-  }]>
-  onDataLoaded: () => TradingViewSubscription<[]>
-  onSymbolChanged: () => TradingViewSubscription<[{
-    name: string
-    ticker?: string
-  }]>
-  onIntervalChanged: () => TradingViewSubscription<[string, Record<string, unknown>]>
-  createStudyTemplate?: (options?: { saveSymbol?: boolean; saveInterval?: boolean }) => object
-  applyStudyTemplate?: (template: object) => void
-  getLineToolsState?: () => TradingViewLineToolsAndGroupsState
-  applyLineToolsState?: (state: TradingViewLineToolsAndGroupsState) => Promise<void>
-  setVisibleRange: (range: { from: number; to: number }, options?: Record<string, unknown>) => Promise<void>
-}
-
-interface TradingViewWidget {
-  onChartReady: (callback: () => void) => void
-  subscribe: (event: string, callback: () => void) => void
-  unsubscribe: (event: string, callback: () => void) => void
-  activeChart: () => TradingViewActiveChart
-  remove: () => void
-}
-
-interface TradingViewLineToolsAndGroupsState {
-  sources: Map<string, unknown | null> | null
-  groups: Map<string, unknown | null>
-  symbol?: string
-}
-
-type TradingViewConstructor = new (options: Record<string, unknown>) => TradingViewWidget
-
-declare global {
-  interface Window {
-    TradingView?: {
-      widget: TradingViewConstructor
-    }
-  }
-}
-
 const TRADING_VIEW_LIBRARY_PATH = '/charting_library/'
 const DEFAULT_SYMBOL = 'FUTURES'
-const DEFAULT_RESOLUTION = '5'
-const DEFAULT_PRICE_SCALE = 100
 const SCRIPT_ID = 'tradingview-charting-library-script'
-const LOCAL_STUDY_TEMPLATE_KEY = 'trade-analysis:charting-library:study-template'
 
 const props = withDefaults(
   defineProps<{
@@ -195,319 +135,8 @@ const symbolName = computed(() => {
   return props.selectedContract?.trim() || props.data.symbol?.trim() || props.data.name?.trim() || DEFAULT_SYMBOL
 })
 
-const MAP_SERIALIZATION_TYPE = '__tradingViewMap'
-
-const isRecord = (value: unknown): value is Record<string, unknown> => {
-  return typeof value === 'object' && value !== null && !Array.isArray(value)
-}
-
-const isMapLike = (value: unknown): value is Map<unknown, unknown> => {
-  return (
-    Object.prototype.toString.call(value) === '[object Map]'
-    && typeof (value as Map<unknown, unknown>).entries === 'function'
-  )
-}
-
-const stringifyChartJson = (value: unknown) => {
-  try {
-    return JSON.stringify(value, (_key, item) => {
-      if (isMapLike(item)) {
-        return {
-          type: MAP_SERIALIZATION_TYPE,
-          entries: Array.from(item.entries()),
-        }
-      }
-
-      return item
-    })
-  } catch (error) {
-    console.warn('Failed to stringify chart persistence content', error)
-    return null
-  }
-}
-
-const parseChartJson = <T,>(content?: string | null): T | null => {
-  if (!content) {
-    return null
-  }
-
-  try {
-    return JSON.parse(content, (_key, item) => {
-      if (
-        isRecord(item)
-        && item.type === MAP_SERIALIZATION_TYPE
-        && Array.isArray(item.entries)
-      ) {
-        return new Map(item.entries as Array<[unknown, unknown]>)
-      }
-
-      return item
-    }) as T
-  } catch (error) {
-    console.warn('Failed to parse chart persistence content', error)
-    return null
-  }
-}
-
-const getPersistenceInterval = (resolution: string) => {
-  if (props.selectedPeriod !== '' && props.selectedPeriod !== undefined && props.selectedPeriod !== null) {
-    return String(props.selectedPeriod)
-  }
-
-  return resolution
-}
-
-const loadChartPersistence = async (symbol: string, interval: string) => {
-  try {
-    return await getFutureChartPersistenceApi({ symbol, interval })
-  } catch (error) {
-    console.warn('Failed to load chart persistence', error)
-    return null
-  }
-}
-
-const saveChartPersistence = async (payload: FutureChartPersistenceSaveParams) => {
-  try {
-    await saveFutureChartPersistenceApi(payload)
-  } catch (error) {
-    console.warn('Failed to save chart persistence', error)
-  }
-}
-
-const loadLocalStudyTemplate = () => {
-  try {
-    return parseChartJson<object>(window.localStorage.getItem(LOCAL_STUDY_TEMPLATE_KEY))
-  } catch (error) {
-    console.warn('Failed to load local study template', error)
-    return null
-  }
-}
-
-const saveLocalStudyTemplate = (currentWidget: TradingViewWidget) => {
-  const activeChart = currentWidget.activeChart()
-  const createStudyTemplate = activeChart.createStudyTemplate
-  if (!createStudyTemplate) {
-    return
-  }
-
-  try {
-    const content = stringifyChartJson(
-      createStudyTemplate.call(activeChart, {
-        saveSymbol: false,
-        saveInterval: false,
-      }),
-    )
-    if (content) {
-      window.localStorage.setItem(LOCAL_STUDY_TEMPLATE_KEY, content)
-    }
-  } catch (error) {
-    console.warn('Failed to save local study template', error)
-  }
-}
-
-const normalizeTimeToMilliseconds = (value: number) => {
-  return value >= 1_000_000_000_000 ? value : value * 1000
-}
-
-const normalizeTimeToSeconds = (value: number) => {
-  const milliseconds = normalizeTimeToMilliseconds(value)
-  return Math.floor(milliseconds / 1000)
-}
-
 const getSortedKLineList = () => {
   return [...(props.data.kLineList ?? [])].sort((first, second) => first.time - second.time)
-}
-
-const resolutionFromPeriodValue = (value: number | string) => {
-  const period = Number(value)
-  if (!Number.isFinite(period) || period <= 0) {
-    return DEFAULT_RESOLUTION
-  }
-
-  const minutes = Math.round(period / 60)
-  if (minutes <= 0) {
-    return DEFAULT_RESOLUTION
-  }
-
-  if (minutes % (60 * 24) === 0) {
-    const days = minutes / (60 * 24)
-    return days === 1 ? '1D' : `${days}D`
-  }
-
-  return String(minutes)
-}
-
-const periodValueFromResolution = (resolution: string) => {
-  const normalized = resolution.trim().toUpperCase()
-
-  if (/^\d+$/.test(normalized)) {
-    return Number(normalized) * 60
-  }
-
-  const match = normalized.match(/^(\d+)([DWM])$/)
-  if (!match) {
-    return props.selectedPeriod || DEFAULT_RESOLUTION
-  }
-
-  const amount = Number(match[1])
-  const unit = match[2]
-  if (!Number.isFinite(amount) || amount <= 0) {
-    return props.selectedPeriod || DEFAULT_RESOLUTION
-  }
-
-  if (unit === 'D') {
-    return amount * 24 * 60 * 60
-  }
-  if (unit === 'W') {
-    return amount * 7 * 24 * 60 * 60
-  }
-  return amount * 30 * 24 * 60 * 60
-}
-
-const getSupportedResolutions = () => {
-  const resolutions = props.periodOptions
-    .map((option) => resolutionFromPeriodValue(option.value))
-    .filter((value, index, list) => Boolean(value) && list.indexOf(value) === index)
-
-  if (resolutions.length) {
-    return resolutions
-  }
-
-  return ['1', '5', '15', '30', '60', '120', '240', '1D']
-}
-
-const getTimeFrames = () => {
-  const fallbackTexts = ['1D', '5D', '1M', '3M', '6M', '12M']
-
-  return props.periodOptions.map((option, index) => ({
-    text: fallbackTexts[index] ?? '12M',
-    resolution: resolutionFromPeriodValue(option.value),
-    title: option.label,
-    description: option.label,
-  }))
-}
-
-const getBarResolution = (kLineList: KLineItem[]) => {
-  if (props.selectedPeriod !== '' && props.selectedPeriod !== undefined) {
-    return resolutionFromPeriodValue(props.selectedPeriod)
-  }
-
-  if (kLineList.length < 2) {
-    return DEFAULT_RESOLUTION
-  }
-
-  const durations: number[] = []
-  for (let index = 1; index < kLineList.length; index += 1) {
-    const previousItem = kLineList[index - 1]
-    const currentItem = kLineList[index]
-
-    if (!previousItem || !currentItem) {
-      continue
-    }
-
-    const duration = currentItem.time - previousItem.time
-    if (Number.isFinite(duration) && duration > 0) {
-      durations.push(duration)
-    }
-  }
-
-  if (!durations.length) {
-    return DEFAULT_RESOLUTION
-  }
-
-  const duration = durations[Math.floor(durations.length / 2)] ?? 300
-  const minutes = Math.round(duration / 60)
-
-  if (minutes <= 0) {
-    return DEFAULT_RESOLUTION
-  }
-
-  if (minutes % (60 * 24) === 0) {
-    const days = minutes / (60 * 24)
-    return days === 1 ? '1D' : `${days}D`
-  }
-
-  return String(minutes)
-}
-
-const getPriceScale = (kLineList: KLineItem[]) => {
-  let maxDecimals = 0
-
-  for (const item of kLineList) {
-    for (const value of [item.open, item.high, item.low, item.close]) {
-      const decimalPart = String(value).split('.')[1] ?? ''
-      maxDecimals = Math.max(maxDecimals, decimalPart.length)
-    }
-  }
-
-  if (maxDecimals <= 0) {
-    return 1
-  }
-
-  return 10 ** Math.min(maxDecimals, 8)
-}
-
-const getTradingViewBars = (kLineList: KLineItem[]): TradingViewBar[] => {
-  return kLineList.map((item) => ({
-    time: normalizeTimeToMilliseconds(item.time),
-    open: item.open,
-    high: item.high,
-    low: item.low,
-    close: item.close,
-    volume: item.volume,
-  }))
-}
-
-const getTradingViewBar = (item: KLineItem): TradingViewBar => ({
-  time: normalizeTimeToMilliseconds(item.time),
-  open: item.open,
-  high: item.high,
-  low: item.low,
-  close: item.close,
-  volume: item.volume,
-})
-
-const getRequestedSymbol = (symbolInfo: Record<string, unknown>) => {
-  const ticker = typeof symbolInfo.ticker === 'string' ? symbolInfo.ticker : ''
-  const name = typeof symbolInfo.name === 'string' ? symbolInfo.name : ''
-  return ticker || name
-}
-
-const getIntradayMultipliers = (resolutions: string[]) => {
-  return resolutions.filter((resolution) => /^\d+$/.test(resolution))
-}
-
-const getDailyMultipliers = (resolutions: string[]) => {
-  return resolutions
-    .filter((resolution) => /^\d+D$/i.test(resolution))
-    .map((resolution) => resolution.replace(/D$/i, ''))
-}
-
-const getBarsInRange = (
-  sourceBars: TradingViewBar[],
-  periodParams: { from: number; to: number; countBack?: number },
-) => {
-  const fromMilliseconds = periodParams.from * 1000
-  const toMilliseconds = periodParams.to * 1000
-  const barsBeforeTo = sourceBars.filter((bar) => bar.time <= toMilliseconds)
-  const barsInRange = barsBeforeTo.filter((bar) => bar.time >= fromMilliseconds)
-  const countBack = Number(periodParams.countBack)
-
-  if (Number.isFinite(countBack) && countBack > barsInRange.length) {
-    const missingCount = countBack - barsInRange.length
-    const barsBeforeRange = barsBeforeTo.filter((bar) => bar.time < fromMilliseconds)
-    return [...barsBeforeRange.slice(-missingCount), ...barsInRange]
-  }
-
-  if (barsInRange.length) {
-    return barsInRange
-  }
-
-  if (Number.isFinite(countBack) && countBack > 0 && barsBeforeTo.length) {
-    return barsBeforeTo.slice(-countBack)
-  }
-
-  return []
 }
 
 const clearRealtimeSubscriptions = () => {
@@ -515,192 +144,6 @@ const clearRealtimeSubscriptions = () => {
     window.clearInterval(intervalId)
   })
   realtimeSubscriptionIntervals.clear()
-}
-
-const createDatafeed = (bars: TradingViewBar[], resolution: string, name: string) => {
-  const priceScale = getPriceScale(getSortedKLineList()) || DEFAULT_PRICE_SCALE
-  const supportedResolutions = getSupportedResolutions()
-  const intradayMultipliers = getIntradayMultipliers(supportedResolutions)
-  const dailyMultipliers = getDailyMultipliers(supportedResolutions)
-  const currentSymbol = symbolName.value
-  const availableContracts = props.contractOptions
-
-  return {
-    onReady(callback: (config: Record<string, unknown>) => void) {
-      window.setTimeout(() => {
-        callback({
-          supported_resolutions: supportedResolutions,
-          supports_marks: false,
-          supports_timescale_marks: false,
-          supports_time: false,
-          has_intraday: intradayMultipliers.length > 0,
-          intraday_multipliers: intradayMultipliers,
-          has_daily: dailyMultipliers.length > 0,
-          daily_multipliers: dailyMultipliers,
-        })
-      }, 0)
-    },
-    searchSymbols(
-      userInput: string,
-      _exchange: string,
-      _symbolType: string,
-      onResult: (items: Array<Record<string, string>>) => void,
-    ) {
-      const keyword = userInput.trim().toLowerCase()
-      const candidates = (availableContracts.length ? availableContracts : [{ value: name, description: name }])
-        .filter((contract) => {
-          if (!keyword) {
-            return true
-          }
-
-          const description = contract.description?.toLowerCase() ?? ''
-          return contract.value.toLowerCase().includes(keyword) || description.includes(keyword)
-        })
-        .map((contract) => ({
-          symbol: contract.value,
-          full_name: contract.value,
-          description: contract.description ?? contract.value,
-          exchange: 'LOCAL',
-          ticker: contract.value,
-          type: 'futures',
-        }))
-
-      onResult(candidates)
-    },
-    resolveSymbol(
-      requestedSymbol: string,
-      onResolve: (symbolInfo: Record<string, unknown>) => void,
-      _onError: (reason: string) => void,
-    ) {
-      const matchedContract = availableContracts.find((contract) => contract.value === requestedSymbol)
-
-      window.setTimeout(() => {
-        onResolve({
-          ticker: requestedSymbol,
-          name: requestedSymbol,
-          description: matchedContract?.description ?? requestedSymbol,
-          type: 'futures',
-          session: '24x7',
-          timezone: 'Asia/Shanghai',
-          exchange: 'LOCAL',
-          minmov: 1,
-          pricescale: priceScale,
-          has_intraday: intradayMultipliers.length > 0,
-          intraday_multipliers: intradayMultipliers,
-          has_daily: dailyMultipliers.length > 0,
-          daily_multipliers: dailyMultipliers,
-          has_weekly_and_monthly: false,
-          visible_plots_set: 'ohlc',
-          supported_resolutions: supportedResolutions,
-          volume_precision: 0,
-          data_status: 'streaming',
-        })
-      }, 0)
-    },
-    getBars(
-      symbolInfo: Record<string, unknown>,
-      requestedResolution: string,
-      periodParams: { from: number; to: number; countBack?: number },
-      onResult: (history: TradingViewBar[], meta: { noData?: boolean }) => void,
-      onError: (reason: string) => void,
-    ) {
-      if (getRequestedSymbol(symbolInfo) !== currentSymbol) {
-        onResult([], { noData: true })
-        return
-      }
-
-      const normalizedRequestedResolution = requestedResolution.trim().toUpperCase()
-      if (normalizedRequestedResolution && normalizedRequestedResolution !== resolution.toUpperCase()) {
-        const requestedPeriod = periodValueFromResolution(normalizedRequestedResolution)
-        if (String(requestedPeriod) !== String(props.selectedPeriod)) {
-          emit('update:selectedPeriod', requestedPeriod)
-        }
-
-        onResult([], { noData: true })
-        return
-      }
-
-      const filteredBars = getBarsInRange(bars, periodParams)
-
-      if (filteredBars.length) {
-        onResult(filteredBars, { noData: false })
-        return
-      }
-
-      onResult([], { noData: true })
-    },
-    subscribeBars(
-      symbolInfo: Record<string, unknown>,
-      requestedResolution: string,
-      onRealtimeCallback: (bar: TradingViewBar) => void,
-      subscriberUID: string,
-    ) {
-      if (getRequestedSymbol(symbolInfo) !== currentSymbol) {
-        return undefined
-      }
-
-      const normalizedRequestedResolution = requestedResolution.trim().toUpperCase()
-      if (normalizedRequestedResolution && normalizedRequestedResolution !== resolution.toUpperCase()) {
-        return undefined
-      }
-
-      const selectedInterval = Number(props.selectedPeriod)
-      if (!Number.isFinite(selectedInterval) || selectedInterval <= 0) {
-        return undefined
-      }
-
-      let lastEmittedTime = bars[bars.length - 1]?.time ?? 0
-      let isFetchingRealtimeBar = false
-      const fetchRealtimeBar = async () => {
-        if (isFetchingRealtimeBar) {
-          return
-        }
-        isFetchingRealtimeBar = true
-        try {
-          const response = await getFutureRealtimeBarApi({
-            symbol: currentSymbol,
-            interval: selectedInterval,
-          })
-          if (!response.bar) {
-            return
-          }
-
-          const chartBar = mapRealtimeBarToChartData(response.bar)
-          if (!chartBar) {
-            return
-          }
-
-          const realtimeBar = getTradingViewBar(chartBar)
-          if (realtimeBar.time < lastEmittedTime) {
-            return
-          }
-
-          lastEmittedTime = realtimeBar.time
-          onRealtimeCallback(realtimeBar)
-        } catch (error) {
-          console.warn('Failed to fetch realtime bar', error)
-        } finally {
-          isFetchingRealtimeBar = false
-        }
-      }
-
-      void fetchRealtimeBar()
-      const intervalId = window.setInterval(() => {
-        void fetchRealtimeBar()
-      }, 1000)
-      realtimeSubscriptionIntervals.set(subscriberUID, intervalId)
-      return undefined
-    },
-    unsubscribeBars(subscriberUID: string) {
-      const intervalId = realtimeSubscriptionIntervals.get(subscriberUID)
-      if (intervalId !== undefined) {
-        window.clearInterval(intervalId)
-        realtimeSubscriptionIntervals.delete(subscriberUID)
-      }
-      return undefined
-    },
-    _resolution: resolution,
-  }
 }
 
 const loadChartingLibrary = () => {
@@ -744,20 +187,6 @@ const clearChartAutoSaveTimeout = () => {
   chartAutoSaveTimeoutId = null
 }
 
-const getDrawingsStateContent = (currentWidget: TradingViewWidget) => {
-  const activeChart = currentWidget.activeChart()
-  if (!activeChart.getLineToolsState) {
-    return null
-  }
-
-  try {
-    return stringifyChartJson(activeChart.getLineToolsState())
-  } catch (error) {
-    console.warn('Failed to collect chart drawings state', error)
-    return null
-  }
-}
-
 const saveCurrentChartState = async (token: number, symbol: string, interval: string) => {
   const currentWidget = widget
   if (!currentWidget || token !== createWidgetToken || isRestoringPersistence) {
@@ -790,7 +219,7 @@ const scheduleChartAutoSave = (token: number, symbol: string, interval: string) 
   }, 800)
 }
 
-const restoreChartPersistence = async (
+const restoreWidgetPersistence = async (
   currentWidget: TradingViewWidget,
   persistence: FutureChartPersistence | null,
   token: number,
@@ -798,30 +227,11 @@ const restoreChartPersistence = async (
   const restoreToken = ++chartRestoreToken
   isRestoringPersistence = true
   try {
-    const activeChart = currentWidget.activeChart()
-    const localStudyTemplate = loadLocalStudyTemplate()
-    const applyStudyTemplate = activeChart.applyStudyTemplate
-    if (
-      localStudyTemplate
-      && token === createWidgetToken
-      && widget === currentWidget
-      && applyStudyTemplate
-    ) {
-      applyStudyTemplate.call(activeChart, localStudyTemplate)
+    if (token !== createWidgetToken || widget !== currentWidget) {
+      return { appliedLocalStudyTemplate: false }
     }
 
-    const applyLineToolsState = activeChart.applyLineToolsState
-    const drawingsState = parseChartJson<TradingViewLineToolsAndGroupsState>(persistence?.drawings_content)
-    if (
-      drawingsState
-      && token === createWidgetToken
-      && widget === currentWidget
-      && applyLineToolsState
-    ) {
-      await applyLineToolsState.call(activeChart, drawingsState)
-    }
-  } catch (error) {
-    console.warn('Failed to restore chart persistence', error)
+    return await restoreChartPersistence(currentWidget, persistence)
   } finally {
     if (restoreToken === chartRestoreToken) {
       isRestoringPersistence = false
@@ -942,16 +352,27 @@ const createWidget = async () => {
   chartContainer.value.innerHTML = ''
 
   const bars = getTradingViewBars(kLineList)
-  const resolution = getBarResolution(kLineList)
+  const resolution = getBarResolution(kLineList, props.selectedPeriod)
   const persistenceSymbol = symbolName.value
-  const persistenceInterval = getPersistenceInterval(resolution)
+  const persistenceInterval = getPersistenceInterval(resolution, props.selectedPeriod)
   const persistence = await loadChartPersistence(persistenceSymbol, persistenceInterval)
 
   if (token !== createWidgetToken || !chartContainer.value || !window.TradingView?.widget) {
     return
   }
 
-  const datafeed = createDatafeed(bars, resolution, persistenceSymbol)
+  const datafeed = createDatafeed({
+    bars,
+    resolution,
+    name: persistenceSymbol,
+    selectedPeriod: props.selectedPeriod,
+    currentSymbol: symbolName.value,
+    availableContracts: props.contractOptions,
+    periodOptions: props.periodOptions,
+    sortedKLineList: kLineList,
+    onSelectedPeriodChange: (value) => emit('update:selectedPeriod', value),
+    realtimeSubscriptionIntervals,
+  })
 
   widget = new window.TradingView.widget({
     container: chartContainer.value,
@@ -959,7 +380,7 @@ const createWidget = async () => {
     datafeed,
     symbol: persistenceSymbol,
     interval: resolution,
-    time_frames: getTimeFrames(),
+    time_frames: getTimeFrames(props.periodOptions),
     locale: 'zh',
     timezone: 'Asia/Shanghai',
     autosize: props.autosize,
@@ -972,13 +393,11 @@ const createWidget = async () => {
       'long_press_floating_tooltip',
     ],
     enabled_features: ['move_logo_to_main_pane', 'saveload_separate_drawings_storage'],
+    custom_indicators_getter: getCustomIndicators,
     // 仅仅保留EMA和MACD指标
     studies_access: {
       type: 'white',
-      tools: [
-        { name: 'EMA Cross' },
-        { name: 'MACD' },
-      ],
+      tools: getWhitelistedStudyTools(),
     },
     overrides: {
       'mainSeriesProperties.candleStyle.upColor': '#F23645',
@@ -1034,7 +453,13 @@ const createWidget = async () => {
     currentWidget.subscribe('onAutoSaveNeeded', onAutoSaveNeededHandler)
 
     void (async () => {
-      await restoreChartPersistence(currentWidget, persistence, token)
+      const restoreResult = await restoreWidgetPersistence(currentWidget, persistence, token)
+      if (token !== createWidgetToken || widget !== currentWidget) {
+        return
+      }
+      if (!restoreResult?.appliedLocalStudyTemplate) {
+        addDefaultCustomStudies(currentWidget)
+      }
       if (
         shouldApplyInitialVisibleRange
         && token === createWidgetToken

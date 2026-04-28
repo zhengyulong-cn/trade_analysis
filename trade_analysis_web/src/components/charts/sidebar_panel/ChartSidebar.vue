@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { ChatDotSquare, Collection } from '@element-plus/icons-vue'
 import { computed, ref } from 'vue'
-import ContractListPanel from './sidebar_panel/ContractListPanel.vue'
+import ContractListPanel from './ContractListPanel.vue'
 
 interface ContractOption {
   label: string
