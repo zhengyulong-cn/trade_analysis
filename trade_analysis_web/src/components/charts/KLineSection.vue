@@ -24,52 +24,10 @@ interface PeriodOption {
   value: number | string
 }
 
-interface SegmentLineItem {
-  id: string
-  points: Array<{
-    time: number
-    value: number
-  }>
-  lineStyle?: 'solid' | 'dashed'
-  segmentRole?: string
-  segmentIndex?: number
-  direction?: string
-}
-
-interface SegmentLineChange {
-  segment: SegmentLineItem
-  endpoint: 'start' | 'end'
-  points: Array<{
-    time: number
-    value: number
-  }>
-}
-
-interface SegmentLineCreate {
-  startPoint: {
-    time: number
-    value: number
-  }
-  endPoint: {
-    time: number
-    value: number
-  }
-}
-
-interface SegmentLineDelete {
-  segment: SegmentLineItem
-}
-
 const emit = defineEmits<{
   'update:selectedContract': [value: string]
   'update:selectedPeriod': [value: number | string]
   'hoverKlineChange': [value: KLineItem | null]
-  'segmentLineChange': [value: SegmentLineChange]
-  'segmentLineCreate': [value: SegmentLineCreate]
-  'segmentLineDelete': [value: SegmentLineDelete]
-  'segmentBuildRequest': []
-  'segmentLoadRequest': []
-  'segmentAutoLoadToggle': []
 }>()
 
 const props = withDefaults(
@@ -80,15 +38,11 @@ const props = withDefaults(
     selectedPeriod?: number | string
     contractOptions?: ContractOption[]
     periodOptions?: PeriodOption[]
-    canBuildSegments?: boolean
-    canLoadSegments?: boolean
-    autoLoadSegments?: boolean
     chartData: {
       symbol?: string
       name?: string
       kLineList: KLineItem[]
     }
-    segmentLines?: SegmentLineItem[]
     chartOptions?: DeepPartial<ChartOptions>
     emptyDescription?: string
     unavailableDescription?: string
@@ -100,10 +54,6 @@ const props = withDefaults(
     selectedPeriod: '',
     contractOptions: () => [],
     periodOptions: () => [],
-    canBuildSegments: true,
-    canLoadSegments: true,
-    autoLoadSegments: false,
-    segmentLines: () => [],
     chartOptions: () => ({}),
     emptyDescription: '暂无 K 线数据',
     unavailableDescription: '暂无可用数据',
@@ -121,30 +71,6 @@ const handleSelectedPeriodChange = (value: number | string) => {
 const handleCrosshairMove = (value: KLineItem | null) => {
   emit('hoverKlineChange', value)
 }
-
-const handleSegmentLineChange = (value: SegmentLineChange) => {
-  emit('segmentLineChange', value)
-}
-
-const handleSegmentLineCreate = (value: SegmentLineCreate) => {
-  emit('segmentLineCreate', value)
-}
-
-const handleSegmentLineDelete = (value: SegmentLineDelete) => {
-  emit('segmentLineDelete', value)
-}
-
-const handleSegmentBuildRequest = () => {
-  emit('segmentBuildRequest')
-}
-
-const handleSegmentLoadRequest = () => {
-  emit('segmentLoadRequest')
-}
-
-const handleSegmentAutoLoadToggle = () => {
-  emit('segmentAutoLoadToggle')
-}
 </script>
 
 <template>
@@ -157,20 +83,10 @@ const handleSegmentAutoLoadToggle = () => {
           :selected-period="selectedPeriod"
           :contract-options="contractOptions"
           :period-options="periodOptions"
-          :segment-lines="segmentLines"
-          :can-build-segments="canBuildSegments"
-          :can-load-segments="canLoadSegments"
-          :auto-load-segments="autoLoadSegments"
           :common-chart-options="chartOptions"
           @update:selected-contract="handleSelectedContractChange"
           @update:selected-period="handleSelectedPeriodChange"
           @crosshair-move="handleCrosshairMove"
-          @segment-line-change="handleSegmentLineChange"
-          @segment-line-create="handleSegmentLineCreate"
-          @segment-line-delete="handleSegmentLineDelete"
-          @segment-build-request="handleSegmentBuildRequest"
-          @segment-load-request="handleSegmentLoadRequest"
-          @segment-auto-load-toggle="handleSegmentAutoLoadToggle"
         />
       </div>
     </template>

@@ -635,21 +635,11 @@ onMounted(() => {
       :contract-disabled="!hasContracts"
       :contract-placeholder="CONTRACT_PLACEHOLDER"
       :chart-data="chartData"
-      :segment-lines="loadedSegmentLines"
-      :can-build-segments="canBuildSegments && !buildSegmentLoading"
-      :can-load-segments="canLoadSegments && !loadSegmentLoading"
-      :auto-load-segments="autoLoadSegments"
       :chart-options="chartOptions"
       :empty-description="EMPTY_DESCRIPTION"
       :unavailable-description="UNAVAILABLE_DESCRIPTION"
       @update:selected-contract="selectedSymbol = $event"
       @update:selected-period="selectedPeriod = Number($event)"
-      @segment-line-change="handleSegmentLineChange"
-      @segment-line-create="handleSegmentLineCreate"
-      @segment-line-delete="handleSegmentLineDelete"
-      @segment-build-request="handleBuildSegments"
-      @segment-load-request="handleLoadSegments"
-      @segment-auto-load-toggle="handleSegmentAutoLoadToggle"
     />
   </div>
 </template>

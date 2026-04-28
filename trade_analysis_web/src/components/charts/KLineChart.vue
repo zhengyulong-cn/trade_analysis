@@ -27,46 +27,8 @@ import {
   getWhitelistedStudyTools,
 } from '@/components/charts/customStudies'
 import type {
-  TradingViewActiveChart,
-  TradingViewLineToolsAndGroupsState,
   TradingViewWidget,
 } from '@/components/charts/tradingViewTypes'
-
-interface SegmentLineItem {
-  id: string
-  points: Array<{
-    time: number
-    value: number
-  }>
-  lineStyle?: 'solid' | 'dashed'
-  segmentRole?: string
-  segmentIndex?: number
-  direction?: string
-}
-
-interface SegmentLineChange {
-  segment: SegmentLineItem
-  endpoint: 'start' | 'end'
-  points: Array<{
-    time: number
-    value: number
-  }>
-}
-
-interface SegmentLineCreate {
-  startPoint: {
-    time: number
-    value: number
-  }
-  endPoint: {
-    time: number
-    value: number
-  }
-}
-
-interface SegmentLineDelete {
-  segment: SegmentLineItem
-}
 
 const TRADING_VIEW_LIBRARY_PATH = '/charting_library/'
 const DEFAULT_SYMBOL = 'FUTURES'
@@ -83,11 +45,7 @@ const props = withDefaults(
     selectedPeriod?: number | string
     contractOptions?: ContractOption[]
     periodOptions?: PeriodOption[]
-    segmentLines?: SegmentLineItem[]
     autosize?: boolean
-    canBuildSegments?: boolean
-    canLoadSegments?: boolean
-    autoLoadSegments?: boolean
     commonChartOptions?: Record<string, unknown>
   }>(),
   {
@@ -95,11 +53,7 @@ const props = withDefaults(
     selectedPeriod: '',
     contractOptions: () => [],
     periodOptions: () => [],
-    segmentLines: () => [],
     autosize: true,
-    canBuildSegments: true,
-    canLoadSegments: true,
-    autoLoadSegments: false,
     commonChartOptions: () => ({}),
   },
 )
@@ -108,12 +62,6 @@ const emit = defineEmits<{
   'update:selectedContract': [value: string]
   'update:selectedPeriod': [value: number | string]
   'crosshair-move': [value: KLineItem | null]
-  'segment-line-change': [value: SegmentLineChange]
-  'segment-line-create': [value: SegmentLineCreate]
-  'segment-line-delete': [value: SegmentLineDelete]
-  'segment-build-request': []
-  'segment-load-request': []
-  'segment-auto-load-toggle': []
 }>()
 
 const chartContainer = ref<HTMLDivElement | null>(null)
