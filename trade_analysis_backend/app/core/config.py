@@ -35,6 +35,9 @@ class Settings:
     realtime_quote_poll_interval_seconds: float = float(
         os.getenv("REALTIME_QUOTE_POLL_INTERVAL_SECONDS", "1")
     )
+    realtime_quote_subscription_refresh_seconds: float = float(
+        os.getenv("REALTIME_QUOTE_SUBSCRIPTION_REFRESH_SECONDS", "60")
+    )
 
     @property
     def database_url(self) -> str:
