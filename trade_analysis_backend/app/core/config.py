@@ -16,6 +16,10 @@ class Settings:
     mysql_host: str = os.getenv("MYSQL_HOST", "127.0.0.1")
     mysql_port: str = os.getenv("MYSQL_PORT", "3306")
     mysql_database: str = os.getenv("MYSQL_DATABASE", "trade_analysis_mysql")
+    redis_host: str = os.getenv("REDIS_HOST", "127.0.0.1")
+    redis_port: int = int(os.getenv("REDIS_PORT", "6379"))
+    redis_db: int = int(os.getenv("REDIS_DB", "0"))
+    redis_password: str = os.getenv("REDIS_PASSWORD", "")
     sqlalchemy_echo: bool = os.getenv("SQLALCHEMY_ECHO", "false").lower() == "true"
     market_data_kline_provider: str = os.getenv(
         "MARKET_DATA_KLINE_PROVIDER", "tqsdk"
@@ -25,6 +29,15 @@ class Settings:
     tqsdk_web_gui: bool = os.getenv("TQSDK_WEB_GUI", "false").lower() == "true"
     tqsdk_kline_length: int = int(os.getenv("TQSDK_KLINE_LENGTH", "1000"))
     tqsdk_wait_timeout_seconds: int = int(os.getenv("TQSDK_WAIT_TIMEOUT_SECONDS", "15"))
+    realtime_quote_enabled: bool = (
+        os.getenv("REALTIME_QUOTE_ENABLED", "true").lower() == "true"
+    )
+    realtime_quote_poll_interval_seconds: float = float(
+        os.getenv("REALTIME_QUOTE_POLL_INTERVAL_SECONDS", "1")
+    )
+    realtime_quote_subscription_refresh_seconds: float = float(
+        os.getenv("REALTIME_QUOTE_SUBSCRIPTION_REFRESH_SECONDS", "60")
+    )
 
     @property
     def database_url(self) -> str:
@@ -38,6 +51,15 @@ class Settings:
         return (
             f"mysql+pymysql://{self.mysql_user}:{self.mysql_password}"
             f"@{self.mysql_host}:{self.mysql_port}/?charset=utf8mb4"
+        )
+
+    @property
+    def redis_url(self) -> str:
+        credentials = ""
+        if self.redis_password:
+            credentials = f":{self.redis_password}@"
+        return (
+            f"redis://{credentials}{self.redis_host}:{self.redis_port}/{self.redis_db}"
         )
 
 

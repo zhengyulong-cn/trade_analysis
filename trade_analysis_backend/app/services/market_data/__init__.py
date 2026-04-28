@@ -4,8 +4,12 @@ from app.services.market_data.base import (
     MarketDataError,
     MarketDataProviderName,
     MarketKlineBar,
+    MarketQuote,
+    MarketTradingTime,
+    QuoteFetchResult,
+    QuoteProvider,
 )
-from app.services.market_data.factory import create_kline_provider
+from app.services.market_data.factory import create_kline_provider, create_quote_provider
 from app.services.market_data.tqsdk_client import tqsdk_client_manager
 from app.services.market_data.tqsdk_provider import TqSdkMarketDataProvider
 
@@ -15,7 +19,12 @@ __all__ = [
     "MarketDataError",
     "MarketDataProviderName",
     "MarketKlineBar",
+    "MarketQuote",
+    "MarketTradingTime",
+    "QuoteFetchResult",
+    "QuoteProvider",
     "TqSdkMarketDataProvider",
     "create_kline_provider",
+    "create_quote_provider",
     "tqsdk_client_manager",
 ]

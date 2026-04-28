@@ -74,10 +74,41 @@ def ensure_contract_is_favorite_column() -> None:
         logger.info("Column ensured: contracts.is_favorite")
 
 
+def drop_obsolete_chart_persistence_columns() -> None:
+    with engine.connect() as connection:
+        for column_name in ("chart_content", "settings_content"):
+            column_exists = connection.execute(
+                text(
+                    "SELECT COUNT(*) FROM information_schema.columns "
+                    "WHERE table_schema = :database_name "
+                    "AND table_name = 'chart_persistences' "
+                    "AND column_name = :column_name"
+                ),
+                {
+                    "database_name": settings.mysql_database,
+                    "column_name": column_name,
+                },
+            ).scalar_one()
+
+            if not column_exists:
+                continue
+
+            connection.execute(
+                text(
+                    "ALTER TABLE chart_persistences "
+                    f"DROP COLUMN {column_name}"
+                )
+            )
+            logger.info("Column dropped: chart_persistences.%s", column_name)
+
+        connection.commit()
+
+
 def initialize_database() -> None:
     try:
         create_database_if_not_exists()
         metadata.create_all(engine)
+        drop_obsolete_chart_persistence_columns()
         ensure_contract_auto_load_segments_column()
         ensure_contract_is_favorite_column()
         logger.info("Database tables initialized")
