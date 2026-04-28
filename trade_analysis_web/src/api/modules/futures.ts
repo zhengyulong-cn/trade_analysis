@@ -53,6 +53,7 @@ export interface FutureChartKLineItem {
   close: number
   ema20?: number
   ema120?: number
+  volume?: number
 }
 
 export interface FutureKlineQueryItem extends FutureKlineItem {
@@ -255,6 +256,31 @@ export interface FutureChartPersistenceSaveParams {
   drawings_content?: string | null
 }
 
+export interface FutureRealtimeBar {
+  symbol: string
+  exchange: string
+  interval: number
+  bucket_start: string
+  bucket_end: string
+  date_time: string
+  open: number | string
+  high: number | string
+  low: number | string
+  close: number | string
+  volume: number | string
+  hold: number | string
+  quote_volume: number | string
+  quote_time: string
+  provider: string | null
+  provider_symbol: string | null
+}
+
+export interface FutureRealtimeBarResult {
+  symbol: string
+  interval: number
+  bar: FutureRealtimeBar | null
+}
+
 const mapFutureKlineToChartData = (item: FutureKlineItem): FutureChartKLineItem | null => {
   const timestamp = toChartTimestampSeconds(item.date_time)
   if (timestamp === null) {
@@ -267,6 +293,23 @@ const mapFutureKlineToChartData = (item: FutureKlineItem): FutureChartKLineItem 
     high: Number(item.high),
     low: Number(item.low),
     close: Number(item.close),
+    volume: Number(item.volume),
+  }
+}
+
+export const mapRealtimeBarToChartData = (bar: FutureRealtimeBar): FutureChartKLineItem | null => {
+  const timestamp = toChartTimestampSeconds(bar.date_time)
+  if (timestamp === null) {
+    return null
+  }
+
+  return {
+    time: timestamp,
+    open: Number(bar.open),
+    high: Number(bar.high),
+    low: Number(bar.low),
+    close: Number(bar.close),
+    volume: Number(bar.volume),
   }
 }
 
@@ -396,5 +439,11 @@ export const getFutureChartPersistenceApi = (params: { symbol: string; interval:
 export const saveFutureChartPersistenceApi = (params: FutureChartPersistenceSaveParams) => {
   return axios.post<FutureChartPersistence>("/chart-persistences/save", params) as unknown as Promise<
     FutureChartPersistence
+  >
+}
+
+export const getFutureRealtimeBarApi = (params: { symbol: string; interval: number }) => {
+  return axios.get<FutureRealtimeBarResult>("/realtime-bars/current", params) as unknown as Promise<
+    FutureRealtimeBarResult
   >
 }

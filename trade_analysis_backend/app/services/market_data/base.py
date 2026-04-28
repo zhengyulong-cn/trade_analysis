@@ -32,6 +32,30 @@ class KlineFetchResult:
     bars: list[MarketKlineBar]
 
 
+@dataclass(frozen=True)
+class MarketTradingTime:
+    day: list[list[str]]
+    night: list[list[str]]
+
+
+@dataclass(frozen=True)
+class MarketQuote:
+    symbol: str
+    exchange: str
+    provider_symbol: str
+    last_price: Decimal
+    volume: Decimal
+    hold: Decimal
+    quote_time: datetime
+    trading_time: MarketTradingTime
+
+
+@dataclass(frozen=True)
+class QuoteFetchResult:
+    provider: MarketDataProviderName
+    quotes: list[MarketQuote]
+
+
 class KlineProvider(Protocol):
     # Concrete providers adapt external SDKs into the application's kline contract.
     provider: MarketDataProviderName
@@ -42,4 +66,11 @@ class KlineProvider(Protocol):
         exchange: str,
         interval_seconds: int,
     ) -> KlineFetchResult:
+        ...
+
+
+class QuoteProvider(Protocol):
+    provider: MarketDataProviderName
+
+    def get_quotes(self, symbols: list[tuple[str, str]]) -> QuoteFetchResult:
         ...

@@ -10,6 +10,7 @@ from app.db.init_db import initialize_database
 from app.middlewares.logging import RequestLoggingMiddleware
 from app.services.market_data import tqsdk_client_manager
 from app.services.redis_client import redis_client_manager
+from app.services.realtime_quote_worker import realtime_quote_worker
 
 configure_logging(settings.log_level)
 logger = get_logger(__name__)
@@ -21,7 +22,9 @@ async def lifespan(_: FastAPI):
     initialize_database()
     redis_client_manager.start()
     tqsdk_client_manager.start()
+    realtime_quote_worker.start()
     yield
+    realtime_quote_worker.stop()
     tqsdk_client_manager.close()
     redis_client_manager.close()
     logger.info("Stopping %s", settings.app_name)

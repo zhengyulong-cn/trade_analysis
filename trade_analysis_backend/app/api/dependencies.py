@@ -9,7 +9,13 @@ from app.services.chart_persistence_service import ChartPersistenceService
 from app.services.contract_service import ContractService
 from app.services.contract_interval_service import ContractIntervalService
 from app.services.kline_service import KlineService
-from app.services.market_data import KlineProvider, create_kline_provider
+from app.services.market_data import (
+    KlineProvider,
+    QuoteProvider,
+    create_kline_provider,
+    create_quote_provider,
+)
+from app.services.realtime_bar_service import RealtimeBarService
 from app.services.redis_client import redis_client_manager
 from app.services.strategy_analysis_service import StrategyAnalysisService
 
@@ -21,6 +27,13 @@ def get_kline_provider() -> KlineProvider:
 
 
 KlineProviderDep = Annotated[KlineProvider, Depends(get_kline_provider)]
+
+
+def get_quote_provider() -> QuoteProvider:
+    return create_quote_provider()
+
+
+QuoteProviderDep = Annotated[QuoteProvider, Depends(get_quote_provider)]
 
 
 def get_redis_client() -> Redis:
@@ -49,6 +62,18 @@ def get_kline_service(
     return KlineService(session, kline_provider=kline_provider)
 
 
+def get_realtime_bar_service(
+    session: SessionDep,
+    redis_client: RedisClientDep,
+    quote_provider: QuoteProviderDep,
+) -> RealtimeBarService:
+    return RealtimeBarService(
+        session=session,
+        redis_client=redis_client,
+        kline_provider=quote_provider,
+    )
+
+
 def get_strategy_analysis_service(session: SessionDep) -> StrategyAnalysisService:
     return StrategyAnalysisService(session)
 
@@ -61,6 +86,9 @@ ContractIntervalServiceDep = Annotated[
     ContractIntervalService, Depends(get_contract_interval_service)
 ]
 KlineServiceDep = Annotated[KlineService, Depends(get_kline_service)]
+RealtimeBarServiceDep = Annotated[
+    RealtimeBarService, Depends(get_realtime_bar_service)
+]
 StrategyAnalysisServiceDep = Annotated[
     StrategyAnalysisService, Depends(get_strategy_analysis_service)
 ]

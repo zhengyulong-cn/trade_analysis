@@ -9,6 +9,9 @@ from app.services.market_data.base import (
     KlineFetchResult,
     MarketDataProviderName,
     MarketKlineBar,
+    MarketQuote,
+    MarketTradingTime,
+    QuoteFetchResult,
 )
 from app.services.market_data.tqsdk_client import tqsdk_client_manager
 
@@ -37,6 +40,56 @@ class TqSdkMarketDataProvider:
                 interval_seconds=interval_seconds,
             ),
         )
+
+    def get_quotes(self, symbols: list[tuple[str, str]]) -> QuoteFetchResult:
+        provider_symbols = [
+            self._build_symbol(symbol=symbol, exchange=exchange)
+            for symbol, exchange in symbols
+        ]
+        if not provider_symbols:
+            return QuoteFetchResult(provider=self.provider, quotes=[])
+
+        with tqsdk_client_manager.session() as api:
+            quote_list = api.get_quote_list(provider_symbols)
+            deadline = time.time() + settings.tqsdk_wait_timeout_seconds
+            api.wait_update(deadline=deadline)
+
+            quotes: list[MarketQuote] = []
+            for (symbol, exchange), provider_symbol, quote in zip(
+                symbols,
+                provider_symbols,
+                quote_list,
+            ):
+                last_price = self._to_decimal(getattr(quote, "last_price", None))
+                if last_price <= 0:
+                    continue
+
+                quotes.append(
+                    MarketQuote(
+                        symbol=symbol,
+                        exchange=exchange,
+                        provider_symbol=provider_symbol,
+                        last_price=last_price,
+                        volume=self._to_decimal(getattr(quote, "volume", 0)),
+                        hold=self._to_decimal(
+                            getattr(quote, "open_interest", 0)
+                        ),
+                        quote_time=self._normalize_quote_datetime(
+                            getattr(quote, "datetime", "")
+                        ),
+                        trading_time=MarketTradingTime(
+                            day=[
+                                [str(item[0]), str(item[1])]
+                                for item in getattr(quote.trading_time, "day", [])
+                            ],
+                            night=[
+                                [str(item[0]), str(item[1])]
+                                for item in getattr(quote.trading_time, "night", [])
+                            ],
+                        ),
+                    )
+                )
+            return QuoteFetchResult(provider=self.provider, quotes=quotes)
 
     def _fetch_kline_dataframe(
         self,
@@ -99,6 +152,11 @@ class TqSdkMarketDataProvider:
         if timestamp.tzinfo is not None:
             timestamp = timestamp.tz_convert(SHANGHAI_TIMEZONE)
         return timestamp.to_pydatetime().replace(tzinfo=None)
+
+    def _normalize_quote_datetime(self, raw_datetime: object) -> datetime:
+        if not raw_datetime:
+            return datetime.now()
+        return self._normalize_datetime(raw_datetime)
 
     def _get_kline_close_time(
         self,

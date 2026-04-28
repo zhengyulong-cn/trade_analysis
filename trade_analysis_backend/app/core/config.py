@@ -29,6 +29,12 @@ class Settings:
     tqsdk_web_gui: bool = os.getenv("TQSDK_WEB_GUI", "false").lower() == "true"
     tqsdk_kline_length: int = int(os.getenv("TQSDK_KLINE_LENGTH", "1000"))
     tqsdk_wait_timeout_seconds: int = int(os.getenv("TQSDK_WAIT_TIMEOUT_SECONDS", "15"))
+    realtime_quote_enabled: bool = (
+        os.getenv("REALTIME_QUOTE_ENABLED", "true").lower() == "true"
+    )
+    realtime_quote_poll_interval_seconds: float = float(
+        os.getenv("REALTIME_QUOTE_POLL_INTERVAL_SECONDS", "1")
+    )
 
     @property
     def database_url(self) -> str:

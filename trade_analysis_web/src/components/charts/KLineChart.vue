@@ -1,6 +1,8 @@
 <script setup lang="ts">
 import {
   getFutureChartPersistenceApi,
+  getFutureRealtimeBarApi,
+  mapRealtimeBarToChartData,
   saveFutureChartPersistenceApi,
   type FutureChartPersistence,
   type FutureChartPersistenceSaveParams,
@@ -187,6 +189,7 @@ let libraryPromise: Promise<void> | null = null
 let chartAutoSaveTimeoutId: number | null = null
 let isRestoringPersistence = false
 let chartRestoreToken = 0
+const realtimeSubscriptionIntervals = new Map<string, number>()
 
 const symbolName = computed(() => {
   return props.selectedContract?.trim() || props.data.symbol?.trim() || props.data.name?.trim() || DEFAULT_SYMBOL
@@ -455,6 +458,15 @@ const getTradingViewBars = (kLineList: KLineItem[]): TradingViewBar[] => {
   }))
 }
 
+const getTradingViewBar = (item: KLineItem): TradingViewBar => ({
+  time: normalizeTimeToMilliseconds(item.time),
+  open: item.open,
+  high: item.high,
+  low: item.low,
+  close: item.close,
+  volume: item.volume,
+})
+
 const getRequestedSymbol = (symbolInfo: Record<string, unknown>) => {
   const ticker = typeof symbolInfo.ticker === 'string' ? symbolInfo.ticker : ''
   const name = typeof symbolInfo.name === 'string' ? symbolInfo.name : ''
@@ -496,6 +508,13 @@ const getBarsInRange = (
   }
 
   return []
+}
+
+const clearRealtimeSubscriptions = () => {
+  realtimeSubscriptionIntervals.forEach((intervalId) => {
+    window.clearInterval(intervalId)
+  })
+  realtimeSubscriptionIntervals.clear()
 }
 
 const createDatafeed = (bars: TradingViewBar[], resolution: string, name: string) => {
@@ -574,7 +593,7 @@ const createDatafeed = (bars: TradingViewBar[], resolution: string, name: string
           visible_plots_set: 'ohlc',
           supported_resolutions: supportedResolutions,
           volume_precision: 0,
-          data_status: 'endofday',
+          data_status: 'streaming',
         })
       }, 0)
     },
@@ -610,10 +629,74 @@ const createDatafeed = (bars: TradingViewBar[], resolution: string, name: string
 
       onResult([], { noData: true })
     },
-    subscribeBars() {
+    subscribeBars(
+      symbolInfo: Record<string, unknown>,
+      requestedResolution: string,
+      onRealtimeCallback: (bar: TradingViewBar) => void,
+      subscriberUID: string,
+    ) {
+      if (getRequestedSymbol(symbolInfo) !== currentSymbol) {
+        return undefined
+      }
+
+      const normalizedRequestedResolution = requestedResolution.trim().toUpperCase()
+      if (normalizedRequestedResolution && normalizedRequestedResolution !== resolution.toUpperCase()) {
+        return undefined
+      }
+
+      const selectedInterval = Number(props.selectedPeriod)
+      if (!Number.isFinite(selectedInterval) || selectedInterval <= 0) {
+        return undefined
+      }
+
+      let lastEmittedTime = bars[bars.length - 1]?.time ?? 0
+      let isFetchingRealtimeBar = false
+      const fetchRealtimeBar = async () => {
+        if (isFetchingRealtimeBar) {
+          return
+        }
+        isFetchingRealtimeBar = true
+        try {
+          const response = await getFutureRealtimeBarApi({
+            symbol: currentSymbol,
+            interval: selectedInterval,
+          })
+          if (!response.bar) {
+            return
+          }
+
+          const chartBar = mapRealtimeBarToChartData(response.bar)
+          if (!chartBar) {
+            return
+          }
+
+          const realtimeBar = getTradingViewBar(chartBar)
+          if (realtimeBar.time < lastEmittedTime) {
+            return
+          }
+
+          lastEmittedTime = realtimeBar.time
+          onRealtimeCallback(realtimeBar)
+        } catch (error) {
+          console.warn('Failed to fetch realtime bar', error)
+        } finally {
+          isFetchingRealtimeBar = false
+        }
+      }
+
+      void fetchRealtimeBar()
+      const intervalId = window.setInterval(() => {
+        void fetchRealtimeBar()
+      }, 1000)
+      realtimeSubscriptionIntervals.set(subscriberUID, intervalId)
       return undefined
     },
-    unsubscribeBars() {
+    unsubscribeBars(subscriberUID: string) {
+      const intervalId = realtimeSubscriptionIntervals.get(subscriberUID)
+      if (intervalId !== undefined) {
+        window.clearInterval(intervalId)
+        realtimeSubscriptionIntervals.delete(subscriberUID)
+      }
       return undefined
     },
     _resolution: resolution,
@@ -758,6 +841,7 @@ const teardownWidget = () => {
   const currentWidget = widget
   widget = null
   clearChartAutoSaveTimeout()
+  clearRealtimeSubscriptions()
 
   if (!currentWidget) {
     resetWidgetHandlers()
