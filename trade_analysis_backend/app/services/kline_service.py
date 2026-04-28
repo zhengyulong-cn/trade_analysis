@@ -13,11 +13,11 @@ from app.schemas.kline_data import (
     KlineDataCreate,
     KlineDeleteRequest,
     KlineDeleteResult,
-    KlineItemDeleteRequest,
-    KlineItemDeleteResult,
-    KlineListItem,
     KlineListResult,
     KlineDataQueryResult,
+    KlineItemsDeleteRequest,
+    KlineItemsDeleteResult,
+    KlineListItem,
     KlinePage,
     MarketDataBulkSyncError,
     MarketDataBulkSyncRequest,
@@ -221,21 +221,28 @@ class KlineService:
             deleted=len(klines),
         )
 
-    def delete_kline_item(
+    def delete_kline_items(
         self,
-        payload: KlineItemDeleteRequest,
-    ) -> KlineItemDeleteResult:
-        kline = self.session.get(KlineData, payload.kline_id)
-        if kline is None:
+        payload: KlineItemsDeleteRequest,
+    ) -> KlineItemsDeleteResult:
+        kline_ids = list(dict.fromkeys(payload.kline_ids))
+        if not kline_ids:
             raise HTTPException(
-                status_code=status.HTTP_404_NOT_FOUND,
-                detail=f"Kline data not found: {payload.kline_id}",
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Kline ids cannot be empty",
             )
 
-        self.session.delete(kline)
+        statement = select(KlineData).where(KlineData.kline_id.in_(kline_ids))
+        klines = list(self.session.exec(statement).all())
+
+        for kline in klines:
+            self.session.delete(kline)
         self.session.commit()
 
-        return KlineItemDeleteResult(kline_id=payload.kline_id, deleted=1)
+        return KlineItemsDeleteResult(
+            requested=len(kline_ids),
+            deleted=len(klines),
+        )
 
     def get_latest_kline(
         self,

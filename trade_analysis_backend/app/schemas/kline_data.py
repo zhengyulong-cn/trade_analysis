@@ -78,12 +78,12 @@ class KlineDeleteResult(SQLModel):
     deleted: int
 
 
-class KlineItemDeleteRequest(SQLModel):
-    kline_id: int
+class KlineItemsDeleteRequest(SQLModel):
+    kline_ids: list[int]
 
 
-class KlineItemDeleteResult(SQLModel):
-    kline_id: int
+class KlineItemsDeleteResult(SQLModel):
+    requested: int
     deleted: int
 
 

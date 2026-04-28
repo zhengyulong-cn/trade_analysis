@@ -12,8 +12,8 @@ from app.schemas.kline_data import (
     KlineDataRead,
     KlineDeleteRequest,
     KlineDeleteResult,
-    KlineItemDeleteRequest,
-    KlineItemDeleteResult,
+    KlineItemsDeleteRequest,
+    KlineItemsDeleteResult,
     KlineListResult,
     KlinePage,
     MarketDataBulkSyncRequest,
@@ -102,12 +102,12 @@ def delete_klines(
     return service.delete_klines(payload)
 
 
-@router.post("/delete/item", response_model=KlineItemDeleteResult)
-def delete_kline_item(
-    payload: KlineItemDeleteRequest,
+@router.post("/delete/items", response_model=KlineItemsDeleteResult)
+def delete_kline_items(
+    payload: KlineItemsDeleteRequest,
     service: KlineServiceDep,
-) -> KlineItemDeleteResult:
-    return service.delete_kline_item(payload)
+) -> KlineItemsDeleteResult:
+    return service.delete_kline_items(payload)
 
 
 @router.get("", response_model=KlineListResult)

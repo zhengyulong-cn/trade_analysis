@@ -93,8 +93,8 @@ export interface FutureKlineDeleteResult {
   deleted: number
 }
 
-export interface FutureKlineItemDeleteResult {
-  kline_id: number
+export interface FutureKlineItemsDeleteResult {
+  requested: number
   deleted: number
 }
 
@@ -323,9 +323,9 @@ export const deleteFutureKlinesApi = (params: { symbol: string; interval: number
   >
 }
 
-export const deleteFutureKlineItemApi = (params: { kline_id: number }) => {
-  return axios.post<FutureKlineItemDeleteResult>("/klines/delete/item", params) as unknown as Promise<
-    FutureKlineItemDeleteResult
+export const deleteFutureKlineItemsApi = (params: { kline_ids: number[] }) => {
+  return axios.post<FutureKlineItemsDeleteResult>("/klines/delete/items", params) as unknown as Promise<
+    FutureKlineItemsDeleteResult
   >
 }
 

@@ -1,7 +1,7 @@
 ﻿<script lang="ts" setup>
 import {
   deleteFutureKlinesApi,
-  deleteFutureKlineItemApi,
+  deleteFutureKlineItemsApi,
   getFutureContractIntervalList,
   getFutureContractList,
   getFutureKlinePageApi,
@@ -79,12 +79,14 @@ const TEXT = {
   deleteConfirmSuffix: ' 的全部 K 线数据吗？',
   bulkSyncSuccess: '一键更新完成：新增 {inserted} 条，覆盖 {updated} 条',
   bulkSyncPartialSuccess: '一键更新完成：新增 {inserted} 条，覆盖 {updated} 条，失败 {failed} 项',
-  deleteItemConfirmMessage: '确定删除这条 K 线数据吗？',
-  deleteItemError: '删除 K 线数据失败',
+  batchDelete: '批量删除',
+  batchDeleteSelectedPrefix: '已选 ',
+  batchDeleteSelectedSuffix: ' 条',
+  batchDeleteConfirmMessage: '确定删除选中的 K 线数据吗？',
+  batchDeleteError: '批量删除 K 线数据失败',
 } as const
 
 const DEFAULT_DETAIL_PAGE_SIZE = 50
-
 
 const contracts = ref<FutureContract[]>([])
 const intervals = ref<FutureContractInterval[]>([])
@@ -101,7 +103,8 @@ const detailTotal = ref(0)
 const updatingKeys = ref<string[]>([])
 const deletingKeys = ref<string[]>([])
 const bulkUpdateLoading = ref(false)
-const deletingKlineIds = ref<number[]>([])
+const batchDeleteLoading = ref(false)
+const selectedDetailRows = ref<FutureKlineQueryItem[]>([])
 const detailTimeRange = ref<[string, string] | []>([])
 
 const createShortcutRange = (days: number) => {
@@ -258,6 +261,7 @@ const ensureDefaultSelection = () => {
 const resetDetail = () => {
   detailRows.value = []
   detailTotal.value = 0
+  selectedDetailRows.value = []
 }
 
 const loadOverview = async () => {
@@ -300,6 +304,7 @@ const loadDetail = async (page = detailPage.value) => {
 
   detailLoading.value = true
   detailPage.value = page
+  selectedDetailRows.value = []
 
   try {
     const pageResult = await getFutureKlinePageApi({
@@ -371,6 +376,10 @@ const handleDetailPageSizeChange = (pageSize: number) => {
   detailPageSize.value = pageSize
   detailPage.value = 1
   void loadDetail(1)
+}
+
+const handleDetailSelectionChange = (rows: FutureKlineQueryItem[]) => {
+  selectedDetailRows.value = rows
 }
 
 const handleSync = async (row: OverviewRow) => {
@@ -493,34 +502,38 @@ const handleDelete = async (row: OverviewRow) => {
   }
 }
 
-const handleDetailDelete = async (row: FutureKlineQueryItem) => {
+const handleBatchDetailDelete = async () => {
+  if (!hasDetailSelection.value || !selectedInterval.value || !selectedDetailRows.value.length) {
+    return
+  }
+
   try {
-    await ElMessageBox.confirm(TEXT.deleteItemConfirmMessage, TEXT.deleteConfirmTitle, {
+    await ElMessageBox.confirm(TEXT.batchDeleteConfirmMessage, TEXT.deleteConfirmTitle, {
       type: 'warning',
     })
   } catch {
     return
   }
 
-  deletingKlineIds.value = [...deletingKlineIds.value, row.kline_id]
+  batchDeleteLoading.value = true
 
   try {
-    const result = await deleteFutureKlineItemApi({
-      kline_id: row.kline_id,
+    const result = await deleteFutureKlineItemsApi({
+      kline_ids: selectedDetailRows.value.map((row) => row.kline_id),
     })
 
-    await refreshOverviewRow(row.symbol, row.interval)
+    await refreshOverviewRow(selectedSymbol.value, selectedInterval.value)
 
-    const nextPage = detailRows.value.length === 1 && detailPage.value > 1
+    const nextPage = selectedDetailRows.value.length >= detailRows.value.length && detailPage.value > 1
       ? detailPage.value - 1
       : detailPage.value
     await loadDetail(nextPage)
 
     ElMessage.success(`${TEXT.deleteSuccessPrefix}${result.deleted}${TEXT.deleteSuccessSuffix}`)
   } catch (error) {
-    ElMessage.error(extractErrorMessage(error, TEXT.deleteItemError))
+    ElMessage.error(extractErrorMessage(error, TEXT.batchDeleteError))
   } finally {
-    deletingKlineIds.value = deletingKlineIds.value.filter((item) => item !== row.kline_id)
+    batchDeleteLoading.value = false
   }
 }
 
@@ -530,10 +543,6 @@ const isRowUpdating = (rowKey: string) => {
 
 const isRowDeleting = (rowKey: string) => {
   return deletingKeys.value.includes(rowKey)
-}
-
-const isKlineDeleting = (klineId: number) => {
-  return deletingKlineIds.value.includes(klineId)
 }
 
 const overviewRowClassName = ({ row }: { row: OverviewRow }) => {
@@ -665,6 +674,15 @@ onMounted(async () => {
             <el-button :disabled="!hasDetailSelection" @click="handleTimeRangeReset">
               {{ TEXT.reset }}
             </el-button>
+            <el-button
+              type="danger"
+              :loading="batchDeleteLoading"
+              :disabled="!selectedDetailRows.length"
+              @click="handleBatchDetailDelete"
+            >
+              {{ TEXT.batchDelete }}
+            </el-button>
+            <span class="tool-label">{{ `${TEXT.batchDeleteSelectedPrefix}${selectedDetailRows.length}${TEXT.batchDeleteSelectedSuffix}` }}</span>
           </div>
         </div>
 
@@ -674,7 +692,9 @@ onMounted(async () => {
           border
           :empty-text="TEXT.emptyDetail"
           max-height="35rem"
+          @selection-change="handleDetailSelectionChange"
         >
+          <el-table-column type="selection" width="48" />
           <el-table-column prop="date_time" :label="TEXT.time" min-width="180">
             <template #default="{ row }">
               {{ formatDateTime(row.date_time) }}
@@ -708,18 +728,6 @@ onMounted(async () => {
           <el-table-column prop="hold" :label="TEXT.hold" min-width="120">
             <template #default="{ row }">
               {{ formatNumber(row.hold) }}
-            </template>
-          </el-table-column>
-          <el-table-column :label="TEXT.action" width="100" fixed="right">
-            <template #default="{ row }">
-              <el-button
-                type="danger"
-                link
-                :loading="isKlineDeleting(row.kline_id)"
-                @click="handleDetailDelete(row)"
-              >
-                {{ TEXT.delete }}
-              </el-button>
             </template>
           </el-table-column>
         </el-table>
