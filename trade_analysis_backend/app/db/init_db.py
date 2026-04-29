@@ -21,7 +21,7 @@ def create_database_if_not_exists() -> None:
     logger.info("Database ensured: %s", settings.mysql_database)
 
 
-def ensure_contract_auto_load_segments_column() -> None:
+def drop_obsolete_contract_columns() -> None:
     with engine.connect() as connection:
         column_exists = connection.execute(
             text(
@@ -32,22 +32,12 @@ def ensure_contract_auto_load_segments_column() -> None:
             ),
             {"database_name": settings.mysql_database},
         ).scalar_one()
-        if not column_exists:
+        if column_exists:
             connection.execute(
-                text(
-                    "ALTER TABLE contracts "
-                    "ADD COLUMN auto_load_segments INT NOT NULL DEFAULT 1"
-                )
+                text("ALTER TABLE contracts DROP COLUMN auto_load_segments")
             )
-        else:
-            connection.execute(
-                text(
-                    "ALTER TABLE contracts "
-                    "ALTER COLUMN auto_load_segments SET DEFAULT 1"
-                )
-            )
+            logger.info("Column dropped: contracts.auto_load_segments")
         connection.commit()
-        logger.info("Column ensured: contracts.auto_load_segments")
 
 
 def ensure_contract_is_favorite_column() -> None:
@@ -104,12 +94,29 @@ def drop_obsolete_chart_persistence_columns() -> None:
         connection.commit()
 
 
+def drop_obsolete_strategy_analysis_table() -> None:
+    with engine.connect() as connection:
+        table_exists = connection.execute(
+            text(
+                "SELECT COUNT(*) FROM information_schema.tables "
+                "WHERE table_schema = :database_name "
+                "AND table_name = 'strategy_analysis'"
+            ),
+            {"database_name": settings.mysql_database},
+        ).scalar_one()
+        if table_exists:
+            connection.execute(text("DROP TABLE strategy_analysis"))
+            logger.info("Table dropped: strategy_analysis")
+        connection.commit()
+
+
 def initialize_database() -> None:
     try:
         create_database_if_not_exists()
         metadata.create_all(engine)
         drop_obsolete_chart_persistence_columns()
-        ensure_contract_auto_load_segments_column()
+        drop_obsolete_contract_columns()
+        drop_obsolete_strategy_analysis_table()
         ensure_contract_is_favorite_column()
         logger.info("Database tables initialized")
     except SQLAlchemyError:

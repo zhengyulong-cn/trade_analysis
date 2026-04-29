@@ -37,14 +37,6 @@ export const RouterModules: RouteRecordRaw[] = [
           title: "期货K线管理",
         },
       },
-      {
-        path: "/futures/strategy_analysis_manager",
-        component: () => import("@/views/futures/future_strategy_analysis_manager/FutureStrategyAnalysisManager.vue"),
-        meta: {
-          icon: "",
-          title: "期货策略分析管理",
-        },
-      },
     ],
   },
 ]

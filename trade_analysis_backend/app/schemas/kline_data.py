@@ -102,30 +102,5 @@ class MarketDataSyncResult(SQLModel):
     updated: int
 
 
-class MarketDataBulkSyncRequest(SQLModel):
-    symbols: list[str] | None = None
-    intervals: list[int] | None = None
-
-
-class MarketDataBulkSyncError(SQLModel):
-    symbol: str
-    interval: int
-    detail: str
-
-
-class MarketDataBulkSyncResult(SQLModel):
-    total: int
-    succeeded: int
-    failed: int
-    requested: int
-    inserted: int
-    updated: int
-    items: list[MarketDataSyncResult]
-    errors: list[MarketDataBulkSyncError]
-
-
 TqSdkSyncRequest = MarketDataSyncRequest
 TqSdkSyncResult = MarketDataSyncResult
-TqSdkBulkSyncRequest = MarketDataBulkSyncRequest
-TqSdkBulkSyncResult = MarketDataBulkSyncResult
-TqSdkBulkSyncError = MarketDataBulkSyncError

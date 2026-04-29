@@ -17,7 +17,6 @@ from app.services.market_data import (
 )
 from app.services.realtime_bar_service import RealtimeBarService
 from app.services.redis_client import redis_client_manager
-from app.services.strategy_analysis_service import StrategyAnalysisService
 
 SessionDep = Annotated[Session, Depends(get_session)]
 
@@ -74,10 +73,6 @@ def get_realtime_bar_service(
     )
 
 
-def get_strategy_analysis_service(session: SessionDep) -> StrategyAnalysisService:
-    return StrategyAnalysisService(session)
-
-
 ContractServiceDep = Annotated[ContractService, Depends(get_contract_service)]
 ChartPersistenceServiceDep = Annotated[
     ChartPersistenceService, Depends(get_chart_persistence_service)
@@ -88,7 +83,4 @@ ContractIntervalServiceDep = Annotated[
 KlineServiceDep = Annotated[KlineService, Depends(get_kline_service)]
 RealtimeBarServiceDep = Annotated[
     RealtimeBarService, Depends(get_realtime_bar_service)
-]
-StrategyAnalysisServiceDep = Annotated[
-    StrategyAnalysisService, Depends(get_strategy_analysis_service)
 ]

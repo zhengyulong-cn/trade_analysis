@@ -19,9 +19,6 @@ from app.schemas.kline_data import (
     KlineItemsDeleteResult,
     KlineListItem,
     KlinePage,
-    MarketDataBulkSyncError,
-    MarketDataBulkSyncRequest,
-    MarketDataBulkSyncResult,
     MarketDataSyncRequest,
     MarketDataSyncResult,
 )
@@ -290,14 +287,7 @@ class KlineService:
             ) from exc
 
         fetched_items = self._convert_market_klines_to_inputs(fetch_result.bars)
-        latest_kline = self._get_latest_kline_row(
-            contract_id=contract.contract_id,
-            interval_id=interval.contract_interval_id,
-        )
-        items = self._filter_items_at_or_after_latest_kline(
-            items=fetched_items,
-            latest_kline=latest_kline,
-        )
+        items = fetched_items
         if not items:
             return MarketDataSyncResult(
                 symbol=payload.symbol,
@@ -329,58 +319,6 @@ class KlineService:
     def sync_from_tqsdk(self, payload: MarketDataSyncRequest) -> MarketDataSyncResult:
         return self.sync_from_market_data(payload)
 
-    def sync_bulk_from_market_data(
-        self,
-        payload: MarketDataBulkSyncRequest,
-    ) -> MarketDataBulkSyncResult:
-        contracts = self._list_contracts_for_sync(payload.symbols)
-        intervals = self._list_intervals_for_sync(payload.intervals)
-        total = len(contracts) * len(intervals)
-        items: list[MarketDataSyncResult] = []
-        errors: list[MarketDataBulkSyncError] = []
-
-        for contract in contracts:
-            for interval in intervals:
-                request = MarketDataSyncRequest(
-                    symbol=contract.symbol,
-                    interval=interval.seconds,
-                )
-                try:
-                    items.append(self.sync_from_market_data(request))
-                except HTTPException as exc:
-                    errors.append(
-                        MarketDataBulkSyncError(
-                            symbol=contract.symbol,
-                            interval=interval.seconds,
-                            detail=self._format_exception_detail(exc.detail),
-                        )
-                    )
-                except Exception as exc:
-                    errors.append(
-                        MarketDataBulkSyncError(
-                            symbol=contract.symbol,
-                            interval=interval.seconds,
-                            detail=str(exc),
-                        )
-                    )
-
-        return MarketDataBulkSyncResult(
-            total=total,
-            succeeded=len(items),
-            failed=len(errors),
-            requested=sum(item.requested for item in items),
-            inserted=sum(item.inserted for item in items),
-            updated=sum(item.updated for item in items),
-            items=items,
-            errors=errors,
-        )
-
-    def sync_bulk_from_tqsdk(
-        self,
-        payload: MarketDataBulkSyncRequest,
-    ) -> MarketDataBulkSyncResult:
-        return self.sync_bulk_from_market_data(payload)
-
     def _build_kline_query(
         self,
         symbol: str,
@@ -407,35 +345,6 @@ class KlineService:
                 KlineData.date_time <= self._normalize_datetime(end_time)
         )
         return statement
-
-    def _get_latest_kline_row(
-        self,
-        contract_id: int,
-        interval_id: int,
-    ) -> KlineData | None:
-        statement = (
-            select(KlineData)
-            .where(KlineData.contract_id == contract_id)
-            .where(KlineData.interval_id == interval_id)
-            .order_by(KlineData.date_time.desc())
-            .limit(1)
-        )
-        return self.session.exec(statement).first()
-
-    def _filter_items_at_or_after_latest_kline(
-        self,
-        items: list[KlineBarInput],
-        latest_kline: KlineData | None,
-    ) -> list[KlineBarInput]:
-        if latest_kline is None:
-            return items
-
-        latest_date_time = self._normalize_datetime(latest_kline.date_time)
-        return [
-            item
-            for item in items
-            if self._normalize_datetime(item.date_time) >= latest_date_time
-        ]
 
     def _deduplicate_kline_items(
         self,
@@ -546,26 +455,6 @@ class KlineService:
             )
         return contract
 
-    def _list_contracts_for_sync(self, symbols: list[str] | None) -> list[Contract]:
-        statement = select(Contract).order_by(Contract.symbol)
-        if symbols:
-            unique_symbols = sorted(set(symbols))
-            statement = (
-                select(Contract)
-                .where(Contract.symbol.in_(unique_symbols))
-                .order_by(Contract.symbol)
-            )
-        contracts = list(self.session.exec(statement).all())
-        if symbols:
-            found_symbols = {contract.symbol for contract in contracts}
-            missing_symbols = sorted(set(symbols) - found_symbols)
-            if missing_symbols:
-                raise HTTPException(
-                    status_code=status.HTTP_404_NOT_FOUND,
-                    detail=f"Contract not found: {', '.join(missing_symbols)}",
-                )
-        return contracts
-
     def _get_interval_by_seconds(self, interval_seconds: int) -> ContractInterval:
         statement = select(ContractInterval).where(
             ContractInterval.seconds == interval_seconds
@@ -577,34 +466,3 @@ class KlineService:
                 detail=f"Contract interval not found: {interval_seconds}",
             )
         return interval
-
-    def _list_intervals_for_sync(
-        self,
-        intervals: list[int] | None,
-    ) -> list[ContractInterval]:
-        statement = select(ContractInterval).order_by(ContractInterval.seconds)
-        if intervals:
-            unique_intervals = sorted(set(intervals))
-            statement = (
-                select(ContractInterval)
-                .where(ContractInterval.seconds.in_(unique_intervals))
-                .order_by(ContractInterval.seconds)
-            )
-        contract_intervals = list(self.session.exec(statement).all())
-        if intervals:
-            found_intervals = {interval.seconds for interval in contract_intervals}
-            missing_intervals = sorted(set(intervals) - found_intervals)
-            if missing_intervals:
-                raise HTTPException(
-                    status_code=status.HTTP_404_NOT_FOUND,
-                    detail=(
-                        "Contract interval not found: "
-                        f"{', '.join(str(item) for item in missing_intervals)}"
-                    ),
-                )
-        return contract_intervals
-
-    def _format_exception_detail(self, detail: object) -> str:
-        if isinstance(detail, str):
-            return detail
-        return str(detail)

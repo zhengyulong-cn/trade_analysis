@@ -14,10 +14,6 @@ class ContractService:
 
     def create_contract(self, payload: ContractCreate) -> Contract:
         self._validate_binary_flag(
-            field_name="auto_load_segments",
-            value=payload.auto_load_segments,
-        )
-        self._validate_binary_flag(
             field_name="is_favorite",
             value=payload.is_favorite,
         )
@@ -45,11 +41,6 @@ class ContractService:
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
                 detail="No contract fields to update",
-            )
-        if "auto_load_segments" in update_data:
-            self._validate_binary_flag(
-                field_name="auto_load_segments",
-                value=update_data["auto_load_segments"],
             )
         if "is_favorite" in update_data:
             self._validate_binary_flag(

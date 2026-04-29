@@ -7,7 +7,6 @@ export interface FutureContract {
   exchange: string
   name: string
   is_favorite: number
-  auto_load_segments: number
   create_at: string
   updated_at: string
 }
@@ -17,7 +16,6 @@ export interface FutureContractCreateParams {
   exchange: string
   name: string
   is_favorite?: number
-  auto_load_segments?: number
 }
 
 export interface FutureContractUpdateParams extends Partial<FutureContractCreateParams> {
@@ -96,147 +94,6 @@ export interface FutureKlineDeleteResult {
 
 export interface FutureKlineItemsDeleteResult {
   requested: number
-  deleted: number
-}
-
-export interface FutureStrategyAnalysisBuildParams {
-  symbol: string
-  interval: number
-  reset?: boolean
-}
-
-export interface FutureStrategyEmaState {
-  period: number
-  seed_closes: Array<number | string>
-  last_ema: number | string | null
-  last_relation: string | null
-  warmup_bars: FutureKlineItem[]
-}
-
-export interface FutureTrendSegment {
-  segment_index: number
-  direction: string
-  status: string
-  trigger_time: string
-  first_kline_time: string
-  last_kline_time: string
-  start_time: string
-  start_price: number | string
-  end_time: string
-  end_price: number | string
-  kline_count: number
-  confirmed_at: string | null
-}
-
-export interface FutureIntervalStrategy {
-  interval: number
-  interval_name: string | null
-  ema_state: FutureStrategyEmaState
-  confirmed_segments: FutureTrendSegment[]
-  current_segment: FutureTrendSegment | null
-  processed_kline_count: number
-  last_processed_at: string | null
-}
-
-export interface FutureStrategyContent {
-  intervals: Record<string, FutureIntervalStrategy>
-}
-
-export interface FutureStrategyAnalysisDetail {
-  strategy_id: number
-  contract_id: number
-  symbol: string
-  exchange: string
-  contract_name: string
-  strategy: FutureStrategyContent
-}
-
-export interface FutureSegmentBuildResult {
-  strategy_id: number
-  contract_id: number
-  symbol: string
-  exchange: string
-  contract_name: string
-  interval: number
-  interval_name: string | null
-  strategy: FutureStrategyContent
-  interval_strategy: FutureIntervalStrategy
-}
-
-export type FutureStrategySegmentRole = 'confirmed' | 'current' | 'pending'
-
-export interface FutureStrategySegmentItem {
-  segment_role: FutureStrategySegmentRole
-  segment_index: number
-  direction: string
-  status: string
-  trigger_time: string
-  first_kline_time: string
-  last_kline_time: string
-  start_time: string
-  start_price: number | string
-  end_time: string
-  end_price: number | string
-  kline_count: number
-  bars_since_end: number
-  confirmed_at: string | null
-}
-
-export interface FutureStrategySegmentListResult {
-  strategy_id: number | null
-  contract_id: number
-  symbol: string
-  exchange: string
-  contract_name: string
-  interval: number
-  interval_name: string | null
-  items: FutureStrategySegmentItem[]
-}
-
-export interface FutureStrategySegmentBaseParams {
-  symbol: string
-  interval: number
-  segment_role: FutureStrategySegmentRole
-  direction: string
-  start_time: string
-  start_price: number
-  end_time: string
-  end_price: number
-}
-
-export interface FutureStrategySegmentCreateParams extends FutureStrategySegmentBaseParams {}
-
-export interface FutureStrategySegmentUpdateParams extends FutureStrategySegmentBaseParams {
-  original_segment_role: FutureStrategySegmentRole
-  original_segment_index: number
-}
-
-export interface FutureStrategySegmentDeleteItem {
-  segment_role: FutureStrategySegmentRole
-  segment_index: number
-}
-
-export interface FutureStrategySegmentBatchDeleteParams {
-  symbol: string
-  interval: number
-  items: FutureStrategySegmentDeleteItem[]
-}
-
-export interface FutureStrategySegmentBatchDeleteResult {
-  symbol: string
-  interval: number
-  deleted: number
-  remaining: number
-}
-
-export interface FutureStrategyAnalysisDeleteParams {
-  contract_id: number
-  strategy_id: number
-}
-
-export interface FutureStrategyAnalysisDeleteResult {
-  contract_id: number
-  strategy_id: number
   deleted: number
 }
 
@@ -385,48 +242,6 @@ export const deleteFutureKlinesApi = (params: { symbol: string; interval: number
 export const deleteFutureKlineItemsApi = (params: { kline_ids: number[] }) => {
   return axios.post<FutureKlineItemsDeleteResult>("/klines/delete/items", params) as unknown as Promise<
     FutureKlineItemsDeleteResult
-  >
-}
-
-export const buildFutureSegmentAnalysisApi = (params: FutureStrategyAnalysisBuildParams) => {
-  return axios.post<FutureSegmentBuildResult>("/strategy-analyses/segments/build", params) as unknown as Promise<
-    FutureSegmentBuildResult
-  >
-}
-
-export const getFutureStrategyAnalysisApi = (params: { symbol: string }) => {
-  return axios.get<FutureStrategyAnalysisDetail>("/strategy-analyses", params) as unknown as Promise<
-    FutureStrategyAnalysisDetail
-  >
-}
-
-export const getFutureStrategySegmentListApi = (params: { symbol: string; interval: number }) => {
-  return axios.get<FutureStrategySegmentListResult>("/strategy-analyses/segments", params) as unknown as Promise<
-    FutureStrategySegmentListResult
-  >
-}
-
-export const createFutureStrategySegmentApi = (params: FutureStrategySegmentCreateParams) => {
-  return axios.post<FutureStrategySegmentListResult>("/strategy-analyses/segments/create", params) as unknown as Promise<
-    FutureStrategySegmentListResult
-  >
-}
-
-export const updateFutureStrategySegmentApi = (params: FutureStrategySegmentUpdateParams) => {
-  return axios.post<FutureStrategySegmentListResult>("/strategy-analyses/segments/update", params) as unknown as Promise<
-    FutureStrategySegmentListResult
-  >
-}
-
-export const deleteFutureStrategySegmentsApi = (params: FutureStrategySegmentBatchDeleteParams) => {
-  return axios.post<FutureStrategySegmentBatchDeleteResult>("/strategy-analyses/segments/delete", params) as unknown as Promise<
-    FutureStrategySegmentBatchDeleteResult
-  >
-}
-
-export const deleteFutureStrategyAnalysisApi = (params: FutureStrategyAnalysisDeleteParams) => {
-  return axios.post<FutureStrategyAnalysisDeleteResult>("/strategy-analyses/delete", params) as unknown as Promise<
-    FutureStrategyAnalysisDeleteResult
   >
 }
 

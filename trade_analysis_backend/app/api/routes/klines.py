@@ -16,12 +16,8 @@ from app.schemas.kline_data import (
     KlineItemsDeleteResult,
     KlineListResult,
     KlinePage,
-    MarketDataBulkSyncRequest,
-    MarketDataBulkSyncResult,
     MarketDataSyncRequest,
     MarketDataSyncResult,
-    TqSdkBulkSyncRequest,
-    TqSdkBulkSyncResult,
     TqSdkSyncRequest,
     TqSdkSyncResult,
 )
@@ -59,18 +55,6 @@ def sync_klines_from_market_data(
 
 
 @router.post(
-    "/sync/market-data/bulk",
-    response_model=MarketDataBulkSyncResult,
-    status_code=status.HTTP_201_CREATED,
-)
-def sync_klines_from_market_data_bulk(
-    service: KlineServiceDep,
-    payload: MarketDataBulkSyncRequest | None = None,
-) -> MarketDataBulkSyncResult:
-    return service.sync_bulk_from_market_data(payload or MarketDataBulkSyncRequest())
-
-
-@router.post(
     "/sync/tqsdk",
     response_model=TqSdkSyncResult,
     status_code=status.HTTP_201_CREATED,
@@ -80,18 +64,6 @@ def sync_klines_from_tqsdk(
     service: KlineServiceDep,
 ) -> TqSdkSyncResult:
     return service.sync_from_tqsdk(payload)
-
-
-@router.post(
-    "/sync/tqsdk/bulk",
-    response_model=TqSdkBulkSyncResult,
-    status_code=status.HTTP_201_CREATED,
-)
-def sync_klines_from_tqsdk_bulk(
-    service: KlineServiceDep,
-    payload: TqSdkBulkSyncRequest | None = None,
-) -> TqSdkBulkSyncResult:
-    return service.sync_bulk_from_tqsdk(payload or TqSdkBulkSyncRequest())
 
 
 @router.post("/delete", response_model=KlineDeleteResult)
