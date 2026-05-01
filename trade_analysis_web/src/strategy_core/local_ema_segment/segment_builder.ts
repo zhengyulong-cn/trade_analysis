@@ -65,6 +65,13 @@ const updateLastSegmentEnd = (segments: EmaSegment[], end: SegmentPoint) => {
   lastSegment.end = { ...end }
 }
 
+/**
+ * 根据EMA构建线段
+ * @param bars K线
+ * @param emaLength EMA长度
+ * @param minSegmentBars 线段最小间距
+ * @returns 
+ */
 export const buildEmaSegments = (bars: EmaSegmentBar[], emaLength: number, minSegmentBars: number) => {
   const segments: EmaSegment[] = []
   let activeDirection: SegmentDirection | null = null
