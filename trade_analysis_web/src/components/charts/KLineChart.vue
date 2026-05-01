@@ -1,8 +1,8 @@
 <script setup lang="ts">
 import { INITIAL_VISIBLE_K_LINE_COUNT } from '@/constants/chart'
-import { ElMessage } from 'element-plus'
 import { computed, onMounted, onUnmounted, ref, watch } from 'vue'
 import ChartSidebar from '@/components/charts/sidebar_panel/ChartSidebar.vue'
+import KLineReplayPanel from '@/components/charts/kline_replay/KLineReplayPanel.vue'
 import type { ContractOption, KLineItem, PeriodOption } from '@/components/charts/chartModels'
 import {
   type ChartDatafeedController,
@@ -28,9 +28,8 @@ import {
   getCustomIndicators,
   getWhitelistedStudyTools,
 } from '@/components/charts/customStudies'
-import type {
-  TradingViewWidget,
-} from '@/components/charts/tradingViewTypes'
+import type { TradingViewWidget } from '@/components/charts/tradingViewTypes'
+import { useKLineReplay } from '@/components/charts/kline_replay/useKLineReplay'
 
 const TRADING_VIEW_LIBRARY_PATH = '/charting_library/'
 const DEFAULT_SYMBOL = 'FUTURES'
@@ -68,8 +67,6 @@ const emit = defineEmits<{
 
 const chartContainer = ref<HTMLDivElement | null>(null)
 const hoveredKLine = ref<KLineItem | null>(null)
-const isReplayMode = ref(false)
-const replayCursorIndex = ref<number | null>(null)
 
 let widget: TradingViewWidget | null = null
 let crossHairHandler: ((params: { time?: number }) => void) | null = null
@@ -93,56 +90,33 @@ const getSortedKLineList = () => {
   return [...(props.data.kLineList ?? [])].sort((first, second) => first.time - second.time)
 }
 
-const displayedKLineList = computed(() => {
-  const sortedList = getSortedKLineList()
-  if (!isReplayMode.value) {
-    return sortedList
-  }
-
-  const cursorIndex = replayCursorIndex.value
-  if (cursorIndex === null || cursorIndex < 0) {
-    return sortedList
-  }
-
-  return sortedList.slice(0, cursorIndex + 1)
-})
-
-const replayCursorBar = computed(() => {
-  if (!isReplayMode.value) {
-    return null
-  }
-
-  const cursorIndex = replayCursorIndex.value
-  if (cursorIndex === null || cursorIndex < 0) {
-    return null
-  }
-
-  return getSortedKLineList()[cursorIndex] ?? null
-})
-
-const hasReplayNext = computed(() => {
-  const cursorIndex = replayCursorIndex.value
-  if (!isReplayMode.value || cursorIndex === null) {
-    return false
-  }
-
-  return cursorIndex < getSortedKLineList().length - 1
-})
-
-const replayTimeLabel = computed(() => {
-  const targetBar = replayCursorBar.value
-  if (!targetBar) {
-    return ''
-  }
-
-  const targetDate = new Date(normalizeTimeToMilliseconds(targetBar.time))
-  const year = targetDate.getFullYear()
-  const month = String(targetDate.getMonth() + 1).padStart(2, '0')
-  const day = String(targetDate.getDate()).padStart(2, '0')
-  const hour = String(targetDate.getHours()).padStart(2, '0')
-  const minute = String(targetDate.getMinutes()).padStart(2, '0')
-
-  return `${year}-${month}-${day} ${hour}:${minute}`
+const {
+  displayedKLineList,
+  enterReplayMode,
+  exitReplayMode,
+  hasReplayNext,
+  isReplayMode,
+  isReplayPanelOpen,
+  replayCursorBar,
+  replayCursorIndex,
+  replaySelectedTime,
+  replaySelectionRange,
+  replayTimeLabel,
+  resetReplayOnDataChange,
+  setupReplayHeaderButtons,
+  stepReplayForward,
+  teardownReplayHeaderButtons,
+} = useKLineReplay({
+  hoveredKLine,
+  emitCrosshairMove: (value) => emit('crosshair-move', value),
+  getSortedKLineList,
+  getCreateWidgetToken: () => createWidgetToken,
+  getWidget: () => widget,
+  pushReplayBar: (replayBar) => {
+    datafeedController?.pushBar(replayBar)
+    widget?.resetCache?.()
+    widget?.activeChart().resetData?.()
+  },
 })
 
 const clearRealtimeSubscriptions = () => {
@@ -255,6 +229,7 @@ const resetWidgetHandlers = () => {
 
 const teardownWidget = () => {
   const currentWidget = widget
+  teardownReplayHeaderButtons(currentWidget)
   widget = null
   datafeedController = null
   clearChartAutoSaveTimeout()
@@ -343,61 +318,6 @@ const emitCrosshairBar = (time?: number) => {
   emit('crosshair-move', matchedItem ?? null)
 }
 
-const enterReplayMode = () => {
-  const targetBar = hoveredKLine.value
-  if (!targetBar) {
-    ElMessage.warning('请先把十字光标移动到要开始回放的 K 线上')
-    return
-  }
-
-  const targetTime = normalizeTimeToMilliseconds(targetBar.time)
-  const targetIndex = getSortedKLineList().findIndex(
-    (item) => normalizeTimeToMilliseconds(item.time) === targetTime,
-  )
-
-  if (targetIndex < 0) {
-    ElMessage.warning('未找到对应的 K 线，暂时无法进入回放')
-    return
-  }
-
-  replayCursorIndex.value = targetIndex
-  isReplayMode.value = true
-}
-
-const stepReplayForward = () => {
-  if (!isReplayMode.value) {
-    return
-  }
-
-  const cursorIndex = replayCursorIndex.value
-  const sortedList = getSortedKLineList()
-  if (cursorIndex === null || cursorIndex >= sortedList.length - 1) {
-    return
-  }
-
-  const nextCursorIndex = cursorIndex + 1
-  const nextBar = sortedList[nextCursorIndex]
-  if (!nextBar) {
-    return
-  }
-
-  replayCursorIndex.value = nextCursorIndex
-  hoveredKLine.value = nextBar
-  emit('crosshair-move', nextBar)
-
-  const replayBar = getTradingViewBars([nextBar])[0]
-  if (replayBar) {
-    datafeedController?.pushBar(replayBar)
-    widget?.resetCache?.()
-    widget?.activeChart().resetData?.()
-  }
-}
-
-const exitReplayMode = () => {
-  isReplayMode.value = false
-  replayCursorIndex.value = null
-}
-
 const createWidget = async () => {
   if (!chartContainer.value) {
     return
@@ -460,7 +380,6 @@ const createWidget = async () => {
     ],
     enabled_features: ['move_logo_to_main_pane', 'saveload_separate_drawings_storage'],
     custom_indicators_getter: getCustomIndicators,
-    // 仅仅保留EMA和MACD指标
     studies_access: {
       type: 'white',
       tools: getWhitelistedStudyTools(),
@@ -518,6 +437,8 @@ const createWidget = async () => {
     }
     currentWidget.subscribe('onAutoSaveNeeded', onAutoSaveNeededHandler)
 
+    void setupReplayHeaderButtons(currentWidget, token)
+
     void (async () => {
       const restoreResult = await restoreWidgetPersistence(currentWidget, persistence, token)
       if (token !== createWidgetToken || widget !== currentWidget) {
@@ -556,10 +477,7 @@ watch(
     props.periodOptions,
   ],
   () => {
-    hoveredKLine.value = null
-    emit('crosshair-move', null)
-    if (isReplayMode.value || replayCursorIndex.value !== null) {
-      exitReplayMode()
+    if (resetReplayOnDataChange()) {
       return
     }
     void createWidget()
@@ -586,7 +504,19 @@ watch(
   () => isReplayMode.value,
   () => {
     emit('crosshair-move', replayCursorBar.value)
+    if (widget) {
+      void setupReplayHeaderButtons(widget, createWidgetToken)
+    }
     void createWidget()
+  },
+)
+
+watch(
+  () => [hasReplayNext.value, replayTimeLabel.value, replayCursorIndex.value],
+  () => {
+    if (widget) {
+      void setupReplayHeaderButtons(widget, createWidgetToken)
+    }
   },
 )
 
@@ -600,24 +530,20 @@ defineExpose({
 
 <template>
   <div class="tv-chart-wrap">
-    <div class="replay-toolbar">
-      <template v-if="isReplayMode">
-        <div class="replay-status">
-          <span class="replay-status__tag">历史回放</span>
-          <span class="replay-status__time">{{ replayTimeLabel }}</span>
-        </div>
-        <div class="replay-actions">
-          <el-button size="small" type="primary" :disabled="!hasReplayNext" @click="stepReplayForward">
-            下一根
-          </el-button>
-          <el-button size="small" @click="exitReplayMode">退出回放</el-button>
-        </div>
-      </template>
-      <template v-else>
-        <el-button size="small" @click="enterReplayMode">进入回放</el-button>
-      </template>
-    </div>
     <div ref="chartContainer" class="tv-chart"></div>
+    <KLineReplayPanel
+      :is-open="isReplayPanelOpen"
+      :is-replay-mode="isReplayMode"
+      :has-replay-next="hasReplayNext"
+      :replay-time-label="replayTimeLabel"
+      :replay-selected-time="replaySelectedTime"
+      :replay-selection-range="replaySelectionRange"
+      @close="isReplayPanelOpen = false"
+      @update:replay-selected-time="replaySelectedTime = $event"
+      @enter-replay-mode="enterReplayMode"
+      @step-replay-forward="stepReplayForward"
+      @exit-replay-mode="exitReplayMode"
+    />
     <ChartSidebar
       :contract-options="contractOptions"
       :selected-contract="selectedContract"
@@ -629,52 +555,9 @@ defineExpose({
 <style lang="less" scoped>
 .tv-chart-wrap {
   width: 100%;
-  // height: 50rem;
   height: calc(100vh - 3.5rem);
   position: relative;
   background: #ffffff;
-}
-
-.replay-toolbar {
-  position: absolute;
-  top: 12px;
-  left: 12px;
-  z-index: 20;
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  padding: 8px 12px;
-  border: 1px solid rgba(15, 23, 42, 0.08);
-  border-radius: 10px;
-  background: rgba(255, 255, 255, 0.96);
-  box-shadow: 0 8px 24px rgba(15, 23, 42, 0.08);
-}
-
-.replay-status {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  color: #1f2937;
-  font-size: 12px;
-  line-height: 1;
-}
-
-.replay-status__tag {
-  padding: 4px 8px;
-  border-radius: 999px;
-  background: #fef3c7;
-  color: #92400e;
-  font-weight: 600;
-}
-
-.replay-status__time {
-  font-variant-numeric: tabular-nums;
-}
-
-.replay-actions {
-  display: flex;
-  align-items: center;
-  gap: 8px;
 }
 
 .tv-chart {

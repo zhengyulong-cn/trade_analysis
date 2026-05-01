@@ -33,9 +33,12 @@ export interface TradingViewActiveChart {
 
 export interface TradingViewWidget {
   onChartReady: (callback: () => void) => void
+  headerReady?: () => Promise<void>
   subscribe: (event: string, callback: () => void) => void
   unsubscribe: (event: string, callback: () => void) => void
   activeChart: () => TradingViewActiveChart
+  createButton?: (options?: Record<string, unknown>) => HTMLElement | string
+  removeButton?: (button: HTMLElement | string) => void
   resetCache?: () => void
   remove: () => void
 }
