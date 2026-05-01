@@ -15,11 +15,6 @@ class KlineBarInput(SQLModel):
     date_time: datetime
 
 
-class KlineDataCreate(KlineBarInput):
-    symbol: str
-    interval: int
-
-
 class KlineBatchCreate(SQLModel):
     symbol: str
     interval: int
@@ -31,7 +26,6 @@ class KlineDataRead(KlineBarInput):
 
     kline_id: int
     contract_id: int
-    interval_id: int
 
 
 class KlineDataQueryResult(KlineDataRead):
@@ -100,7 +94,3 @@ class MarketDataSyncResult(SQLModel):
     requested: int
     inserted: int
     updated: int
-
-
-TqSdkSyncRequest = MarketDataSyncRequest
-TqSdkSyncResult = MarketDataSyncResult

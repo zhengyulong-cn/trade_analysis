@@ -2,12 +2,10 @@
 import {
   deleteFutureKlinesApi,
   deleteFutureKlineItemsApi,
-  getFutureContractIntervalList,
   getFutureContractList,
   getFutureKlinePageApi,
   syncFutureKlinesApi,
   type FutureContract,
-  type FutureContractInterval,
   type FutureKlineQueryItem,
 } from '@/api/modules'
 import {
@@ -87,9 +85,9 @@ const TEXT = {
 } as const
 
 const DEFAULT_DETAIL_PAGE_SIZE = 50
+const STORAGE_INTERVAL_SECONDS = 300
+const STORAGE_INTERVAL_NAME = '5F'
 
-const contracts = ref<FutureContract[]>([])
-const intervals = ref<FutureContractInterval[]>([])
 const overviewRows = ref<OverviewRow[]>([])
 const detailRows = ref<FutureKlineQueryItem[]>([])
 const overviewLoading = ref(false)
@@ -146,19 +144,6 @@ const detailDescription = computed(() => {
 
 const getOverviewKey = (symbol: string, interval: number) => `${symbol}-${interval}`
 
-const formatInterval = (seconds: number) => {
-  if (seconds % (60 * 60 * 24) === 0) {
-    return `${seconds / (60 * 60 * 24)}D`
-  }
-  if (seconds % (60 * 60) === 0) {
-    return `${seconds / (60 * 60)}H`
-  }
-  if (seconds % 60 === 0) {
-    return `${seconds / 60}F`
-  }
-  return `${seconds}S`
-}
-
 const formatDateTime = (value?: Parameters<typeof formatDateTimeByDayjs>[0]) => {
   return formatDateTimeByDayjs(value)
 }
@@ -212,32 +197,26 @@ const queryKlinePage = (symbol: string, interval: number, page = 1, pageSize = 1
 
 const buildOverviewRows = async (
   contractList: FutureContract[],
-  intervalList: FutureContractInterval[],
 ) => {
   const rows = await Promise.all(
-    contractList.flatMap((contract) =>
-      intervalList.map(async (interval) => {
-        const pageResult = await queryKlinePage(contract.symbol, interval.seconds)
-        const latestItem = pageResult.items[pageResult.items.length - 1]
+    contractList.map(async (contract) => {
+      const pageResult = await queryKlinePage(contract.symbol, STORAGE_INTERVAL_SECONDS)
+      const latestItem = pageResult.items[pageResult.items.length - 1]
 
-        return {
-          rowKey: getOverviewKey(contract.symbol, interval.seconds),
-          symbol: contract.symbol,
-          name: contract.name,
-          exchange: contract.exchange,
-          interval: interval.seconds,
-          intervalName: interval.contract_interval_name || formatInterval(interval.seconds),
-          total: pageResult.total,
-          latestTime: latestItem?.date_time ?? '',
-        } satisfies OverviewRow
-      }),
-    ),
+      return {
+        rowKey: getOverviewKey(contract.symbol, STORAGE_INTERVAL_SECONDS),
+        symbol: contract.symbol,
+        name: contract.name,
+        exchange: contract.exchange,
+        interval: STORAGE_INTERVAL_SECONDS,
+        intervalName: STORAGE_INTERVAL_NAME,
+        total: pageResult.total,
+        latestTime: latestItem?.date_time ?? '',
+      } satisfies OverviewRow
+    }),
   )
 
   return rows.sort((first, second) => {
-    if (first.symbol === second.symbol) {
-      return first.interval - second.interval
-    }
     return first.symbol.localeCompare(second.symbol, 'zh-CN')
   })
 }
@@ -268,15 +247,9 @@ const loadOverview = async () => {
   overviewLoading.value = true
 
   try {
-    const [contractList, intervalList] = await Promise.all([
-      getFutureContractList(),
-      getFutureContractIntervalList(),
-    ])
+    const contractList = await getFutureContractList()
 
-    contracts.value = contractList
-    intervals.value = intervalList
-
-    if (!contractList.length || !intervalList.length) {
+    if (!contractList.length) {
       overviewRows.value = []
       resetDetail()
       selectedSymbol.value = ''
@@ -285,7 +258,7 @@ const loadOverview = async () => {
       return
     }
 
-    overviewRows.value = await buildOverviewRows(contractList, intervalList)
+    overviewRows.value = await buildOverviewRows(contractList)
     ensureDefaultSelection()
   } catch (error) {
     overviewRows.value = []

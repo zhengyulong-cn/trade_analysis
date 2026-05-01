@@ -7,11 +7,12 @@ from redis import Redis
 from sqlmodel import Session, select
 from tqsdk.datetime import _get_trading_timestamp, _is_in_trading_time
 
+from app.core.kline_intervals import is_supported_kline_interval
 from app.models.contract import Contract
-from app.models.contract_interval import ContractInterval
 from app.models.kline_data import KlineData
 from app.schemas.kline_data import KlineBarInput, KlineBatchCreate
 from app.schemas.realtime_bar import RealtimeBar
+from app.services.kline_aggregation import BASE_KLINE_INTERVAL_SECONDS, aggregate_klines
 from app.services.kline_service import KlineService
 from app.services.market_data import KlineProvider, MarketQuote, MarketTradingTime
 
@@ -31,6 +32,10 @@ class RealtimeBarService:
         self.kline_service = KlineService(session, kline_provider=kline_provider)
 
     def get_current_bar(self, symbol: str, interval: int) -> RealtimeBar | None:
+        self._validate_interval_seconds(interval)
+        if interval != BASE_KLINE_INTERVAL_SECONDS:
+            return self._get_aggregated_current_bar(symbol=symbol, interval=interval)
+
         raw_bar = self.redis_client.get(self._bar_key(symbol=symbol, interval=interval))
         if not raw_bar:
             return None
@@ -47,29 +52,29 @@ class RealtimeBarService:
     def process_quote_for_interval(
         self,
         quote: MarketQuote,
-        interval: ContractInterval,
+        interval_seconds: int,
     ) -> RealtimeBar:
         current_time = self._get_current_time()
         if not self._is_in_trading_time(quote.trading_time, current_time):
             current_bar = self.get_current_bar(
                 symbol=quote.symbol,
-                interval=interval.seconds,
+                interval=interval_seconds,
             )
             if current_bar is None:
                 raise RuntimeError("outside trading time")
             return current_bar
 
         quote_time = self._normalize_datetime(quote.quote_time)
-        bucket_start = self._get_bucket_start(quote_time, interval.seconds)
+        bucket_start = self._get_bucket_start(quote_time, interval_seconds)
         current_bar = self.get_current_bar(
             symbol=quote.symbol,
-            interval=interval.seconds,
+            interval=interval_seconds,
         )
 
         if current_bar is None:
             current_bar = self._create_initial_bar(
                 quote=quote,
-                interval=interval,
+                interval_seconds=interval_seconds,
                 bucket_start=bucket_start,
             )
             self._save_bar(current_bar)
@@ -86,7 +91,7 @@ class RealtimeBarService:
         self._persist_completed_bar(current_bar)
         previous_close = current_bar.close
         next_bucket_start = current_bar.bucket_start + timedelta(
-            seconds=interval.seconds
+            seconds=interval_seconds
         )
 
         while next_bucket_start < bucket_start:
@@ -97,17 +102,17 @@ class RealtimeBarService:
             ):
                 flat_bar = self._create_flat_completed_bar(
                     quote=quote,
-                    interval=interval,
+                    interval_seconds=interval_seconds,
                     bucket_start=next_bucket_start,
                     price=previous_close,
                 )
                 self._persist_completed_bar(flat_bar)
                 previous_close = flat_bar.close
-            next_bucket_start += timedelta(seconds=interval.seconds)
+            next_bucket_start += timedelta(seconds=interval_seconds)
 
         next_bar = self._create_realtime_bar(
             quote=quote,
-            interval=interval,
+            interval_seconds=interval_seconds,
             bucket_start=bucket_start,
             open_price=previous_close,
             bucket_start_quote_volume=quote.volume,
@@ -120,10 +125,11 @@ class RealtimeBarService:
         current_time = self._get_current_time()
         if not self._is_in_trading_time(quote.trading_time, current_time):
             return []
-        intervals = self._list_intervals()
         return [
-            self.process_quote_for_interval(quote=quote, interval=interval)
-            for interval in intervals
+            self.process_quote_for_interval(
+                quote=quote,
+                interval_seconds=BASE_KLINE_INTERVAL_SECONDS,
+            )
         ]
 
     def clear_current_bar(self, symbol: str, interval: int) -> None:
@@ -132,12 +138,11 @@ class RealtimeBarService:
     def _create_initial_bar(
         self,
         quote: MarketQuote,
-        interval: ContractInterval,
+        interval_seconds: int,
         bucket_start: datetime,
     ) -> RealtimeBar:
         latest_kline = self._get_latest_kline_row(
             symbol=quote.symbol,
-            interval_id=interval.contract_interval_id,
         )
         open_price = latest_kline.close if latest_kline is not None else quote.last_price
         if latest_kline is not None:
@@ -151,17 +156,17 @@ class RealtimeBarService:
                 ):
                     flat_bar = self._create_flat_completed_bar(
                         quote=quote,
-                        interval=interval,
+                        interval_seconds=interval_seconds,
                         bucket_start=next_bucket_start,
                         price=open_price,
                     )
                     self._persist_completed_bar(flat_bar)
                     open_price = flat_bar.close
-                next_bucket_start += timedelta(seconds=interval.seconds)
+                next_bucket_start += timedelta(seconds=interval_seconds)
 
         return self._create_realtime_bar(
             quote=quote,
-            interval=interval,
+            interval_seconds=interval_seconds,
             bucket_start=bucket_start,
             open_price=open_price,
             bucket_start_quote_volume=quote.volume,
@@ -170,16 +175,16 @@ class RealtimeBarService:
     def _create_realtime_bar(
         self,
         quote: MarketQuote,
-        interval: ContractInterval,
+        interval_seconds: int,
         bucket_start: datetime,
         open_price: Decimal,
         bucket_start_quote_volume: Decimal,
     ) -> RealtimeBar:
-        bucket_end = bucket_start + timedelta(seconds=interval.seconds)
+        bucket_end = bucket_start + timedelta(seconds=interval_seconds)
         return RealtimeBar(
             symbol=quote.symbol,
             exchange=quote.exchange,
-            interval=interval.seconds,
+            interval=interval_seconds,
             bucket_start=bucket_start,
             bucket_end=bucket_end,
             date_time=bucket_end,
@@ -198,15 +203,15 @@ class RealtimeBarService:
     def _create_flat_completed_bar(
         self,
         quote: MarketQuote,
-        interval: ContractInterval,
+        interval_seconds: int,
         bucket_start: datetime,
         price: Decimal,
     ) -> RealtimeBar:
-        bucket_end = bucket_start + timedelta(seconds=interval.seconds)
+        bucket_end = bucket_start + timedelta(seconds=interval_seconds)
         return RealtimeBar(
             symbol=quote.symbol,
             exchange=quote.exchange,
-            interval=interval.seconds,
+            interval=interval_seconds,
             bucket_start=bucket_start,
             bucket_end=bucket_end,
             date_time=bucket_end,
@@ -244,6 +249,13 @@ class RealtimeBarService:
         )
 
     def _persist_completed_bar(self, bar: RealtimeBar) -> None:
+        if bar.interval == BASE_KLINE_INTERVAL_SECONDS:
+            try:
+                self._sync_latest_base_klines(bar)
+                return
+            except Exception:
+                pass
+
         self.kline_service.create_klines_batch(
             KlineBatchCreate(
                 symbol=bar.symbol,
@@ -262,26 +274,106 @@ class RealtimeBarService:
             )
         )
 
+    def _sync_latest_base_klines(self, bar: RealtimeBar) -> None:
+        fetch_result = self.kline_provider.get_klines(
+            symbol=bar.symbol,
+            exchange=bar.exchange,
+            interval_seconds=BASE_KLINE_INTERVAL_SECONDS,
+        )
+        latest_bars = fetch_result.bars[-20:]
+        if not latest_bars:
+            raise RuntimeError("empty base kline sync result")
+
+        self.kline_service.create_klines_batch(
+            KlineBatchCreate(
+                symbol=bar.symbol,
+                interval=BASE_KLINE_INTERVAL_SECONDS,
+                items=[
+                    KlineBarInput(
+                        open=item.open,
+                        close=item.close,
+                        high=item.high,
+                        low=item.low,
+                        volume=item.volume,
+                        hold=item.hold,
+                        date_time=item.date_time,
+                    )
+                    for item in latest_bars
+                ],
+            )
+        )
+
     def _get_latest_kline_row(
         self,
         symbol: str,
-        interval_id: int | None,
     ) -> KlineData | None:
-        if interval_id is None:
-            return None
         statement = (
             select(KlineData)
             .join(Contract, Contract.contract_id == KlineData.contract_id)
             .where(Contract.symbol == symbol)
-            .where(KlineData.interval_id == interval_id)
             .order_by(KlineData.date_time.desc())
             .limit(1)
         )
         return self.session.exec(statement).first()
 
-    def _list_intervals(self) -> list[ContractInterval]:
-        statement = select(ContractInterval).order_by(ContractInterval.seconds)
-        return list(self.session.exec(statement).all())
+    def _get_aggregated_current_bar(
+        self,
+        symbol: str,
+        interval: int,
+    ) -> RealtimeBar | None:
+        base_current_bar = self.get_current_bar(
+            symbol=symbol,
+            interval=BASE_KLINE_INTERVAL_SECONDS,
+        )
+        contract = self._get_contract_by_symbol(symbol)
+        query_limit = max(interval // BASE_KLINE_INTERVAL_SECONDS + 2, 2)
+        statement = (
+            select(KlineData)
+            .where(KlineData.contract_id == contract.contract_id)
+            .order_by(KlineData.date_time.desc())
+            .limit(query_limit)
+        )
+        history = list(reversed(self.session.exec(statement).all()))
+        bars = [*history]
+        if base_current_bar is not None:
+            bars.append(base_current_bar)
+        if not bars:
+            return None
+
+        aggregated_bars = aggregate_klines(bars, interval)
+        if not aggregated_bars:
+            return None
+
+        latest = aggregated_bars[-1]
+        return RealtimeBar(
+            symbol=contract.symbol,
+            exchange=contract.exchange,
+            interval=interval,
+            bucket_start=self._get_bucket_start(latest.date_time, interval),
+            bucket_end=latest.date_time,
+            date_time=latest.date_time,
+            open=latest.open,
+            high=latest.high,
+            low=latest.low,
+            close=latest.close,
+            volume=latest.volume,
+            hold=latest.hold,
+            quote_volume=base_current_bar.quote_volume if base_current_bar else latest.volume,
+            quote_time=base_current_bar.quote_time if base_current_bar else latest.date_time,
+            provider=None,
+            provider_symbol=base_current_bar.provider_symbol if base_current_bar else None,
+        )
+
+    def _get_contract_by_symbol(self, symbol: str) -> Contract:
+        statement = select(Contract).where(Contract.symbol == symbol)
+        contract = self.session.exec(statement).first()
+        if contract is None:
+            raise RuntimeError(f"Contract not found: {symbol}")
+        return contract
+
+    def _validate_interval_seconds(self, seconds: int) -> None:
+        if not is_supported_kline_interval(seconds):
+            raise RuntimeError(f"Contract interval not found: {seconds}")
 
     def _save_bar(self, bar: RealtimeBar) -> None:
         self.redis_client.set(

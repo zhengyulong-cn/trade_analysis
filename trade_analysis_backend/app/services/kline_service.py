@@ -3,14 +3,13 @@ from datetime import datetime
 from fastapi import HTTPException, status
 from sqlmodel import Session, func, select
 
+from app.core.kline_intervals import is_supported_kline_interval
 from app.models.contract import Contract
-from app.models.contract_interval import ContractInterval
 from app.models.kline_data import KlineData
 from app.schemas.kline_data import (
     KlineBarInput,
     KlineBatchCreate,
     KlineBatchWriteResult,
-    KlineDataCreate,
     KlineDeleteRequest,
     KlineDeleteResult,
     KlineListResult,
@@ -22,6 +21,11 @@ from app.schemas.kline_data import (
     MarketDataSyncRequest,
     MarketDataSyncResult,
 )
+from app.services.kline_aggregation import (
+    BASE_KLINE_INTERVAL_SECONDS,
+    AggregatedKlineBar,
+    aggregate_klines,
+)
 from app.services.market_data import KlineProvider, MarketKlineBar
 
 
@@ -29,35 +33,6 @@ class KlineService:
     def __init__(self, session: Session, kline_provider: KlineProvider):
         self.session = session
         self.kline_provider = kline_provider
-
-    def create_kline(self, payload: KlineDataCreate) -> KlineData:
-        result = self.create_klines_batch(
-            KlineBatchCreate(
-                symbol=payload.symbol,
-                interval=payload.interval,
-                items=[
-                    KlineBarInput(
-                        open=payload.open,
-                        close=payload.close,
-                        high=payload.high,
-                        low=payload.low,
-                        volume=payload.volume,
-                        hold=payload.hold,
-                        date_time=payload.date_time,
-                    )
-                ],
-            )
-        )
-        if result.total != 1:
-            raise HTTPException(
-                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-                detail="Failed to write kline data",
-            )
-        return self._get_kline_by_unique_key(
-            symbol=payload.symbol,
-            interval_seconds=payload.interval,
-            date_time=payload.date_time,
-        )
 
     def create_klines_batch(self, payload: KlineBatchCreate) -> KlineBatchWriteResult:
         if not payload.items:
@@ -67,13 +42,12 @@ class KlineService:
             )
 
         contract = self._get_contract_by_symbol(payload.symbol)
-        interval = self._get_interval_by_seconds(payload.interval)
+        self._validate_storage_interval_seconds(payload.interval)
         items = self._deduplicate_kline_items(payload.items)
         date_times = [self._normalize_datetime(item.date_time) for item in items]
 
         existing_statement = select(KlineData).where(
             KlineData.contract_id == contract.contract_id,
-            KlineData.interval_id == interval.contract_interval_id,
             KlineData.date_time.in_(date_times),
         )
         existing_rows = self.session.exec(existing_statement).all()
@@ -92,7 +66,6 @@ class KlineService:
             if current is None:
                 current = KlineData(
                     contract_id=contract.contract_id,
-                    interval_id=interval.contract_interval_id,
                 )
                 inserted += 1
             else:
@@ -123,25 +96,52 @@ class KlineService:
         end_time: datetime | None = None,
     ) -> KlineListResult:
         contract = self._get_contract_by_symbol(symbol)
-        interval = self._get_interval_by_seconds(interval_seconds)
+        self._validate_interval_seconds(interval_seconds)
+        if interval_seconds == BASE_KLINE_INTERVAL_SECONDS:
+            statement = self._build_kline_query(
+                symbol=symbol,
+                start_time=start_time,
+                end_time=end_time,
+            )
+            statement = statement.order_by(KlineData.date_time.desc()).limit(limit)
+            rows = list(reversed(self.session.exec(statement).all()))
+            return KlineListResult(
+                contract_id=contract.contract_id,
+                symbol=contract.symbol,
+                exchange=contract.exchange,
+                name=contract.name,
+                count=len(rows),
+                kline_data=[
+                    self._map_kline_list_item(kline, interval_seconds)
+                    for kline, _ in rows
+                ],
+            )
+
+        query_limit = self._get_base_query_limit(limit, interval_seconds)
         statement = self._build_kline_query(
             symbol=symbol,
-            interval_seconds=interval_seconds,
             start_time=start_time,
             end_time=end_time,
         )
-        statement = statement.order_by(KlineData.date_time.desc()).limit(limit)
+        statement = statement.order_by(KlineData.date_time.desc()).limit(query_limit)
         rows = self.session.exec(statement).all()
         rows = list(reversed(rows))
+        base_klines = [kline for kline, _ in rows]
+        bars = aggregate_klines(base_klines, interval_seconds)[-limit:]
         return KlineListResult(
             contract_id=contract.contract_id,
             symbol=contract.symbol,
             exchange=contract.exchange,
             name=contract.name,
-            count=len(rows),
+            count=len(bars),
             kline_data=[
-                self._map_kline_list_item(kline, interval)
-                for kline, _, _ in rows
+                self._map_aggregated_kline_list_item(
+                    bar=bar,
+                    contract=contract,
+                    interval_seconds=interval_seconds,
+                    index=index,
+                )
+                for index, bar in enumerate(bars)
             ],
         )
 
@@ -154,9 +154,24 @@ class KlineService:
         start_time: datetime | None = None,
         end_time: datetime | None = None,
     ) -> KlinePage:
+        if interval_seconds != BASE_KLINE_INTERVAL_SECONDS:
+            rows = self._list_aggregated_page_rows(
+                symbol=symbol,
+                interval_seconds=interval_seconds,
+                start_time=start_time,
+                end_time=end_time,
+            )
+            total = len(rows)
+            offset = (page - 1) * page_size
+            return KlinePage(
+                items=rows[offset : offset + page_size],
+                total=total,
+                page=page,
+                page_size=page_size,
+            )
+
         base_statement = self._build_kline_query(
             symbol=symbol,
-            interval_seconds=interval_seconds,
             start_time=start_time,
             end_time=end_time,
         )
@@ -164,12 +179,7 @@ class KlineService:
             select(func.count())
             .select_from(KlineData)
             .join(Contract, Contract.contract_id == KlineData.contract_id)
-            .join(
-                ContractInterval,
-                ContractInterval.contract_interval_id == KlineData.interval_id,
-            )
             .where(Contract.symbol == symbol)
-            .where(ContractInterval.seconds == interval_seconds)
         )
         if start_time is not None:
             count_statement = count_statement.where(
@@ -191,8 +201,12 @@ class KlineService:
 
         return KlinePage(
             items=[
-                self._map_query_row(kline, contract, interval)
-                for kline, contract, interval in rows
+                self._map_query_row(
+                    kline,
+                    contract,
+                    BASE_KLINE_INTERVAL_SECONDS,
+                )
+                for kline, contract in rows
             ],
             total=total,
             page=page,
@@ -201,10 +215,9 @@ class KlineService:
 
     def delete_klines(self, payload: KlineDeleteRequest) -> KlineDeleteResult:
         contract = self._get_contract_by_symbol(payload.symbol)
-        interval = self._get_interval_by_seconds(payload.interval)
+        self._validate_storage_interval_seconds(payload.interval)
         statement = select(KlineData).where(
             KlineData.contract_id == contract.contract_id,
-            KlineData.interval_id == interval.contract_interval_id,
         )
         klines = list(self.session.exec(statement).all())
 
@@ -214,7 +227,7 @@ class KlineService:
 
         return KlineDeleteResult(
             symbol=contract.symbol,
-            interval=interval.seconds,
+            interval=payload.interval,
             deleted=len(klines),
         )
 
@@ -246,14 +259,36 @@ class KlineService:
         symbol: str,
         interval_seconds: int,
     ) -> KlineDataQueryResult:
+        if interval_seconds == BASE_KLINE_INTERVAL_SECONDS:
+            statement = self._build_kline_query(
+                symbol=symbol,
+            )
+            row = self.session.exec(
+                statement.order_by(KlineData.date_time.desc()).limit(1)
+            ).first()
+            if row is None:
+                raise HTTPException(
+                    status_code=status.HTTP_404_NOT_FOUND,
+                    detail=(
+                        f"Kline data not found for symbol={symbol}, "
+                        f"interval={interval_seconds}"
+                    ),
+                )
+            kline, contract = row
+            return self._map_query_row(
+                kline,
+                contract,
+                BASE_KLINE_INTERVAL_SECONDS,
+            )
+
         statement = self._build_kline_query(
             symbol=symbol,
-            interval_seconds=interval_seconds,
         )
+        query_limit = self._get_base_query_limit(1, interval_seconds)
         row = self.session.exec(
-            statement.order_by(KlineData.date_time.desc()).limit(1)
-        ).first()
-        if row is None:
+            statement.order_by(KlineData.date_time.desc()).limit(query_limit)
+        ).all()
+        if not row:
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
                 detail=(
@@ -261,21 +296,34 @@ class KlineService:
                     f"interval={interval_seconds}"
                 ),
             )
-        kline, contract, interval = row
-        return self._map_query_row(kline, contract, interval)
+        rows = list(reversed(row))
+        contract = rows[0][1]
+        bars = aggregate_klines([kline for kline, _ in rows], interval_seconds)
+        if not bars:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail=(
+                    f"Kline data not found for symbol={symbol}, "
+                    f"interval={interval_seconds}"
+                ),
+            )
+        return self._map_aggregated_query_row(
+            bar=bars[-1],
+            contract=contract,
+            interval_seconds=interval_seconds,
+            index=len(bars) - 1,
+        )
 
     def sync_from_market_data(
         self,
         payload: MarketDataSyncRequest,
     ) -> MarketDataSyncResult:
         contract = self._get_contract_by_symbol(payload.symbol)
-        interval = self._get_interval_by_seconds(payload.interval)
-
         try:
             fetch_result = self.kline_provider.get_klines(
                 symbol=contract.symbol,
                 exchange=contract.exchange,
-                interval_seconds=interval.seconds,
+                interval_seconds=BASE_KLINE_INTERVAL_SECONDS,
             )
         except Exception as exc:
             raise HTTPException(
@@ -291,7 +339,7 @@ class KlineService:
         if not items:
             return MarketDataSyncResult(
                 symbol=payload.symbol,
-                interval=payload.interval,
+                interval=BASE_KLINE_INTERVAL_SECONDS,
                 provider=fetch_result.provider,
                 provider_symbol=fetch_result.provider_symbol,
                 requested=0,
@@ -302,13 +350,13 @@ class KlineService:
         write_result = self.create_klines_batch(
             KlineBatchCreate(
                 symbol=payload.symbol,
-                interval=payload.interval,
+                interval=BASE_KLINE_INTERVAL_SECONDS,
                 items=items,
             )
         )
         return MarketDataSyncResult(
             symbol=payload.symbol,
-            interval=payload.interval,
+            interval=BASE_KLINE_INTERVAL_SECONDS,
             provider=fetch_result.provider,
             provider_symbol=fetch_result.provider_symbol,
             requested=len(items),
@@ -316,25 +364,45 @@ class KlineService:
             updated=write_result.updated,
         )
 
-    def sync_from_tqsdk(self, payload: MarketDataSyncRequest) -> MarketDataSyncResult:
-        return self.sync_from_market_data(payload)
+    def _list_aggregated_page_rows(
+        self,
+        symbol: str,
+        interval_seconds: int,
+        start_time: datetime | None,
+        end_time: datetime | None,
+    ) -> list[KlineDataQueryResult]:
+        contract = self._get_contract_by_symbol(symbol)
+        self._validate_interval_seconds(interval_seconds)
+        statement = self._build_kline_query(
+            symbol=symbol,
+            start_time=start_time,
+            end_time=end_time,
+        )
+        rows = self.session.exec(statement.order_by(KlineData.date_time)).all()
+        bars = aggregate_klines(
+            [kline for kline, _ in rows],
+            interval_seconds,
+        )
+        return [
+            self._map_aggregated_query_row(
+                bar=bar,
+                contract=contract,
+                interval_seconds=interval_seconds,
+                index=index,
+            )
+            for index, bar in enumerate(bars)
+        ]
 
     def _build_kline_query(
         self,
         symbol: str,
-        interval_seconds: int,
         start_time: datetime | None = None,
         end_time: datetime | None = None,
     ):
         statement = (
-            select(KlineData, Contract, ContractInterval)
+            select(KlineData, Contract)
             .join(Contract, Contract.contract_id == KlineData.contract_id)
-            .join(
-                ContractInterval,
-                ContractInterval.contract_interval_id == KlineData.interval_id,
-            )
             .where(Contract.symbol == symbol)
-            .where(ContractInterval.seconds == interval_seconds)
         )
         if start_time is not None:
             statement = statement.where(
@@ -363,12 +431,11 @@ class KlineService:
         self,
         kline: KlineData,
         contract: Contract,
-        interval: ContractInterval,
+        interval_seconds: int,
     ) -> KlineDataQueryResult:
         return KlineDataQueryResult(
             kline_id=kline.kline_id,
             contract_id=contract.contract_id,
-            interval_id=interval.contract_interval_id,
             open=kline.open,
             close=kline.close,
             high=kline.high,
@@ -379,18 +446,17 @@ class KlineService:
             symbol=contract.symbol,
             exchange=contract.exchange,
             contract_name=contract.name,
-            interval=interval.seconds,
+            interval=interval_seconds,
         )
 
     def _map_kline_list_item(
         self,
         kline: KlineData,
-        interval: ContractInterval,
+        interval_seconds: int,
     ) -> KlineListItem:
         return KlineListItem(
             kline_id=kline.kline_id,
             contract_id=kline.contract_id,
-            interval_id=kline.interval_id,
             open=kline.open,
             close=kline.close,
             high=kline.high,
@@ -398,29 +464,51 @@ class KlineService:
             volume=kline.volume,
             hold=kline.hold,
             date_time=kline.date_time,
-            interval=interval.seconds,
+            interval=interval_seconds,
         )
 
-    def _get_kline_by_unique_key(
+    def _map_aggregated_query_row(
         self,
-        symbol: str,
+        bar: AggregatedKlineBar,
+        contract: Contract,
         interval_seconds: int,
-        date_time: datetime,
-    ) -> KlineData:
-        contract = self._get_contract_by_symbol(symbol)
-        interval = self._get_interval_by_seconds(interval_seconds)
-        statement = select(KlineData).where(
-            KlineData.contract_id == contract.contract_id,
-            KlineData.interval_id == interval.contract_interval_id,
-            KlineData.date_time == self._normalize_datetime(date_time),
+        index: int,
+    ) -> KlineDataQueryResult:
+        return KlineDataQueryResult(
+            kline_id=-(index + 1),
+            contract_id=contract.contract_id,
+            open=bar.open,
+            close=bar.close,
+            high=bar.high,
+            low=bar.low,
+            volume=bar.volume,
+            hold=bar.hold,
+            date_time=bar.date_time,
+            symbol=contract.symbol,
+            exchange=contract.exchange,
+            contract_name=contract.name,
+            interval=interval_seconds,
         )
-        kline = self.session.exec(statement).first()
-        if kline is None:
-            raise HTTPException(
-                status_code=status.HTTP_404_NOT_FOUND,
-                detail="Kline data was not found after write",
-            )
-        return kline
+
+    def _map_aggregated_kline_list_item(
+        self,
+        bar: AggregatedKlineBar,
+        contract: Contract,
+        interval_seconds: int,
+        index: int,
+    ) -> KlineListItem:
+        return KlineListItem(
+            kline_id=-(index + 1),
+            contract_id=contract.contract_id,
+            open=bar.open,
+            close=bar.close,
+            high=bar.high,
+            low=bar.low,
+            volume=bar.volume,
+            hold=bar.hold,
+            date_time=bar.date_time,
+            interval=interval_seconds,
+        )
 
     def _convert_market_klines_to_inputs(
         self,
@@ -445,6 +533,12 @@ class KlineService:
     def _canonical_datetime_key(self, value: datetime) -> str:
         return self._normalize_datetime(value).isoformat()
 
+    def _get_base_query_limit(self, display_limit: int, interval_seconds: int) -> int:
+        if interval_seconds <= BASE_KLINE_INTERVAL_SECONDS:
+            return display_limit
+        group_size = max(interval_seconds // BASE_KLINE_INTERVAL_SECONDS, 1)
+        return min(max(display_limit * group_size + group_size, display_limit), 50000)
+
     def _get_contract_by_symbol(self, symbol: str) -> Contract:
         statement = select(Contract).where(Contract.symbol == symbol)
         contract = self.session.exec(statement).first()
@@ -455,14 +549,19 @@ class KlineService:
             )
         return contract
 
-    def _get_interval_by_seconds(self, interval_seconds: int) -> ContractInterval:
-        statement = select(ContractInterval).where(
-            ContractInterval.seconds == interval_seconds
-        )
-        interval = self.session.exec(statement).first()
-        if interval is None:
+    def _validate_interval_seconds(self, interval_seconds: int) -> None:
+        if not is_supported_kline_interval(interval_seconds):
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
                 detail=f"Contract interval not found: {interval_seconds}",
             )
-        return interval
+
+    def _validate_storage_interval_seconds(self, interval_seconds: int) -> None:
+        if interval_seconds != BASE_KLINE_INTERVAL_SECONDS:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=(
+                    "Only 5-minute kline data can be stored. "
+                    f"Unsupported storage interval: {interval_seconds}"
+                ),
+            )

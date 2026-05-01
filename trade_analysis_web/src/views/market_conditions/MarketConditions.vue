@@ -20,7 +20,7 @@ const UNAVAILABLE_DESCRIPTION = '请先在合约管理中创建期货合约'
 const PERIOD_OPTIONS = [
   { label: '5F', value: DEFAULT_PERIOD },
   { label: '30F', value: 60 * 30 },
-  { label: '4H', value: 60 * 60 * 4 },
+  { label: '1H', value: 60 * 60 },
 ]
 
 const createEmptyChartData = (): FutureKlineData => ({

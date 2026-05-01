@@ -1,0 +1,13 @@
+FIVE_MINUTES_SECONDS = 5 * 60
+THIRTY_MINUTES_SECONDS = 30 * 60
+ONE_HOUR_SECONDS = 60 * 60
+
+SUPPORTED_KLINE_INTERVALS = {
+    FIVE_MINUTES_SECONDS: "5F",
+    THIRTY_MINUTES_SECONDS: "30F",
+    ONE_HOUR_SECONDS: "1H",
+}
+
+
+def is_supported_kline_interval(seconds: int) -> bool:
+    return seconds in SUPPORTED_KLINE_INTERVALS

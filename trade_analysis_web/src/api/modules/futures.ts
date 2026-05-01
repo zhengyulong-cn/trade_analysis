@@ -22,17 +22,9 @@ export interface FutureContractUpdateParams extends Partial<FutureContractCreate
   contract_id: number
 }
 
-export interface FutureContractInterval {
-  contract_interval_id: number
-  contract_interval_name: string
-  seconds: number
-  description: string | null
-}
-
 export interface FutureKlineItem {
   kline_id: number
   contract_id: number
-  interval_id: number
   interval: number
   open: number | string
   close: number | string
@@ -200,12 +192,6 @@ export const getFutureDataApi = async (params: { symbol: string; period: number 
 
 export const getFutureContractList = () => {
   return axios.get<FutureContract[]>("/contracts") as unknown as Promise<FutureContract[]>
-}
-
-export const getFutureContractIntervalList = () => {
-  return axios.get<FutureContractInterval[]>("/contract-intervals/") as unknown as Promise<
-    FutureContractInterval[]
-  >
 }
 
 export const createFutureContract = (params: FutureContractCreateParams) => {

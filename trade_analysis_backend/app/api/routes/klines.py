@@ -7,9 +7,7 @@ from app.api.dependencies import KlineServiceDep
 from app.schemas.kline_data import (
     KlineBatchCreate,
     KlineBatchWriteResult,
-    KlineDataCreate,
     KlineDataQueryResult,
-    KlineDataRead,
     KlineDeleteRequest,
     KlineDeleteResult,
     KlineItemsDeleteRequest,
@@ -18,16 +16,9 @@ from app.schemas.kline_data import (
     KlinePage,
     MarketDataSyncRequest,
     MarketDataSyncResult,
-    TqSdkSyncRequest,
-    TqSdkSyncResult,
 )
 
 router = APIRouter()
-
-
-@router.post("", response_model=KlineDataRead, status_code=status.HTTP_201_CREATED)
-def create_kline(payload: KlineDataCreate, service: KlineServiceDep) -> KlineDataRead:
-    return KlineDataRead.model_validate(service.create_kline(payload))
 
 
 @router.post(
@@ -52,18 +43,6 @@ def sync_klines_from_market_data(
     service: KlineServiceDep,
 ) -> MarketDataSyncResult:
     return service.sync_from_market_data(payload)
-
-
-@router.post(
-    "/sync/tqsdk",
-    response_model=TqSdkSyncResult,
-    status_code=status.HTTP_201_CREATED,
-)
-def sync_klines_from_tqsdk(
-    payload: TqSdkSyncRequest,
-    service: KlineServiceDep,
-) -> TqSdkSyncResult:
-    return service.sync_from_tqsdk(payload)
 
 
 @router.post("/delete", response_model=KlineDeleteResult)
