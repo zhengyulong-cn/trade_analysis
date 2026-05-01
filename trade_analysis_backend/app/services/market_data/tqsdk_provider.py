@@ -26,11 +26,14 @@ class TqSdkMarketDataProvider:
         symbol: str,
         exchange: str,
         interval_seconds: int,
+        limit: int | None = None,
     ) -> KlineFetchResult:
         provider_symbol = self._build_symbol(symbol=symbol, exchange=exchange)
+        data_length = limit or settings.tqsdk_kline_length
         dataframe = self._fetch_kline_dataframe(
             provider_symbol=provider_symbol,
             interval_seconds=interval_seconds,
+            data_length=data_length,
         )
         return KlineFetchResult(
             provider=self.provider,
@@ -38,6 +41,7 @@ class TqSdkMarketDataProvider:
             bars=self._convert_klines_to_bars(
                 dataframe=dataframe,
                 interval_seconds=interval_seconds,
+                data_length=data_length,
             ),
         )
 
@@ -95,12 +99,13 @@ class TqSdkMarketDataProvider:
         self,
         provider_symbol: str,
         interval_seconds: int,
+        data_length: int,
     ) -> pd.DataFrame:
         with tqsdk_client_manager.session() as api:
             dataframe = api.get_kline_serial(
                 provider_symbol,
                 interval_seconds,
-                data_length=settings.tqsdk_kline_length,
+                data_length=data_length,
             )
             deadline = time.time() + settings.tqsdk_wait_timeout_seconds
             api.wait_update(deadline=deadline)
@@ -110,6 +115,7 @@ class TqSdkMarketDataProvider:
         self,
         dataframe: pd.DataFrame,
         interval_seconds: int,
+        data_length: int,
     ) -> list[MarketKlineBar]:
         bars: list[MarketKlineBar] = []
         if dataframe.empty:
@@ -119,7 +125,7 @@ class TqSdkMarketDataProvider:
         hold_column = "close_oi" if "close_oi" in dataframe.columns else "hold"
         filtered = dataframe.dropna(
             subset=[datetime_column, "open", "close", "high", "low"]
-        ).tail(settings.tqsdk_kline_length)
+        ).tail(data_length)
         for row in filtered.to_dict(orient="records"):
             bars.append(
                 MarketKlineBar(

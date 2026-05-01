@@ -162,7 +162,7 @@ export const mapRealtimeBarToChartData = (bar: FutureRealtimeBar): FutureChartKL
   }
 }
 
-export const getFutureDataApi = async (params: { symbol: string; period: number }) => {
+export const getFutureDataApi = async (params: { symbol: string; period: number; limit?: number }) => {
   const response = await (
     axios.get<{
       contract_id: number
@@ -173,6 +173,7 @@ export const getFutureDataApi = async (params: { symbol: string; period: number 
     }>("/klines", {
       symbol: params.symbol,
       interval: params.period,
+      limit: params.limit,
     }) as unknown as Promise<{
       contract_id: number
       symbol: string
@@ -213,7 +214,7 @@ export const getFutureKlinePageApi = (params: {
   return axios.get<FutureKlinePage>("/klines/page", params) as unknown as Promise<FutureKlinePage>
 }
 
-export const syncFutureKlinesApi = (params: { symbol: string; interval: number }) => {
+export const syncFutureKlinesApi = (params: { symbol: string; interval: number; limit?: number }) => {
   return axios.post<FutureKlineSyncResult>("/klines/sync/market-data", params) as unknown as Promise<
     FutureKlineSyncResult
   >

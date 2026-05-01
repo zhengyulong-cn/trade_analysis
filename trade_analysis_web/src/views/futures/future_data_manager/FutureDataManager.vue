@@ -87,6 +87,7 @@ const TEXT = {
 const DEFAULT_DETAIL_PAGE_SIZE = 50
 const STORAGE_INTERVAL_SECONDS = 300
 const STORAGE_INTERVAL_NAME = '5F'
+const SYNC_KLINE_LIMIT = 5000
 
 const overviewRows = ref<OverviewRow[]>([])
 const detailRows = ref<FutureKlineQueryItem[]>([])
@@ -363,6 +364,7 @@ const handleSync = async (row: OverviewRow) => {
     const result = await syncFutureKlinesApi({
       symbol: row.symbol,
       interval: row.interval,
+      limit: SYNC_KLINE_LIMIT,
     })
 
     await refreshOverviewRow(row.symbol, row.interval)
@@ -401,6 +403,7 @@ const handleBulkSync = async () => {
         const result = await syncFutureKlinesApi({
           symbol: row.symbol,
           interval: row.interval,
+          limit: SYNC_KLINE_LIMIT,
         })
         inserted += result.inserted
         updated += result.updated

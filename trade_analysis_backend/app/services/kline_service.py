@@ -324,6 +324,7 @@ class KlineService:
                 symbol=contract.symbol,
                 exchange=contract.exchange,
                 interval_seconds=BASE_KLINE_INTERVAL_SECONDS,
+                limit=payload.limit,
             )
         except Exception as exc:
             raise HTTPException(

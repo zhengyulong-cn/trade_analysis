@@ -1,7 +1,7 @@
 from datetime import datetime
 from decimal import Decimal
 
-from pydantic import ConfigDict
+from pydantic import ConfigDict, Field
 from sqlmodel import SQLModel
 
 
@@ -84,6 +84,7 @@ class KlineItemsDeleteResult(SQLModel):
 class MarketDataSyncRequest(SQLModel):
     symbol: str
     interval: int
+    limit: int | None = Field(default=None, ge=1, le=5000)
 
 
 class MarketDataSyncResult(SQLModel):

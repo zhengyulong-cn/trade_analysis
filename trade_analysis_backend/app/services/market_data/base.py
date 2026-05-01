@@ -65,6 +65,7 @@ class KlineProvider(Protocol):
         symbol: str,
         exchange: str,
         interval_seconds: int,
+        limit: int | None = None,
     ) -> KlineFetchResult:
         ...
 
