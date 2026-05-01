@@ -29,7 +29,7 @@ import {
   getWhitelistedStudyTools,
 } from '@/components/charts/customStudies'
 import type { TradingViewWidget } from '@/components/charts/tradingViewTypes'
-import { useKLineReplay } from '@/components/charts/kline_replay/useKLineReplay'
+import { useKLineReplay } from '@/components/charts/kline_replay/useKlineReplay'
 
 const TRADING_VIEW_LIBRARY_PATH = '/charting_library/'
 const DEFAULT_SYMBOL = 'FUTURES'

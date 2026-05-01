@@ -144,7 +144,7 @@ export const useKLineReplay = ({
     replayToggleButton.value = currentWidget.createButton({
       align: 'left',
       useTradingViewStyle: true,
-      text: isReplayMode.value ? '复盘' : '复盘中',
+      text: isReplayMode.value ? '复盘中' : '复盘',
       title: '复盘功能',
       onClick: toggleReplayPanel,
     })
