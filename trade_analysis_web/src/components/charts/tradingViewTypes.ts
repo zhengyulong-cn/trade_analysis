@@ -28,6 +28,7 @@ export interface TradingViewActiveChart {
   getLineToolsState?: () => TradingViewLineToolsAndGroupsState
   applyLineToolsState?: (state: TradingViewLineToolsAndGroupsState) => Promise<void>
   setVisibleRange: (range: { from: number; to: number }, options?: Record<string, unknown>) => Promise<void>
+  resetData?: () => void
 }
 
 export interface TradingViewWidget {
@@ -35,6 +36,7 @@ export interface TradingViewWidget {
   subscribe: (event: string, callback: () => void) => void
   unsubscribe: (event: string, callback: () => void) => void
   activeChart: () => TradingViewActiveChart
+  resetCache?: () => void
   remove: () => void
 }
 

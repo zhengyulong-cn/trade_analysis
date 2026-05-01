@@ -388,6 +388,8 @@ const stepReplayForward = () => {
   const replayBar = getTradingViewBars([nextBar])[0]
   if (replayBar) {
     datafeedController?.pushBar(replayBar)
+    widget?.resetCache?.()
+    widget?.activeChart().resetData?.()
   }
 }
 
