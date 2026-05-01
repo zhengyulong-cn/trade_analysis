@@ -21,8 +21,14 @@ async def lifespan(_: FastAPI):
     logger.info("Starting %s", settings.app_name)
     initialize_database()
     redis_client_manager.start()
-    tqsdk_client_manager.start()
-    realtime_quote_worker.start()
+    try:
+        tqsdk_client_manager.start()
+    except Exception as exc:
+        logger.warning("TqSdk client unavailable during startup: %s", exc)
+    try:
+        realtime_quote_worker.start()
+    except Exception as exc:
+        logger.warning("Realtime quote worker unavailable during startup: %s", exc)
     yield
     realtime_quote_worker.stop()
     tqsdk_client_manager.close()

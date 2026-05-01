@@ -213,6 +213,28 @@ const getBarsInRange = (
   return []
 }
 
+export interface ChartDatafeedController {
+  replaceBars: (nextBars: TradingViewBar[]) => void
+  pushBar: (nextBar: TradingViewBar) => void
+}
+
+const upsertBar = (sourceBars: TradingViewBar[], nextBar: TradingViewBar) => {
+  const lastBar = sourceBars[sourceBars.length - 1]
+  if (!lastBar) {
+    sourceBars.push(nextBar)
+    return
+  }
+
+  if (nextBar.time > lastBar.time) {
+    sourceBars.push(nextBar)
+    return
+  }
+
+  if (nextBar.time === lastBar.time) {
+    sourceBars[sourceBars.length - 1] = nextBar
+  }
+}
+
 export const createDatafeed = ({
   bars,
   resolution,
@@ -223,6 +245,7 @@ export const createDatafeed = ({
   periodOptions,
   sortedKLineList,
   onSelectedPeriodChange,
+  enableRealtime,
   realtimeSubscriptionIntervals,
 }: {
   bars: TradingViewBar[]
@@ -234,14 +257,41 @@ export const createDatafeed = ({
   periodOptions: PeriodOption[]
   sortedKLineList: KLineItem[]
   onSelectedPeriodChange: (value: number | string) => void
+  enableRealtime: boolean
   realtimeSubscriptionIntervals: Map<string, number>
 }) => {
+  const currentBars = [...bars]
   const priceScale = getPriceScale(sortedKLineList) || DEFAULT_PRICE_SCALE
   const supportedResolutions = getSupportedResolutions(periodOptions)
   const intradayMultipliers = getIntradayMultipliers(supportedResolutions)
   const dailyMultipliers = getDailyMultipliers(supportedResolutions)
+  const subscribers = new Map<
+    string,
+    {
+      onRealtimeCallback: (bar: TradingViewBar) => void
+      onResetCacheNeededCallback?: () => void
+    }
+  >()
+
+  const notifySubscribers = (nextBar: TradingViewBar) => {
+    subscribers.forEach((subscriber) => {
+      subscriber.onRealtimeCallback(nextBar)
+    })
+  }
 
   return {
+    controller: {
+      replaceBars(nextBars: TradingViewBar[]) {
+        currentBars.splice(0, currentBars.length, ...nextBars)
+        subscribers.forEach((subscriber) => {
+          subscriber.onResetCacheNeededCallback?.()
+        })
+      },
+      pushBar(nextBar: TradingViewBar) {
+        upsertBar(currentBars, nextBar)
+        notifySubscribers(nextBar)
+      },
+    } satisfies ChartDatafeedController,
     onReady(callback: (config: Record<string, unknown>) => void) {
       window.setTimeout(() => {
         callback({
@@ -335,7 +385,7 @@ export const createDatafeed = ({
         return
       }
 
-      const filteredBars = getBarsInRange(bars, periodParams)
+      const filteredBars = getBarsInRange(currentBars, periodParams)
 
       if (filteredBars.length) {
         onResult(filteredBars, { noData: false })
@@ -349,7 +399,17 @@ export const createDatafeed = ({
       requestedResolution: string,
       onRealtimeCallback: (bar: TradingViewBar) => void,
       subscriberUID: string,
+      onResetCacheNeededCallback?: () => void,
     ) {
+      subscribers.set(subscriberUID, {
+        onRealtimeCallback,
+        onResetCacheNeededCallback,
+      })
+
+      if (!enableRealtime) {
+        return undefined
+      }
+
       if (getRequestedSymbol(symbolInfo) !== currentSymbol) {
         return undefined
       }
@@ -364,8 +424,9 @@ export const createDatafeed = ({
         return undefined
       }
 
-      let lastEmittedTime = bars[bars.length - 1]?.time ?? 0
+      let lastEmittedTime = currentBars[currentBars.length - 1]?.time ?? 0
       let isFetchingRealtimeBar = false
+      let hasRealtimeFetchFailed = false
       const fetchRealtimeBar = async () => {
         if (isFetchingRealtimeBar) {
           return
@@ -391,9 +452,14 @@ export const createDatafeed = ({
           }
 
           lastEmittedTime = realtimeBar.time
-          onRealtimeCallback(realtimeBar)
-        } catch (error) {
-          console.warn('Failed to fetch realtime bar', error)
+          hasRealtimeFetchFailed = false
+          upsertBar(currentBars, realtimeBar)
+          notifySubscribers(realtimeBar)
+        } catch {
+          if (hasRealtimeFetchFailed) {
+            return
+          }
+          hasRealtimeFetchFailed = true
         } finally {
           isFetchingRealtimeBar = false
         }
@@ -407,6 +473,7 @@ export const createDatafeed = ({
       return undefined
     },
     unsubscribeBars(subscriberUID: string) {
+      subscribers.delete(subscriberUID)
       const intervalId = realtimeSubscriptionIntervals.get(subscriberUID)
       if (intervalId !== undefined) {
         window.clearInterval(intervalId)

@@ -68,9 +68,9 @@ class RealtimeQuoteWorker:
                 provider = TqSdkMarketDataProvider()
                 api = self._create_api()
                 self._run_subscription(api=api, provider=provider, specs=specs)
-            except Exception:
-                logger.exception("Realtime quote subscription failed")
-                self._stop_event.wait(3)
+            except Exception as exc:
+                logger.warning("Realtime quote subscription unavailable: %s", exc)
+                self._stop_event.wait(30)
             finally:
                 if api is not None:
                     try:
