@@ -38,6 +38,19 @@ export type EmaSegment = {
   start: SegmentPoint
 }
 
+export type EmaSegmentBuildState = {
+  activeSegment: EmaSegment | null
+  historicalSegments: EmaSegment[]
+  processedBarCount: number
+  seedDirection: SegmentDirection | null
+  seedExtreme: SegmentPoint | null
+}
+
+export type UpsertBarResult = {
+  index: number
+  type: 'append' | 'insert_historical' | 'replace_existing' | 'replace_last'
+}
+
 export type SegmentMetrics = {
   barSpan: number
   high: SegmentPoint
@@ -54,4 +67,6 @@ export type MomentumExhaustionSignal = {
 export type EmaSegmentStudyState = {
   bars: EmaSegmentBar[]
   emittedInitialStartKey: string | null
+  lastSettingsKey: string | null
+  segmentBuildState: EmaSegmentBuildState
 }

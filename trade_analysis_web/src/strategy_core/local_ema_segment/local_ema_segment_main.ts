@@ -1,21 +1,26 @@
 import {
-  buildEmaSegments,
+  advanceEmaSegmentState,
+  createEmptyEmaSegmentBuildState,
   getOffsetFromCurrentBar,
+  getLatestDrawableSegment,
   getSegmentKey,
   isFiniteNumber,
+  rebuildEmaSegmentState,
   upsertBar,
 } from './segment_builder'
-import {
-  buildMomentumExhaustionSignals,
-  getMomentumExhaustionOutput,
-} from './momentum_exhaustion'
 import type { EmaSegmentStudyState, PineContextLike, PineJsLike } from './types'
 
 const LOCAL_EMA_SEGMENT_INDICATOR_NAME = 'Local EMA Segment'
 const DEFAULT_EMA_LENGTH = 20
-const DEFAULT_MIN_SEGMENT_BARS = 5
+const DEFAULT_MIN_SEGMENT_BARS = 4
 const SEGMENT_LINE_WIDTH = 2
-const MOMENTUM_EXHAUSTION_COLOR = '#ffcc00'
+
+const createStudyState = (): EmaSegmentStudyState => ({
+  bars: [],
+  emittedInitialStartKey: null,
+  lastSettingsKey: null,
+  segmentBuildState: createEmptyEmaSegmentBuildState(),
+})
 
 const getLocalEmaSegmentIndicatorName = () => LOCAL_EMA_SEGMENT_INDICATOR_NAME
 
@@ -39,26 +44,12 @@ const getCustomIndicators = (PineJS: PineJsLike) => Promise.resolve([
         { id: 'segment', type: 'line' },
         { id: 'segmentOffset', target: 'segment', type: 'dataoffset' },
         { id: 'segmentColor', palette: 'segmentPalette', target: 'segment', type: 'colorer' },
-        { id: 'upMomentumExhaustion', type: 'shapes' },
-        { id: 'upMomentumExhaustionOffset', target: 'upMomentumExhaustion', type: 'dataoffset' },
-        { id: 'downMomentumExhaustion', type: 'shapes' },
-        { id: 'downMomentumExhaustionOffset', target: 'downMomentumExhaustion', type: 'dataoffset' },
       ],
       styles: {
         segment: {
           title: 'Segment',
           histogramBase: 0,
           joinPoints: false,
-        },
-        upMomentumExhaustion: {
-          title: '多头衰竭',
-          text: '多头衰竭',
-          size: 'small',
-        },
-        downMomentumExhaustion: {
-          title: '空头衰竭',
-          text: '空头衰竭',
-          size: 'small',
         },
       },
       defaults: {
@@ -69,22 +60,6 @@ const getCustomIndicators = (PineJS: PineJsLike) => Promise.resolve([
             linewidth: SEGMENT_LINE_WIDTH,
             plottype: 0,
             trackPrice: false,
-            transparency: 0,
-            visible: true,
-          },
-          upMomentumExhaustion: {
-            color: MOMENTUM_EXHAUSTION_COLOR,
-            location: 'Absolute',
-            plottype: 'shape_label_down',
-            textColor: '#000000',
-            transparency: 0,
-            visible: true,
-          },
-          downMomentumExhaustion: {
-            color: MOMENTUM_EXHAUSTION_COLOR,
-            location: 'Absolute',
-            plottype: 'shape_label_up',
-            textColor: '#000000',
             transparency: 0,
             visible: true,
           },
@@ -147,55 +122,54 @@ const getCustomIndicators = (PineJS: PineJsLike) => Promise.resolve([
       main?: (context: PineContextLike, input: (index: number) => number) => unknown
     }) {
       this.init = function () {
-        this._state = {
-          bars: [],
-          emittedInitialStartKey: null,
-        }
+        this._state = createStudyState()
       }
 
       this.main = function (context, input) {
         if (!this._state) {
-          this._state = {
-            bars: [],
-            emittedInitialStartKey: null,
-          }
+          this._state = createStudyState()
         }
 
         const emaLength = Math.max(1, Number(input(0)) || DEFAULT_EMA_LENGTH)
         const minSegmentBars = Math.max(1, Number(input(1)) || DEFAULT_MIN_SEGMENT_BARS)
+        const settingsKey = `${emaLength}:${minSegmentBars}`
         const close = PineJS.Std.close(context)
         const closeSeries = context.new_var(close)
         const ema = PineJS.Std.ema(closeSeries, emaLength, context)
         const time = PineJS.Std.time(context)
         const high = PineJS.Std.high(context)
         const low = PineJS.Std.low(context)
+        let shouldRebuildSegments = this._state.lastSettingsKey !== null && this._state.lastSettingsKey !== settingsKey
 
         if (isFiniteNumber(time) && isFiniteNumber(close) && isFiniteNumber(high) && isFiniteNumber(low)) {
-          upsertBar(this._state.bars, {
+          const upsertResult = upsertBar(this._state.bars, {
             close,
             ema,
             high,
             low,
             time,
           })
+
+          shouldRebuildSegments = shouldRebuildSegments || upsertResult.type !== 'append'
         }
 
-        const segments = buildEmaSegments(this._state.bars, emaLength, minSegmentBars)
-        const latestSegment = segments[segments.length - 1]
-        const momentumExhaustionOutput = getMomentumExhaustionOutput(
-          this._state.bars,
-          buildMomentumExhaustionSignals(this._state.bars, segments),
-        )
+        this._state.lastSettingsKey = settingsKey
+
+        if (shouldRebuildSegments || this._state.segmentBuildState.processedBarCount > this._state.bars.length) {
+          this._state.segmentBuildState = rebuildEmaSegmentState(this._state.bars, emaLength, minSegmentBars)
+        } else if (this._state.segmentBuildState.processedBarCount < this._state.bars.length) {
+          advanceEmaSegmentState(this._state.segmentBuildState, this._state.bars, emaLength, minSegmentBars)
+        }
+
+        const latestSegment = getLatestDrawableSegment(this._state.segmentBuildState)
 
         if (!latestSegment) {
           return [
             Number.NaN,
             Number.NaN,
             Number.NaN,
-            ...momentumExhaustionOutput,
           ]
         }
-
         const segmentColor = latestSegment.direction === 'up' ? 0 : 1
         const latestSegmentKey = getSegmentKey(latestSegment)
         if (this._state.emittedInitialStartKey !== latestSegmentKey) {
@@ -204,15 +178,12 @@ const getCustomIndicators = (PineJS: PineJsLike) => Promise.resolve([
             latestSegment.start.price,
             getOffsetFromCurrentBar(this._state.bars, latestSegment.start),
             segmentColor,
-            ...momentumExhaustionOutput,
           ]
         }
-
         return [
           latestSegment.end.price,
           getOffsetFromCurrentBar(this._state.bars, latestSegment.end),
           segmentColor,
-          ...momentumExhaustionOutput,
         ]
       }
     },

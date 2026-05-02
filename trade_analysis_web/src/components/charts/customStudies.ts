@@ -70,9 +70,7 @@ export const getCustomIndicators = async (PineJS: unknown) => {
   const indicatorGroups = await Promise.all([
     localBollStrategy.getCustomIndicators(PineJS as Parameters<typeof localBollStrategy.getCustomIndicators>[0]),
     localAtrStrategy.getCustomIndicators(PineJS as Parameters<typeof localAtrStrategy.getCustomIndicators>[0]),
-    localEmaSegmentStrategy.getCustomIndicators(
-      PineJS as Parameters<typeof localEmaSegmentStrategy.getCustomIndicators>[0],
-    ),
+    localEmaSegmentStrategy.getCustomIndicators(PineJS as Parameters<typeof localEmaSegmentStrategy.getCustomIndicators>[0]),
   ])
 
   return indicatorGroups.flat()
