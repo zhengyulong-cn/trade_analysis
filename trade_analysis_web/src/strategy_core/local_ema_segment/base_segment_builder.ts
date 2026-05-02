@@ -1,7 +1,7 @@
 import type {
-  EmaSegment,
+  BaseSegment,
+  BaseSegmentBuildState,
   EmaSegmentBar,
-  EmaSegmentBuildState,
   SegmentDirection,
   SegmentPoint,
   UpsertBarResult,
@@ -9,9 +9,9 @@ import type {
 
 export const isFiniteNumber = (value: number) => Number.isFinite(value) && !Number.isNaN(value)
 
-export const createEmptyEmaSegmentBuildState = (): EmaSegmentBuildState => ({
-  activeSegment: null,
-  historicalSegments: [],
+export const createEmptyBaseSegmentBuildState = (): BaseSegmentBuildState => ({
+  activeBaseSegment: null,
+  historicalBaseSegments: [],
   processedBarCount: 0,
   seedDirection: null,
   seedExtreme: null,
@@ -69,30 +69,30 @@ export const upsertBar = (bars: EmaSegmentBar[], bar: Omit<EmaSegmentBar, 'index
   }
 }
 
-export const getSegmentExtreme = (bar: EmaSegmentBar, direction: SegmentDirection): SegmentPoint => ({
+export const getBaseSegmentExtreme = (bar: EmaSegmentBar, direction: SegmentDirection): SegmentPoint => ({
   index: bar.index,
   price: direction === 'up' ? bar.high : bar.low,
   time: bar.time,
 })
 
-const cloneSegment = (segment: EmaSegment): EmaSegment => ({
-  direction: segment.direction,
-  end: { ...segment.end },
-  start: { ...segment.start },
+const cloneBaseSegment = (baseSegment: BaseSegment): BaseSegment => ({
+  direction: baseSegment.direction,
+  end: { ...baseSegment.end },
+  start: { ...baseSegment.start },
 })
 
-const createSegment = (
+const createBaseSegment = (
   direction: SegmentDirection,
   start: SegmentPoint,
   end: SegmentPoint,
-): EmaSegment => ({
+): BaseSegment => ({
   direction,
   start: { ...start },
   end: { ...end },
 })
 
-const updateActiveSegmentEnd = (segment: EmaSegment, end: SegmentPoint) => {
-  segment.end = { ...end }
+const updateActiveBaseSegmentEnd = (baseSegment: BaseSegment, end: SegmentPoint) => {
+  baseSegment.end = { ...end }
 }
 
 const hasStartBreakReversal = (
@@ -111,14 +111,14 @@ const hasStartBreakReversal = (
   return bar.low <= reversalStartPoint.price
 }
 
-const createPotentialSegment = (
+const createPotentialBaseSegment = (
   direction: SegmentDirection,
   referencePoint: SegmentPoint,
   reversalStartPoint: SegmentPoint | null,
   bars: EmaSegmentBar[],
   bar: EmaSegmentBar,
   minSegmentBars: number,
-): EmaSegment | null => {
+): BaseSegment | null => {
   const startBreakReversal = hasStartBreakReversal(direction, reversalStartPoint, bar)
 
   if (!startBreakReversal && bar.index - referencePoint.index < minSegmentBars) {
@@ -130,7 +130,7 @@ const createPotentialSegment = (
       return null
     }
 
-    const candidateEnd = getSegmentExtreme(bar, 'up')
+    const candidateEnd = getBaseSegmentExtreme(bar, 'up')
 
     for (let index = referencePoint.index + 1; index <= bar.index; index += 1) {
       const candidateBar = bars[index]
@@ -143,14 +143,14 @@ const createPotentialSegment = (
       }
     }
 
-    return createSegment('up', referencePoint, candidateEnd)
+    return createBaseSegment('up', referencePoint, candidateEnd)
   }
 
   if (!startBreakReversal && (!isFiniteNumber(bar.ema) || bar.low >= bar.ema)) {
     return null
   }
 
-  const candidateEnd = getSegmentExtreme(bar, 'down')
+  const candidateEnd = getBaseSegmentExtreme(bar, 'down')
 
   for (let index = referencePoint.index + 1; index <= bar.index; index += 1) {
     const candidateBar = bars[index]
@@ -163,11 +163,11 @@ const createPotentialSegment = (
     }
   }
 
-  return createSegment('down', referencePoint, candidateEnd)
+  return createBaseSegment('down', referencePoint, candidateEnd)
 }
 
 const processSeedState = (
-  buildState: EmaSegmentBuildState,
+  buildState: BaseSegmentBuildState,
   bars: EmaSegmentBar[],
   bar: EmaSegmentBar,
   minSegmentBars: number,
@@ -175,23 +175,23 @@ const processSeedState = (
   if (buildState.seedDirection === null || buildState.seedExtreme === null) {
     if (bar.close < bar.ema) {
       buildState.seedDirection = 'down'
-      buildState.seedExtreme = getSegmentExtreme(bar, 'down')
+      buildState.seedExtreme = getBaseSegmentExtreme(bar, 'down')
     } else if (bar.close > bar.ema) {
       buildState.seedDirection = 'up'
-      buildState.seedExtreme = getSegmentExtreme(bar, 'up')
+      buildState.seedExtreme = getBaseSegmentExtreme(bar, 'up')
     }
     return
   }
 
   if (buildState.seedDirection === 'down') {
     if (bar.low < buildState.seedExtreme.price) {
-      buildState.seedExtreme = getSegmentExtreme(bar, 'down')
+      buildState.seedExtreme = getBaseSegmentExtreme(bar, 'down')
       return
     }
 
-    const nextActiveSegment = createPotentialSegment('up', buildState.seedExtreme, null, bars, bar, minSegmentBars)
-    if (nextActiveSegment) {
-      buildState.activeSegment = nextActiveSegment
+    const nextActiveBaseSegment = createPotentialBaseSegment('up', buildState.seedExtreme, null, bars, bar, minSegmentBars)
+    if (nextActiveBaseSegment) {
+      buildState.activeBaseSegment = nextActiveBaseSegment
       buildState.seedDirection = null
       buildState.seedExtreme = null
     }
@@ -199,57 +199,71 @@ const processSeedState = (
   }
 
   if (bar.high > buildState.seedExtreme.price) {
-    buildState.seedExtreme = getSegmentExtreme(bar, 'up')
+    buildState.seedExtreme = getBaseSegmentExtreme(bar, 'up')
     return
   }
 
-  const nextActiveSegment = createPotentialSegment('down', buildState.seedExtreme, null, bars, bar, minSegmentBars)
-  if (nextActiveSegment) {
-    buildState.activeSegment = nextActiveSegment
+  const nextActiveBaseSegment = createPotentialBaseSegment('down', buildState.seedExtreme, null, bars, bar, minSegmentBars)
+  if (nextActiveBaseSegment) {
+    buildState.activeBaseSegment = nextActiveBaseSegment
     buildState.seedDirection = null
     buildState.seedExtreme = null
   }
 }
 
-const processActiveSegment = (
-  buildState: EmaSegmentBuildState,
+const processActiveBaseSegment = (
+  buildState: BaseSegmentBuildState,
   bars: EmaSegmentBar[],
   bar: EmaSegmentBar,
   minSegmentBars: number,
 ) => {
-  const activeSegment = buildState.activeSegment
-  if (!activeSegment) {
+  const activeBaseSegment = buildState.activeBaseSegment
+  if (!activeBaseSegment) {
     return
   }
 
-  if (activeSegment.direction === 'down') {
-    if (bar.low < activeSegment.end.price) {
-      updateActiveSegmentEnd(activeSegment, getSegmentExtreme(bar, 'down'))
+  if (activeBaseSegment.direction === 'down') {
+    if (bar.low < activeBaseSegment.end.price) {
+      updateActiveBaseSegmentEnd(activeBaseSegment, getBaseSegmentExtreme(bar, 'down'))
       return
     }
 
-    const nextActiveSegment = createPotentialSegment('up', activeSegment.end, activeSegment.start, bars, bar, minSegmentBars)
-    if (nextActiveSegment) {
-      buildState.historicalSegments.push(cloneSegment(activeSegment))
-      buildState.activeSegment = nextActiveSegment
+    const nextActiveBaseSegment = createPotentialBaseSegment(
+      'up',
+      activeBaseSegment.end,
+      activeBaseSegment.start,
+      bars,
+      bar,
+      minSegmentBars,
+    )
+    if (nextActiveBaseSegment) {
+      buildState.historicalBaseSegments.push(cloneBaseSegment(activeBaseSegment))
+      buildState.activeBaseSegment = nextActiveBaseSegment
     }
     return
   }
 
-  if (bar.high > activeSegment.end.price) {
-    updateActiveSegmentEnd(activeSegment, getSegmentExtreme(bar, 'up'))
+  if (bar.high > activeBaseSegment.end.price) {
+    updateActiveBaseSegmentEnd(activeBaseSegment, getBaseSegmentExtreme(bar, 'up'))
     return
   }
 
-  const nextActiveSegment = createPotentialSegment('down', activeSegment.end, activeSegment.start, bars, bar, minSegmentBars)
-  if (nextActiveSegment) {
-    buildState.historicalSegments.push(cloneSegment(activeSegment))
-    buildState.activeSegment = nextActiveSegment
+  const nextActiveBaseSegment = createPotentialBaseSegment(
+    'down',
+    activeBaseSegment.end,
+    activeBaseSegment.start,
+    bars,
+    bar,
+    minSegmentBars,
+  )
+  if (nextActiveBaseSegment) {
+    buildState.historicalBaseSegments.push(cloneBaseSegment(activeBaseSegment))
+    buildState.activeBaseSegment = nextActiveBaseSegment
   }
 }
 
-const processEmaSegmentBar = (
-  buildState: EmaSegmentBuildState,
+const processBaseSegmentBar = (
+  buildState: BaseSegmentBuildState,
   bars: EmaSegmentBar[],
   bar: EmaSegmentBar,
   emaLength: number,
@@ -259,16 +273,16 @@ const processEmaSegmentBar = (
     return
   }
 
-  if (buildState.activeSegment) {
-    processActiveSegment(buildState, bars, bar, minSegmentBars)
+  if (buildState.activeBaseSegment) {
+    processActiveBaseSegment(buildState, bars, bar, minSegmentBars)
     return
   }
 
   processSeedState(buildState, bars, bar, minSegmentBars)
 }
 
-export const advanceEmaSegmentState = (
-  buildState: EmaSegmentBuildState,
+export const advanceBaseSegmentState = (
+  buildState: BaseSegmentBuildState,
   bars: EmaSegmentBar[],
   emaLength: number,
   minSegmentBars: number,
@@ -279,45 +293,45 @@ export const advanceEmaSegmentState = (
       continue
     }
 
-    processEmaSegmentBar(buildState, bars, bar, emaLength, minSegmentBars)
+    processBaseSegmentBar(buildState, bars, bar, emaLength, minSegmentBars)
   }
 
   buildState.processedBarCount = bars.length
-  return getAllSegments(buildState)
+  return getAllBaseSegments(buildState)
 }
 
-export const rebuildEmaSegmentState = (
+export const rebuildBaseSegmentState = (
   bars: EmaSegmentBar[],
   emaLength: number,
   minSegmentBars: number,
 ) => {
-  const buildState = createEmptyEmaSegmentBuildState()
-  advanceEmaSegmentState(buildState, bars, emaLength, minSegmentBars)
+  const buildState = createEmptyBaseSegmentBuildState()
+  advanceBaseSegmentState(buildState, bars, emaLength, minSegmentBars)
   return buildState
 }
 
-export const getAllSegments = (buildState: EmaSegmentBuildState) => {
-  if (!buildState.activeSegment) {
-    return [...buildState.historicalSegments]
+export const getAllBaseSegments = (buildState: BaseSegmentBuildState) => {
+  if (!buildState.activeBaseSegment) {
+    return [...buildState.historicalBaseSegments]
   }
 
-  return [...buildState.historicalSegments, cloneSegment(buildState.activeSegment)]
+  return [...buildState.historicalBaseSegments, cloneBaseSegment(buildState.activeBaseSegment)]
 }
 
-export const getLatestDrawableSegment = (buildState: EmaSegmentBuildState) => {
-  if (buildState.activeSegment) {
-    return buildState.activeSegment
+export const getLatestDrawableBaseSegment = (buildState: BaseSegmentBuildState) => {
+  if (buildState.activeBaseSegment) {
+    return buildState.activeBaseSegment
   }
 
-  return buildState.historicalSegments[buildState.historicalSegments.length - 1] ?? null
+  return buildState.historicalBaseSegments[buildState.historicalBaseSegments.length - 1] ?? null
 }
 
-export const buildEmaSegments = (bars: EmaSegmentBar[], emaLength: number, minSegmentBars: number) => {
-  return getAllSegments(rebuildEmaSegmentState(bars, emaLength, minSegmentBars))
+export const buildBaseSegments = (bars: EmaSegmentBar[], emaLength: number, minSegmentBars: number) => {
+  return getAllBaseSegments(rebuildBaseSegmentState(bars, emaLength, minSegmentBars))
 }
 
-export const getSegmentKey = (segment: EmaSegment) => {
-  return `${segment.start.time}-${segment.direction}`
+export const getBaseSegmentKey = (baseSegment: BaseSegment) => {
+  return `${baseSegment.start.time}-${baseSegment.direction}`
 }
 
 export const getOffsetFromCurrentBar = (bars: EmaSegmentBar[], point: SegmentPoint) => {

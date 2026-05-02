@@ -1,25 +1,25 @@
 import {
-  advanceEmaSegmentState,
-  createEmptyEmaSegmentBuildState,
+  advanceBaseSegmentState,
+  createEmptyBaseSegmentBuildState,
+  getBaseSegmentKey,
   getOffsetFromCurrentBar,
-  getLatestDrawableSegment,
-  getSegmentKey,
+  getLatestDrawableBaseSegment,
   isFiniteNumber,
-  rebuildEmaSegmentState,
+  rebuildBaseSegmentState,
   upsertBar,
-} from './segment_builder'
-import type { EmaSegmentStudyState, PineContextLike, PineJsLike } from './types'
+} from './base_segment_builder'
+import type { BaseSegmentStudyState, PineContextLike, PineJsLike } from './types'
 
 const LOCAL_EMA_SEGMENT_INDICATOR_NAME = 'Local EMA Segment'
 const DEFAULT_EMA_LENGTH = 20
 const DEFAULT_MIN_SEGMENT_BARS = 4
 const SEGMENT_LINE_WIDTH = 2
 
-const createStudyState = (): EmaSegmentStudyState => ({
+const createStudyState = (): BaseSegmentStudyState => ({
   bars: [],
-  emittedInitialStartKey: null,
+  emittedInitialBaseSegmentStartKey: null,
   lastSettingsKey: null,
-  segmentBuildState: createEmptyEmaSegmentBuildState(),
+  baseSegmentBuildState: createEmptyBaseSegmentBuildState(),
 })
 
 const getLocalEmaSegmentIndicatorName = () => LOCAL_EMA_SEGMENT_INDICATOR_NAME
@@ -117,7 +117,7 @@ const getCustomIndicators = (PineJS: PineJsLike) => Promise.resolve([
       ],
     },
     constructor: function (this: {
-      _state?: EmaSegmentStudyState
+      _state?: BaseSegmentStudyState
       init?: (context: PineContextLike, input: (index: number) => number) => void
       main?: (context: PineContextLike, input: (index: number) => number) => unknown
     }) {
@@ -139,7 +139,7 @@ const getCustomIndicators = (PineJS: PineJsLike) => Promise.resolve([
         const time = PineJS.Std.time(context)
         const high = PineJS.Std.high(context)
         const low = PineJS.Std.low(context)
-        let shouldRebuildSegments = this._state.lastSettingsKey !== null && this._state.lastSettingsKey !== settingsKey
+        let shouldRebuildBaseSegments = this._state.lastSettingsKey !== null && this._state.lastSettingsKey !== settingsKey
 
         if (isFiniteNumber(time) && isFiniteNumber(close) && isFiniteNumber(high) && isFiniteNumber(low)) {
           const upsertResult = upsertBar(this._state.bars, {
@@ -150,40 +150,40 @@ const getCustomIndicators = (PineJS: PineJsLike) => Promise.resolve([
             time,
           })
 
-          shouldRebuildSegments = shouldRebuildSegments || upsertResult.type !== 'append'
+          shouldRebuildBaseSegments = shouldRebuildBaseSegments || upsertResult.type !== 'append'
         }
 
         this._state.lastSettingsKey = settingsKey
 
-        if (shouldRebuildSegments || this._state.segmentBuildState.processedBarCount > this._state.bars.length) {
-          this._state.segmentBuildState = rebuildEmaSegmentState(this._state.bars, emaLength, minSegmentBars)
-        } else if (this._state.segmentBuildState.processedBarCount < this._state.bars.length) {
-          advanceEmaSegmentState(this._state.segmentBuildState, this._state.bars, emaLength, minSegmentBars)
+        if (shouldRebuildBaseSegments || this._state.baseSegmentBuildState.processedBarCount > this._state.bars.length) {
+          this._state.baseSegmentBuildState = rebuildBaseSegmentState(this._state.bars, emaLength, minSegmentBars)
+        } else if (this._state.baseSegmentBuildState.processedBarCount < this._state.bars.length) {
+          advanceBaseSegmentState(this._state.baseSegmentBuildState, this._state.bars, emaLength, minSegmentBars)
         }
 
-        const latestSegment = getLatestDrawableSegment(this._state.segmentBuildState)
+        const latestBaseSegment = getLatestDrawableBaseSegment(this._state.baseSegmentBuildState)
 
-        if (!latestSegment) {
+        if (!latestBaseSegment) {
           return [
             Number.NaN,
             Number.NaN,
             Number.NaN,
           ]
         }
-        const segmentColor = latestSegment.direction === 'up' ? 0 : 1
-        const latestSegmentKey = getSegmentKey(latestSegment)
-        if (this._state.emittedInitialStartKey !== latestSegmentKey) {
-          this._state.emittedInitialStartKey = latestSegmentKey
+        const baseSegmentColor = latestBaseSegment.direction === 'up' ? 0 : 1
+        const latestBaseSegmentKey = getBaseSegmentKey(latestBaseSegment)
+        if (this._state.emittedInitialBaseSegmentStartKey !== latestBaseSegmentKey) {
+          this._state.emittedInitialBaseSegmentStartKey = latestBaseSegmentKey
           return [
-            latestSegment.start.price,
-            getOffsetFromCurrentBar(this._state.bars, latestSegment.start),
-            segmentColor,
+            latestBaseSegment.start.price,
+            getOffsetFromCurrentBar(this._state.bars, latestBaseSegment.start),
+            baseSegmentColor,
           ]
         }
         return [
-          latestSegment.end.price,
-          getOffsetFromCurrentBar(this._state.bars, latestSegment.end),
-          segmentColor,
+          latestBaseSegment.end.price,
+          getOffsetFromCurrentBar(this._state.bars, latestBaseSegment.end),
+          baseSegmentColor,
         ]
       }
     },

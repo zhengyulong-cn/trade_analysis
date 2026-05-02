@@ -1,32 +1,32 @@
 import type {
-  EmaSegment,
+  BaseSegment,
+  BaseSegmentMetrics,
   EmaSegmentBar,
   MomentumExhaustionSignal,
   SegmentDirection,
-  SegmentMetrics,
 } from './types'
-import { getOffsetFromCurrentBar, getSegmentExtreme } from './segment_builder'
+import { getBaseSegmentExtreme, getOffsetFromCurrentBar } from './base_segment_builder'
 
-const getSegmentMetrics = (bars: EmaSegmentBar[], segment: EmaSegment): SegmentMetrics | null => {
-  const startIndex = Math.min(segment.start.index, segment.end.index)
-  const endIndex = Math.max(segment.start.index, segment.end.index)
-  const segmentBars = bars.filter((bar) => bar.index >= startIndex && bar.index <= endIndex)
-  const firstBar = segmentBars[0]
+const getBaseSegmentMetrics = (bars: EmaSegmentBar[], baseSegment: BaseSegment): BaseSegmentMetrics | null => {
+  const startIndex = Math.min(baseSegment.start.index, baseSegment.end.index)
+  const endIndex = Math.max(baseSegment.start.index, baseSegment.end.index)
+  const baseSegmentBars = bars.filter((bar) => bar.index >= startIndex && bar.index <= endIndex)
+  const firstBar = baseSegmentBars[0]
 
   if (!firstBar) {
     return null
   }
 
-  let high = getSegmentExtreme(firstBar, 'up')
-  let low = getSegmentExtreme(firstBar, 'down')
+  let high = getBaseSegmentExtreme(firstBar, 'up')
+  let low = getBaseSegmentExtreme(firstBar, 'down')
 
-  segmentBars.forEach((bar) => {
+  baseSegmentBars.forEach((bar) => {
     if (bar.high > high.price) {
-      high = getSegmentExtreme(bar, 'up')
+      high = getBaseSegmentExtreme(bar, 'up')
     }
 
     if (bar.low < low.price) {
-      low = getSegmentExtreme(bar, 'down')
+      low = getBaseSegmentExtreme(bar, 'down')
     }
   })
 
@@ -43,8 +43,8 @@ const getSegmentMetrics = (bars: EmaSegmentBar[], segment: EmaSegment): SegmentM
 }
 
 const getStructureTrend = (
-  previousMetrics: SegmentMetrics,
-  currentMetrics: SegmentMetrics,
+  previousMetrics: BaseSegmentMetrics,
+  currentMetrics: BaseSegmentMetrics,
 ): SegmentDirection | null => {
   if (currentMetrics.high.price > previousMetrics.high.price && currentMetrics.low.price > previousMetrics.low.price) {
     return 'up'
@@ -57,24 +57,24 @@ const getStructureTrend = (
   return null
 }
 
-export const buildMomentumExhaustionSignals = (bars: EmaSegmentBar[], segments: EmaSegment[]) => {
+export const buildMomentumExhaustionSignals = (bars: EmaSegmentBar[], baseSegments: BaseSegment[]) => {
   const signals: MomentumExhaustionSignal[] = []
   let activeTrend: SegmentDirection | null = null
 
-  for (let index = 2; index < segments.length; index += 1) {
-    const currentSegment = segments[index]
-    const previousSameDirectionSegment = segments[index - 2]
+  for (let index = 2; index < baseSegments.length; index += 1) {
+    const currentBaseSegment = baseSegments[index]
+    const previousSameDirectionBaseSegment = baseSegments[index - 2]
 
-    if (!currentSegment || !previousSameDirectionSegment) {
+    if (!currentBaseSegment || !previousSameDirectionBaseSegment) {
       continue
     }
 
-    if (currentSegment.direction !== previousSameDirectionSegment.direction) {
+    if (currentBaseSegment.direction !== previousSameDirectionBaseSegment.direction) {
       continue
     }
 
-    const previousMetrics = getSegmentMetrics(bars, previousSameDirectionSegment)
-    const currentMetrics = getSegmentMetrics(bars, currentSegment)
+    const previousMetrics = getBaseSegmentMetrics(bars, previousSameDirectionBaseSegment)
+    const currentMetrics = getBaseSegmentMetrics(bars, currentBaseSegment)
 
     if (!previousMetrics || !currentMetrics) {
       continue
@@ -92,7 +92,7 @@ export const buildMomentumExhaustionSignals = (bars: EmaSegmentBar[], segments: 
       activeTrend = structureTrend
     }
 
-    if (currentSegment.direction !== activeTrend) {
+    if (currentBaseSegment.direction !== activeTrend) {
       continue
     }
 
@@ -101,8 +101,8 @@ export const buildMomentumExhaustionSignals = (bars: EmaSegmentBar[], segments: 
     }
 
     signals.push({
-      direction: currentSegment.direction,
-      point: currentSegment.direction === 'up' ? currentMetrics.high : currentMetrics.low,
+      direction: currentBaseSegment.direction,
+      point: currentBaseSegment.direction === 'up' ? currentMetrics.high : currentMetrics.low,
     })
   }
 
