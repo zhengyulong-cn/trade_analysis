@@ -75,6 +75,14 @@ export const getBaseSegmentExtreme = (bar: EmaSegmentBar, direction: SegmentDire
   time: bar.time,
 })
 
+export const getBaseSegmentHighPoint = (baseSegment: BaseSegment): SegmentPoint => (
+  baseSegment.direction === 'up' ? baseSegment.end : baseSegment.start
+)
+
+export const getBaseSegmentLowPoint = (baseSegment: BaseSegment): SegmentPoint => (
+  baseSegment.direction === 'up' ? baseSegment.start : baseSegment.end
+)
+
 const cloneBaseSegment = (baseSegment: BaseSegment): BaseSegment => ({
   direction: baseSegment.direction,
   end: { ...baseSegment.end },
@@ -281,6 +289,23 @@ const processBaseSegmentBar = (
   processSeedState(buildState, bars, bar, minSegmentBars)
 }
 
+export const advanceBaseSegmentStateByIndex = (
+  buildState: BaseSegmentBuildState,
+  bars: EmaSegmentBar[],
+  barIndex: number,
+  emaLength: number,
+  minSegmentBars: number,
+) => {
+  const bar = bars[barIndex]
+  if (!bar) {
+    return getAllBaseSegments(buildState)
+  }
+
+  processBaseSegmentBar(buildState, bars, bar, emaLength, minSegmentBars)
+  buildState.processedBarCount = Math.max(buildState.processedBarCount, barIndex + 1)
+  return getAllBaseSegments(buildState)
+}
+
 export const advanceBaseSegmentState = (
   buildState: BaseSegmentBuildState,
   bars: EmaSegmentBar[],
@@ -288,12 +313,7 @@ export const advanceBaseSegmentState = (
   minSegmentBars: number,
 ) => {
   for (let index = buildState.processedBarCount; index < bars.length; index += 1) {
-    const bar = bars[index]
-    if (!bar) {
-      continue
-    }
-
-    processBaseSegmentBar(buildState, bars, bar, emaLength, minSegmentBars)
+    advanceBaseSegmentStateByIndex(buildState, bars, index, emaLength, minSegmentBars)
   }
 
   buildState.processedBarCount = bars.length

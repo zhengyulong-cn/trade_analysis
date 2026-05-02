@@ -20,6 +20,8 @@ export type SegmentDirection = 'up' | 'down'
 export type EmaSegmentBar = {
   close: number
   ema: number
+  ema120: number
+  ema20: number
   high: number
   index: number
   low: number
@@ -59,6 +61,22 @@ export type BaseSegmentMetrics = {
   strength: number
 }
 
+export type HigherLevelSegment = {
+  direction: SegmentDirection
+  end: SegmentPoint
+  start: SegmentPoint
+}
+
+export type HigherLevelSegmentBuildState = {
+  activeHigherLevelSegment: HigherLevelSegment | null
+  currentCycleDirection: SegmentDirection | null
+  currentCycleExtremePoint: SegmentPoint | null
+  currentCycleStartIndex: number | null
+  historicalHigherLevelSegments: HigherLevelSegment[]
+  lastCrossRelation: 'above' | 'below' | null
+  processedBarCount: number
+}
+
 export type MomentumExhaustionSignal = {
   direction: SegmentDirection
   point: SegmentPoint
@@ -66,7 +84,9 @@ export type MomentumExhaustionSignal = {
 
 export type BaseSegmentStudyState = {
   bars: EmaSegmentBar[]
-  emittedInitialBaseSegmentStartKey: string | null
+  emittedInitialDrawableSegmentStartKey: string | null
+  emittedInitialHigherLevelSegmentStartKey: string | null
   lastSettingsKey: string | null
   baseSegmentBuildState: BaseSegmentBuildState
+  higherLevelSegmentBuildState: HigherLevelSegmentBuildState
 }

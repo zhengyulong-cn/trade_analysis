@@ -1,6 +1,7 @@
 import {
   advanceBaseSegmentState,
   createEmptyBaseSegmentBuildState,
+  getAllBaseSegments,
   getBaseSegmentKey,
   getOffsetFromCurrentBar,
   getLatestDrawableBaseSegment,
@@ -8,18 +9,28 @@ import {
   rebuildBaseSegmentState,
   upsertBar,
 } from './base_segment_builder'
+import {
+  advanceHigherLevelSegmentStateByIndex,
+  createEmptyHigherLevelSegmentBuildState,
+  getHigherLevelSegmentKey,
+  getLatestDrawableHigherLevelSegment,
+  rebuildHigherLevelSegmentState,
+} from './higher_level_segment_builder'
 import type { BaseSegmentStudyState, PineContextLike, PineJsLike } from './types'
 
 const LOCAL_EMA_SEGMENT_INDICATOR_NAME = 'Local EMA Segment'
 const DEFAULT_EMA_LENGTH = 20
 const DEFAULT_MIN_SEGMENT_BARS = 4
 const SEGMENT_LINE_WIDTH = 2
+const HIGHER_LEVEL_SEGMENT_COLOR = '#2200ff'
 
 const createStudyState = (): BaseSegmentStudyState => ({
   bars: [],
-  emittedInitialBaseSegmentStartKey: null,
+  emittedInitialDrawableSegmentStartKey: null,
+  emittedInitialHigherLevelSegmentStartKey: null,
   lastSettingsKey: null,
   baseSegmentBuildState: createEmptyBaseSegmentBuildState(),
+  higherLevelSegmentBuildState: createEmptyHigherLevelSegmentBuildState(),
 })
 
 const getLocalEmaSegmentIndicatorName = () => LOCAL_EMA_SEGMENT_INDICATOR_NAME
@@ -44,10 +55,17 @@ const getCustomIndicators = (PineJS: PineJsLike) => Promise.resolve([
         { id: 'segment', type: 'line' },
         { id: 'segmentOffset', target: 'segment', type: 'dataoffset' },
         { id: 'segmentColor', palette: 'segmentPalette', target: 'segment', type: 'colorer' },
+        { id: 'higherSegment', type: 'line' },
+        { id: 'higherSegmentOffset', target: 'higherSegment', type: 'dataoffset' },
       ],
       styles: {
         segment: {
           title: 'Segment',
+          histogramBase: 0,
+          joinPoints: false,
+        },
+        higherSegment: {
+          title: 'Higher Segment',
           histogramBase: 0,
           joinPoints: false,
         },
@@ -56,6 +74,15 @@ const getCustomIndicators = (PineJS: PineJsLike) => Promise.resolve([
         styles: {
           segment: {
             color: '#F23645',
+            linestyle: 0,
+            linewidth: SEGMENT_LINE_WIDTH,
+            plottype: 0,
+            trackPrice: false,
+            transparency: 0,
+            visible: true,
+          },
+          higherSegment: {
+            color: HIGHER_LEVEL_SEGMENT_COLOR,
             linestyle: 0,
             linewidth: SEGMENT_LINE_WIDTH,
             plottype: 0,
@@ -136,6 +163,8 @@ const getCustomIndicators = (PineJS: PineJsLike) => Promise.resolve([
         const close = PineJS.Std.close(context)
         const closeSeries = context.new_var(close)
         const ema = PineJS.Std.ema(closeSeries, emaLength, context)
+        const ema20 = PineJS.Std.ema(closeSeries, 20, context)
+        const ema120 = PineJS.Std.ema(closeSeries, 120, context)
         const time = PineJS.Std.time(context)
         const high = PineJS.Std.high(context)
         const low = PineJS.Std.low(context)
@@ -145,6 +174,8 @@ const getCustomIndicators = (PineJS: PineJsLike) => Promise.resolve([
           const upsertResult = upsertBar(this._state.bars, {
             close,
             ema,
+            ema120,
+            ema20,
             high,
             low,
             time,
@@ -161,29 +192,77 @@ const getCustomIndicators = (PineJS: PineJsLike) => Promise.resolve([
           advanceBaseSegmentState(this._state.baseSegmentBuildState, this._state.bars, emaLength, minSegmentBars)
         }
 
-        const latestBaseSegment = getLatestDrawableBaseSegment(this._state.baseSegmentBuildState)
+        const shouldRebuildHigherLevelSegments = shouldRebuildBaseSegments
+          || this._state.higherLevelSegmentBuildState.processedBarCount > this._state.bars.length
+          || this._state.bars.length - this._state.higherLevelSegmentBuildState.processedBarCount > 1
 
-        if (!latestBaseSegment) {
-          return [
-            Number.NaN,
-            Number.NaN,
-            Number.NaN,
-          ]
+        if (shouldRebuildHigherLevelSegments) {
+          this._state.higherLevelSegmentBuildState = rebuildHigherLevelSegmentState(
+            this._state.bars,
+            emaLength,
+            minSegmentBars,
+          )
+        } else if (this._state.higherLevelSegmentBuildState.processedBarCount < this._state.bars.length) {
+          const nextBarIndex = this._state.higherLevelSegmentBuildState.processedBarCount
+          advanceHigherLevelSegmentStateByIndex(
+            this._state.higherLevelSegmentBuildState,
+            this._state.bars,
+            nextBarIndex,
+            getAllBaseSegments(this._state.baseSegmentBuildState),
+          )
         }
-        const baseSegmentColor = latestBaseSegment.direction === 'up' ? 0 : 1
-        const latestBaseSegmentKey = getBaseSegmentKey(latestBaseSegment)
-        if (this._state.emittedInitialBaseSegmentStartKey !== latestBaseSegmentKey) {
-          this._state.emittedInitialBaseSegmentStartKey = latestBaseSegmentKey
+
+        const latestBaseSegment = getLatestDrawableBaseSegment(this._state.baseSegmentBuildState)
+        const latestHigherLevelSegment = getLatestDrawableHigherLevelSegment(this._state.higherLevelSegmentBuildState)
+
+        const baseSegmentOutput = (() => {
+          if (!latestBaseSegment) {
+            return [Number.NaN, Number.NaN, Number.NaN]
+          }
+
+          const baseSegmentColor = latestBaseSegment.direction === 'up' ? 0 : 1
+          const latestBaseSegmentKey = getBaseSegmentKey(latestBaseSegment)
+
+          if (this._state.emittedInitialDrawableSegmentStartKey !== latestBaseSegmentKey) {
+            this._state.emittedInitialDrawableSegmentStartKey = latestBaseSegmentKey
+            return [
+              latestBaseSegment.start.price,
+              getOffsetFromCurrentBar(this._state.bars, latestBaseSegment.start),
+              baseSegmentColor,
+            ]
+          }
+
           return [
-            latestBaseSegment.start.price,
-            getOffsetFromCurrentBar(this._state.bars, latestBaseSegment.start),
+            latestBaseSegment.end.price,
+            getOffsetFromCurrentBar(this._state.bars, latestBaseSegment.end),
             baseSegmentColor,
           ]
-        }
+        })()
+
+        const higherSegmentOutput = (() => {
+          if (!latestHigherLevelSegment) {
+            return [Number.NaN, Number.NaN]
+          }
+
+          const latestHigherLevelSegmentKey = getHigherLevelSegmentKey(latestHigherLevelSegment)
+
+          if (this._state.emittedInitialHigherLevelSegmentStartKey !== latestHigherLevelSegmentKey) {
+            this._state.emittedInitialHigherLevelSegmentStartKey = latestHigherLevelSegmentKey
+            return [
+              latestHigherLevelSegment.start.price,
+              getOffsetFromCurrentBar(this._state.bars, latestHigherLevelSegment.start),
+            ]
+          }
+
+          return [
+            latestHigherLevelSegment.end.price,
+            getOffsetFromCurrentBar(this._state.bars, latestHigherLevelSegment.end),
+          ]
+        })()
+
         return [
-          latestBaseSegment.end.price,
-          getOffsetFromCurrentBar(this._state.bars, latestBaseSegment.end),
-          baseSegmentColor,
+          ...baseSegmentOutput,
+          ...higherSegmentOutput,
         ]
       }
     },
