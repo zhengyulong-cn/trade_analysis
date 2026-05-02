@@ -16,6 +16,7 @@ import type {
 } from './types'
 
 type CrossRelation = 'above' | 'below'
+const MIN_HIGHER_LEVEL_SEGMENT_BARS = 15
 
 const clonePoint = (point: SegmentPoint): SegmentPoint => ({
   index: point.index,
@@ -113,6 +114,10 @@ const getHigherLevelSegmentEndPoint = (
   return getRangeHighPoint(baseSegments, startIndex, toIndex)
 }
 
+const isValidHigherLevelSegment = (segment: HigherLevelSegment) => {
+  return Math.abs(segment.end.index - segment.start.index) + 1 >= MIN_HIGHER_LEVEL_SEGMENT_BARS
+}
+
 const syncDerivedState = (
   buildState: HigherLevelSegmentBuildState,
   activeHigherLevelSegment: HigherLevelSegment | null,
@@ -160,6 +165,11 @@ const finalizeActiveHigherLevelSegment = (
 
   updateActiveHigherLevelSegmentEnd(buildState, baseSegments, toIndex)
   if (!buildState.activeHigherLevelSegment) {
+    return
+  }
+
+  if (!isValidHigherLevelSegment(buildState.activeHigherLevelSegment)) {
+    syncDerivedState(buildState, null)
     return
   }
 
@@ -270,7 +280,7 @@ export const rebuildHigherLevelSegmentState = (
 }
 
 export const getAllHigherLevelSegments = (buildState: HigherLevelSegmentBuildState) => {
-  if (!buildState.activeHigherLevelSegment) {
+  if (!buildState.activeHigherLevelSegment || !isValidHigherLevelSegment(buildState.activeHigherLevelSegment)) {
     return [...buildState.historicalHigherLevelSegments]
   }
 
@@ -278,7 +288,7 @@ export const getAllHigherLevelSegments = (buildState: HigherLevelSegmentBuildSta
 }
 
 export const getLatestDrawableHigherLevelSegment = (buildState: HigherLevelSegmentBuildState) => {
-  if (buildState.activeHigherLevelSegment) {
+  if (buildState.activeHigherLevelSegment && isValidHigherLevelSegment(buildState.activeHigherLevelSegment)) {
     return buildState.activeHigherLevelSegment
   }
 
