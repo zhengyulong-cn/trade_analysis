@@ -7,7 +7,7 @@ const LOCAL_BOLL_STUDY_LENGTH = 20
 const LOCAL_BOLL_STUDY_STD_DEV = 2
 const LOCAL_ATR_STUDY_LENGTH = 14
 const LOCAL_EMA_SEGMENT_LENGTH = 20
-const LOCAL_EMA_SEGMENT_MIN_BARS = 5
+const LOCAL_EMA_SEGMENT_MIN_BARS = 4
 
 export const addDefaultCustomStudies = (currentWidget: TradingViewWidget) => {
   const activeChart = currentWidget.activeChart()

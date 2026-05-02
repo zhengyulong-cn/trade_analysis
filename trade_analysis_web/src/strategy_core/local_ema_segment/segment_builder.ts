@@ -95,19 +95,38 @@ const updateActiveSegmentEnd = (segment: EmaSegment, end: SegmentPoint) => {
   segment.end = { ...end }
 }
 
+const hasStartBreakReversal = (
+  direction: SegmentDirection,
+  reversalStartPoint: SegmentPoint | null,
+  bar: EmaSegmentBar,
+) => {
+  if (!reversalStartPoint) {
+    return false
+  }
+
+  if (direction === 'up') {
+    return bar.high >= reversalStartPoint.price
+  }
+
+  return bar.low <= reversalStartPoint.price
+}
+
 const createPotentialSegment = (
   direction: SegmentDirection,
   referencePoint: SegmentPoint,
+  reversalStartPoint: SegmentPoint | null,
   bars: EmaSegmentBar[],
   bar: EmaSegmentBar,
   minSegmentBars: number,
 ): EmaSegment | null => {
-  if (bar.index - referencePoint.index < minSegmentBars) {
+  const startBreakReversal = hasStartBreakReversal(direction, reversalStartPoint, bar)
+
+  if (!startBreakReversal && bar.index - referencePoint.index < minSegmentBars) {
     return null
   }
 
   if (direction === 'up') {
-    if (!isFiniteNumber(bar.ema) || bar.high <= bar.ema) {
+    if (!startBreakReversal && (!isFiniteNumber(bar.ema) || bar.high <= bar.ema)) {
       return null
     }
 
@@ -127,7 +146,7 @@ const createPotentialSegment = (
     return createSegment('up', referencePoint, candidateEnd)
   }
 
-  if (!isFiniteNumber(bar.ema) || bar.low >= bar.ema) {
+  if (!startBreakReversal && (!isFiniteNumber(bar.ema) || bar.low >= bar.ema)) {
     return null
   }
 
@@ -170,7 +189,7 @@ const processSeedState = (
       return
     }
 
-    const nextActiveSegment = createPotentialSegment('up', buildState.seedExtreme, bars, bar, minSegmentBars)
+    const nextActiveSegment = createPotentialSegment('up', buildState.seedExtreme, null, bars, bar, minSegmentBars)
     if (nextActiveSegment) {
       buildState.activeSegment = nextActiveSegment
       buildState.seedDirection = null
@@ -184,7 +203,7 @@ const processSeedState = (
     return
   }
 
-  const nextActiveSegment = createPotentialSegment('down', buildState.seedExtreme, bars, bar, minSegmentBars)
+  const nextActiveSegment = createPotentialSegment('down', buildState.seedExtreme, null, bars, bar, minSegmentBars)
   if (nextActiveSegment) {
     buildState.activeSegment = nextActiveSegment
     buildState.seedDirection = null
@@ -209,7 +228,7 @@ const processActiveSegment = (
       return
     }
 
-    const nextActiveSegment = createPotentialSegment('up', activeSegment.end, bars, bar, minSegmentBars)
+    const nextActiveSegment = createPotentialSegment('up', activeSegment.end, activeSegment.start, bars, bar, minSegmentBars)
     if (nextActiveSegment) {
       buildState.historicalSegments.push(cloneSegment(activeSegment))
       buildState.activeSegment = nextActiveSegment
@@ -222,7 +241,7 @@ const processActiveSegment = (
     return
   }
 
-  const nextActiveSegment = createPotentialSegment('down', activeSegment.end, bars, bar, minSegmentBars)
+  const nextActiveSegment = createPotentialSegment('down', activeSegment.end, activeSegment.start, bars, bar, minSegmentBars)
   if (nextActiveSegment) {
     buildState.historicalSegments.push(cloneSegment(activeSegment))
     buildState.activeSegment = nextActiveSegment
