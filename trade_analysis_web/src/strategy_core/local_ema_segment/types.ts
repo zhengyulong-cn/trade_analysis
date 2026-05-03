@@ -20,8 +20,9 @@ export type SegmentDirection = 'up' | 'down'
 export type EmaSegmentBar = {
   close: number
   ema: number
-  ema120: number
-  ema20: number
+  ema120?: number
+  ema20?: number
+  higherEma?: number
   high: number
   index: number
   low: number
