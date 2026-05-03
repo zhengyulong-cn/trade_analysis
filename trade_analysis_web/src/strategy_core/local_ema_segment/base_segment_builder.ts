@@ -113,10 +113,10 @@ const hasStartBreakReversal = (
   }
 
   if (direction === 'up') {
-    return bar.high >= reversalStartPoint.price
+    return bar.high > reversalStartPoint.price
   }
 
-  return bar.low <= reversalStartPoint.price
+  return bar.low < reversalStartPoint.price
 }
 
 const createPotentialBaseSegment = (
