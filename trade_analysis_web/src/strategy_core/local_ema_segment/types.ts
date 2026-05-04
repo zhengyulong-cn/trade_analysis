@@ -41,6 +41,28 @@ export type BaseSegment = {
   start: SegmentPoint
 }
 
+export type TradingRangeFeatureSegment = {
+  baseSegmentIndex: number
+  higherDirection: SegmentDirection
+  segment: BaseSegment
+}
+
+export type TradingRange = {
+  bottom: number
+  features: TradingRangeFeatureSegment[]
+  left: SegmentPoint
+  right: SegmentPoint
+  top: number
+}
+
+export type TradingRangeBuildState = {
+  activeTradingRange: TradingRange | null
+  historicalTradingRanges: TradingRange[]
+  lastFeatureSegment: TradingRangeFeatureSegment | null
+  pendingGraphicsRefresh: boolean
+  processedBaseSegmentCount: number
+}
+
 export type BaseSegmentBuildState = {
   activeBaseSegment: BaseSegment | null
   historicalBaseSegments: BaseSegment[]
