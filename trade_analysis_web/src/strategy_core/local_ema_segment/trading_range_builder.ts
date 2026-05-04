@@ -7,8 +7,9 @@ import type {
   TradingRangeFeatureSegment,
 } from './types'
 
-const INITIAL_OVERLAP_THRESHOLD = 0.6
+const INITIAL_OVERLAP_THRESHOLD = 0.4
 const EXTENSION_OVERLAP_THRESHOLD = 0.5
+const EXTENSION_FEATURE_RANGE_LIMIT_MULTIPLIER = 2
 
 const clonePoint = (point: SegmentPoint): SegmentPoint => ({
   index: point.index,
@@ -137,8 +138,18 @@ const canCreateTradingRange = (
     return false
   }
 
-  const middleRange = getSegmentRange(middleSegment)
-  if (middleRange <= 0) {
+  const structureHigh = Math.max(
+    getSegmentHigh(previousFeature.segment),
+    getSegmentHigh(middleSegment),
+    getSegmentHigh(currentFeature.segment),
+  )
+  const structureLow = Math.min(
+    getSegmentLow(previousFeature.segment),
+    getSegmentLow(middleSegment),
+    getSegmentLow(currentFeature.segment),
+  )
+  const structureRange = structureHigh - structureLow
+  if (structureRange <= 0) {
     return false
   }
 
@@ -149,12 +160,17 @@ const canCreateTradingRange = (
     getSegmentHigh(currentFeature.segment),
   )
 
-  return overlapRange / middleRange >= INITIAL_OVERLAP_THRESHOLD
+  return overlapRange / structureRange >= INITIAL_OVERLAP_THRESHOLD
 }
 
 const canExtendTradingRange = (range: TradingRange, feature: TradingRangeFeatureSegment) => {
   const rangeHeight = range.top - range.bottom
   if (rangeHeight <= 0 || feature.higherDirection !== range.features[range.features.length - 1]?.higherDirection) {
+    return false
+  }
+
+  const featureRange = getSegmentRange(feature.segment)
+  if (featureRange >= rangeHeight * EXTENSION_FEATURE_RANGE_LIMIT_MULTIPLIER) {
     return false
   }
 
