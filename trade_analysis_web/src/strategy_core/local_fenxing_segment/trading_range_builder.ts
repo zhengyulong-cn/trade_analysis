@@ -11,7 +11,7 @@ import type {
 /** 初次成区间时，对两段特征序列重叠程度的要求。 */
 const INITIAL_OVERLAP_THRESHOLD = 0.4
 /** 区间已存在后，新增特征序列继续并入的重叠要求。 */
-const EXTENSION_OVERLAP_THRESHOLD = 0.5
+const EXTENSION_OVERLAP_THRESHOLD = 0.4
 /** 单根特征序列太大时，不允许拿它继续扩展交易区间。 */
 const EXTENSION_FEATURE_RANGE_LIMIT_MULTIPLIER = 2
 

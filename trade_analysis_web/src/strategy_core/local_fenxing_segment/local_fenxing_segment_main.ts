@@ -24,6 +24,10 @@ import {
   truncateHigherLevelSegmentBuildState,
 } from './higher_level_segment_builder'
 import {
+  buildMomentumExhaustionSignals,
+  getMomentumExhaustionOutput,
+} from './momentum_exhaustion'
+import {
   advanceTradingRangeState,
   consumeTradingRangeGraphicsRefresh,
   createEmptyTradingRangeBuildState,
@@ -35,6 +39,7 @@ import type {
   FenxingBar,
   FenxingBuildState,
   HigherLevelSegmentBuildState,
+  MomentumExhaustionSignal,
   PineContextLike,
   PineJsLike,
   TradingRangeBuildState,
@@ -49,6 +54,8 @@ const SEGMENT_LINE_WIDTH = 2
 const BASE_SEGMENT_COLOR = '#000000'
 const HIGHER_LEVEL_SEGMENT_COLOR = '#FF00FF'
 const TRADING_RANGE_COLOR = '#FFCC00'
+const MOMENTUM_EXHAUSTION_UP_COLOR = '#00AA00'
+const MOMENTUM_EXHAUSTION_DOWN_COLOR = '#CC0000'
 const TRADING_RANGE_POLYGON_STYLE_ID = 'tradingRange'
 
 const getLocalFenxinSegmentIndicatorName = () => LOCAL_FENXIN_SEGMENT_INDICATOR_NAME
@@ -61,6 +68,7 @@ type LocalFenxingSegmentStudyState = {
   fenxingBuildState: FenxingBuildState
   higherLevelSegmentBuildState: HigherLevelSegmentBuildState
   lastSettingsKey: string | null
+  momentumExhaustionSignals: MomentumExhaustionSignal[]
   tradingRangeBuildState: TradingRangeBuildState
 }
 
@@ -72,6 +80,7 @@ const createStudyState = (): LocalFenxingSegmentStudyState => ({
   fenxingBuildState: createEmptyFenxingBuildState(),
   higherLevelSegmentBuildState: createEmptyHigherLevelSegmentBuildState(),
   lastSettingsKey: null,
+  momentumExhaustionSignals: [],
   tradingRangeBuildState: createEmptyTradingRangeBuildState(),
 })
 
@@ -98,12 +107,26 @@ const getCustomIndicators = (PineJS: PineJsLike) => Promise.resolve([
         { id: 'higherSegment', type: 'line' },
         { id: 'higherSegmentOffset', target: 'higherSegment', type: 'dataoffset' },
         { id: 'higherSegmentColor', palette: 'higherSegmentPalette', target: 'higherSegment', type: 'colorer' },
+        { id: 'momentumExhaustionUp', type: 'shapes' },
+        { id: 'momentumExhaustionUpOffset', target: 'momentumExhaustionUp', type: 'dataoffset' },
+        { id: 'momentumExhaustionDown', type: 'shapes' },
+        { id: 'momentumExhaustionDownOffset', target: 'momentumExhaustionDown', type: 'dataoffset' },
       ],
       styles: {
         higherSegment: {
           title: 'Higher Segment',
           histogramBase: 0,
           joinPoints: false,
+        },
+        momentumExhaustionDown: {
+          title: '空头衰竭',
+          text: '空衰',
+          size: 'small',
+        },
+        momentumExhaustionUp: {
+          title: '多头衰竭',
+          text: '多衰',
+          size: 'small',
         },
         segment: {
           title: 'Segment',
@@ -128,6 +151,22 @@ const getCustomIndicators = (PineJS: PineJsLike) => Promise.resolve([
             linewidth: SEGMENT_LINE_WIDTH,
             plottype: 0,
             trackPrice: false,
+            transparency: 0,
+            visible: true,
+          },
+          momentumExhaustionDown: {
+            color: MOMENTUM_EXHAUSTION_DOWN_COLOR,
+            location: 'Absolute',
+            plottype: 'shape_label_up',
+            textColor: '#FFFFFF',
+            transparency: 0,
+            visible: true,
+          },
+          momentumExhaustionUp: {
+            color: MOMENTUM_EXHAUSTION_UP_COLOR,
+            location: 'Absolute',
+            plottype: 'shape_label_down',
+            textColor: '#FFFFFF',
             transparency: 0,
             visible: true,
           },
@@ -268,6 +307,7 @@ const getCustomIndicators = (PineJS: PineJsLike) => Promise.resolve([
             this._state.fenxingBuildState = createEmptyFenxingBuildState()
             this._state.baseSegmentBuildState = createEmptyBaseSegmentBuildState()
             this._state.higherLevelSegmentBuildState = createEmptyHigherLevelSegmentBuildState()
+            this._state.momentumExhaustionSignals = []
             this._state.tradingRangeBuildState = createEmptyTradingRangeBuildState()
             this._state.emittedInitialDrawableSegmentStartKey = null
             this._state.emittedInitialHigherDrawableSegmentStartKey = null
@@ -340,6 +380,13 @@ const getCustomIndicators = (PineJS: PineJsLike) => Promise.resolve([
           )
         }
 
+        this._state.momentumExhaustionSignals = buildMomentumExhaustionSignals(
+          this._state.bars,
+          getAllBaseSegments(this._state.baseSegmentBuildState),
+          higherLevelSegments,
+          getAllTradingRanges(this._state.tradingRangeBuildState),
+        )
+
         const baseSegmentOutput = (() => {
           if (!latestBaseSegment) {
             return [Number.NaN, Number.NaN, Number.NaN]
@@ -388,9 +435,15 @@ const getCustomIndicators = (PineJS: PineJsLike) => Promise.resolve([
           ]
         })()
 
+        const momentumExhaustionOutput = getMomentumExhaustionOutput(
+          this._state.bars,
+          this._state.momentumExhaustionSignals,
+        )
+
         const seriesOutput = [
           ...baseSegmentOutput,
           ...higherLevelSegmentOutput,
+          ...momentumExhaustionOutput,
         ]
 
         const shouldEmitTradingRangeGraphics = context.symbol?.isLastBar && (

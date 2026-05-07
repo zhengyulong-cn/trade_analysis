@@ -147,3 +147,20 @@ export type TradingRangeBuildState = {
   pendingGraphicsRefresh: boolean
   processedBaseSegmentCount: number
 }
+
+/** 线段强度度量：价差越大、跨越 K 线越短，说明力度越强。 */
+export type BaseSegmentMetrics = {
+  barSpan: number
+  high: FenxingPoint
+  low: FenxingPoint
+  priceRange: number
+  strength: number
+}
+
+/** 动能衰竭信号，当前仅保存方向、落点以及参与比较的力度信息。 */
+export type MomentumExhaustionSignal = {
+  direction: SegmentDirection
+  point: FenxingPoint
+  previousStrength: number
+  currentStrength: number
+}
