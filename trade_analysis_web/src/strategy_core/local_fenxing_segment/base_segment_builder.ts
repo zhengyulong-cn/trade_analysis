@@ -8,8 +8,6 @@ import type {
   SegmentDirection,
 } from './types'
 
-const MIN_EXTREME_BAR_DISTANCE = 4
-
 export const createEmptyBaseSegmentBuildState = (): BaseSegmentBuildState => ({
   activeBaseSegment: null,
   historicalBaseSegments: [],
@@ -54,8 +52,12 @@ const isBottomBelowEma20 = (bars: FenxingBar[], signal: FenxingSignal) => {
   return signal.type === 'bottom' && isFiniteNumber(ema20) && signal.point.price < ema20
 }
 
-const hasEnoughExtremeBarDistance = (startSignal: FenxingSignal, endSignal: FenxingSignal) => {
-  return Math.abs(endSignal.point.index - startSignal.point.index) > MIN_EXTREME_BAR_DISTANCE
+const hasEnoughExtremeBarDistance = (
+  startSignal: FenxingSignal,
+  endSignal: FenxingSignal,
+  minExtremeBarDistance: number,
+) => {
+  return Math.abs(endSignal.point.index - startSignal.point.index) > minExtremeBarDistance
 }
 
 const canBypassExtremeBarDistanceForDownReversal = (activeSegment: BaseSegment, endSignal: FenxingSignal) => {
@@ -71,12 +73,13 @@ const isValidUpSegment = (
   signals: FenxingSignal[],
   startSignal: FenxingSignal,
   endSignal: FenxingSignal,
+  minExtremeBarDistance: number,
   allowDistanceBypass = false,
 ) => {
   if (
     !isBottomBelowEma20(bars, startSignal)
     || !isTopAboveEma20(bars, endSignal)
-    || (!allowDistanceBypass && !hasEnoughExtremeBarDistance(startSignal, endSignal))
+    || (!allowDistanceBypass && !hasEnoughExtremeBarDistance(startSignal, endSignal, minExtremeBarDistance))
   ) {
     return false
   }
@@ -104,12 +107,13 @@ const isValidDownSegment = (
   signals: FenxingSignal[],
   startSignal: FenxingSignal,
   endSignal: FenxingSignal,
+  minExtremeBarDistance: number,
   allowDistanceBypass = false,
 ) => {
   if (
     !isTopAboveEma20(bars, startSignal)
     || !isBottomBelowEma20(bars, endSignal)
-    || (!allowDistanceBypass && !hasEnoughExtremeBarDistance(startSignal, endSignal))
+    || (!allowDistanceBypass && !hasEnoughExtremeBarDistance(startSignal, endSignal, minExtremeBarDistance))
   ) {
     return false
   }
@@ -142,10 +146,11 @@ const processSeedState = (
   bars: FenxingBar[],
   signals: FenxingSignal[],
   signal: FenxingSignal,
+  minExtremeBarDistance: number,
 ) => {
   if (isBottomBelowEma20(bars, signal)) {
     const seedTop = buildState.seedTopFenxingSignal
-    if (seedTop && isValidDownSegment(bars, signals, seedTop, signal)) {
+    if (seedTop && isValidDownSegment(bars, signals, seedTop, signal, minExtremeBarDistance)) {
       buildState.activeBaseSegment = createBaseSegment('down', seedTop, signal)
       buildState.seedBottomFenxingSignal = null
       buildState.seedTopFenxingSignal = null
@@ -163,7 +168,7 @@ const processSeedState = (
   }
 
   const seedBottom = buildState.seedBottomFenxingSignal
-  if (seedBottom && isValidUpSegment(bars, signals, seedBottom, signal)) {
+  if (seedBottom && isValidUpSegment(bars, signals, seedBottom, signal, minExtremeBarDistance)) {
     buildState.activeBaseSegment = createBaseSegment('up', seedBottom, signal)
     buildState.seedBottomFenxingSignal = null
     buildState.seedTopFenxingSignal = null
@@ -180,6 +185,7 @@ const processActiveBaseSegment = (
   bars: FenxingBar[],
   signals: FenxingSignal[],
   signal: FenxingSignal,
+  minExtremeBarDistance: number,
 ) => {
   const activeSegment = buildState.activeBaseSegment
   if (!activeSegment) {
@@ -201,6 +207,7 @@ const processActiveBaseSegment = (
         signals,
         startSignal,
         signal,
+        minExtremeBarDistance,
         canBypassExtremeBarDistanceForDownReversal(activeSegment, signal),
       )
     ) {
@@ -223,6 +230,7 @@ const processActiveBaseSegment = (
       signals,
       startSignal,
       signal,
+      minExtremeBarDistance,
       canBypassExtremeBarDistanceForUpReversal(activeSegment, signal),
     )
   ) {
@@ -237,13 +245,14 @@ const processBaseSegmentFenxingSignal = (
   bars: FenxingBar[],
   signals: FenxingSignal[],
   signal: FenxingSignal,
+  minExtremeBarDistance: number,
 ) => {
   if (buildState.activeBaseSegment) {
-    processActiveBaseSegment(buildState, bars, signals, signal)
+    processActiveBaseSegment(buildState, bars, signals, signal, minExtremeBarDistance)
     return
   }
 
-  processSeedState(buildState, bars, signals, signal)
+  processSeedState(buildState, bars, signals, signal, minExtremeBarDistance)
 }
 
 export const advanceBaseSegmentStateByIndex = (
@@ -251,13 +260,14 @@ export const advanceBaseSegmentStateByIndex = (
   bars: FenxingBar[],
   signals: FenxingSignal[],
   signalIndex: number,
+  minExtremeBarDistance: number,
 ) => {
   const signal = signals[signalIndex]
   if (!signal) {
     return getAllBaseSegments(buildState)
   }
 
-  processBaseSegmentFenxingSignal(buildState, bars, signals, signal)
+  processBaseSegmentFenxingSignal(buildState, bars, signals, signal, minExtremeBarDistance)
   buildState.processedFenxingSignalCount = Math.max(buildState.processedFenxingSignalCount, signalIndex + 1)
   return getAllBaseSegments(buildState)
 }
@@ -266,18 +276,23 @@ export const advanceBaseSegmentState = (
   buildState: BaseSegmentBuildState,
   bars: FenxingBar[],
   signals: FenxingSignal[],
+  minExtremeBarDistance: number,
 ) => {
   for (let index = buildState.processedFenxingSignalCount; index < signals.length; index += 1) {
-    advanceBaseSegmentStateByIndex(buildState, bars, signals, index)
+    advanceBaseSegmentStateByIndex(buildState, bars, signals, index, minExtremeBarDistance)
   }
 
   buildState.processedFenxingSignalCount = signals.length
   return getAllBaseSegments(buildState)
 }
 
-export const rebuildBaseSegmentState = (bars: FenxingBar[], signals: FenxingSignal[]) => {
+export const rebuildBaseSegmentState = (
+  bars: FenxingBar[],
+  signals: FenxingSignal[],
+  minExtremeBarDistance: number,
+) => {
   const buildState = createEmptyBaseSegmentBuildState()
-  advanceBaseSegmentState(buildState, bars, signals)
+  advanceBaseSegmentState(buildState, bars, signals, minExtremeBarDistance)
   return buildState
 }
 
@@ -286,9 +301,10 @@ export const truncateBaseSegmentBuildState = (
   bars: FenxingBar[],
   signals: FenxingSignal[],
   signalIndex: number,
+  minExtremeBarDistance: number,
 ) => {
   const preservedSignals = signals.slice(0, signalIndex)
-  const rebuiltState = rebuildBaseSegmentState(bars, preservedSignals)
+  const rebuiltState = rebuildBaseSegmentState(bars, preservedSignals, minExtremeBarDistance)
   buildState.activeBaseSegment = rebuiltState.activeBaseSegment
   buildState.historicalBaseSegments = rebuiltState.historicalBaseSegments
   buildState.processedFenxingSignalCount = rebuiltState.processedFenxingSignalCount

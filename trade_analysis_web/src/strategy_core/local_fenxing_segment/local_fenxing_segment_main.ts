@@ -17,8 +17,12 @@ import {
 import type { BaseSegmentBuildState, FenxingBar, FenxingBuildState } from './types'
 import type { PineContextLike, PineJsLike } from './types'
 
-const LOCAL_FENXIN_SEGMENT_INDICATOR_NAME = 'Local Fenxing Segment'
+const LOCAL_FENXIN_SEGMENT_INDICATOR_NAME = '分型线段'
 const DEFAULT_EMA_LENGTH = 20
+// 默认分型包含运算最多K线数量
+const DEFAULT_MAX_INCLUDED_RAW_BAR_COUNT = 4
+// 默认线段最短K线距离
+const DEFAULT_MIN_BAR_DISTANCE = 4
 const SEGMENT_LINE_WIDTH = 2
 
 const getLocalFenxinSegmentIndicatorName = () => LOCAL_FENXIN_SEGMENT_INDICATOR_NAME
@@ -28,6 +32,7 @@ type LocalFenxingSegmentStudyState = {
   fenxingBuildState: FenxingBuildState
   baseSegmentBuildState: BaseSegmentBuildState
   emittedInitialDrawableSegmentStartKey: string | null
+  lastSettingsKey: string | null
 }
 
 const createStudyState = (): LocalFenxingSegmentStudyState => ({
@@ -35,6 +40,7 @@ const createStudyState = (): LocalFenxingSegmentStudyState => ({
   baseSegmentBuildState: createEmptyBaseSegmentBuildState(),
   fenxingBuildState: createEmptyFenxingBuildState(),
   emittedInitialDrawableSegmentStartKey: null,
+  lastSettingsKey: null,
 })
 
 const getCustomIndicators = (PineJS: PineJsLike) => Promise.resolve([
@@ -68,7 +74,7 @@ const getCustomIndicators = (PineJS: PineJsLike) => Promise.resolve([
       defaults: {
         styles: {
           segment: {
-            color: '#F23645',
+            color: '#000000',
             linestyle: 0,
             linewidth: SEGMENT_LINE_WIDTH,
             plottype: 0,
@@ -81,17 +87,21 @@ const getCustomIndicators = (PineJS: PineJsLike) => Promise.resolve([
           segmentPalette: {
             colors: {
               0: {
-                color: '#F23645',
+                color: '#000000',
                 style: 0,
                 width: SEGMENT_LINE_WIDTH,
               },
               1: {
-                color: '#089981',
+                color: '#000000',
                 style: 0,
                 width: SEGMENT_LINE_WIDTH,
               },
             },
           },
+        },
+        inputs: {
+          maxIncludedRawBarCount: DEFAULT_MAX_INCLUDED_RAW_BAR_COUNT,
+          minBarDistance: DEFAULT_MIN_BAR_DISTANCE,
         },
       },
       palettes: {
@@ -106,6 +116,24 @@ const getCustomIndicators = (PineJS: PineJsLike) => Promise.resolve([
           },
         },
       },
+      inputs: [
+        {
+          id: 'maxIncludedRawBarCount',
+          name: '分型包含运算最多K线数量',
+          defval: DEFAULT_MAX_INCLUDED_RAW_BAR_COUNT,
+          type: 'integer',
+          min: 1,
+          max: 50,
+        },
+        {
+          id: 'minBarDistance',
+          name: '线段最短K线距离',
+          defval: DEFAULT_MIN_BAR_DISTANCE,
+          type: 'integer',
+          min: 1,
+          max: 100,
+        },
+      ],
     },
     constructor: function (this: {
       _state?: LocalFenxingSegmentStudyState
@@ -116,11 +144,15 @@ const getCustomIndicators = (PineJS: PineJsLike) => Promise.resolve([
         this._state = createStudyState()
       }
 
-      this.main = function (context) {
+      this.main = function (context, input) {
         if (!this._state) {
           this._state = createStudyState()
         }
 
+        const maxIncludedRawBarCount = Math.max(1, Number(input(0)) || DEFAULT_MAX_INCLUDED_RAW_BAR_COUNT)
+        const minBarDistance = Math.max(1, Number(input(1)) || DEFAULT_MIN_BAR_DISTANCE)
+
+        const settingsKey = `${maxIncludedRawBarCount}:${minBarDistance}`
         const close = PineJS.Std.close(context)
         const closeSeries = context.new_var(close)
         const ema20 = PineJS.Std.ema(closeSeries, DEFAULT_EMA_LENGTH, context)
@@ -128,6 +160,7 @@ const getCustomIndicators = (PineJS: PineJsLike) => Promise.resolve([
         const low = PineJS.Std.low(context)
         const open = PineJS.Std.open(context)
         const time = PineJS.Std.time(context)
+        const shouldRebuildStates = this._state.lastSettingsKey !== null && this._state.lastSettingsKey !== settingsKey
 
         if ([close, ema20, high, low, open, time].every(isFiniteNumber)) {
           const upsertResult = upsertFenxingBar(this._state.bars, {
@@ -139,7 +172,11 @@ const getCustomIndicators = (PineJS: PineJsLike) => Promise.resolve([
             time,
           })
 
-          if (upsertResult.type !== 'append') {
+          if (shouldRebuildStates) {
+            this._state.fenxingBuildState = createEmptyFenxingBuildState()
+            this._state.baseSegmentBuildState = createEmptyBaseSegmentBuildState()
+            this._state.emittedInitialDrawableSegmentStartKey = null
+          } else if (upsertResult.type !== 'append') {
             const nextFenxingSignalIndex = truncateFenxingBuildState(this._state.fenxingBuildState, upsertResult.index)
             this._state.emittedInitialDrawableSegmentStartKey = null
             truncateBaseSegmentBuildState(
@@ -147,16 +184,21 @@ const getCustomIndicators = (PineJS: PineJsLike) => Promise.resolve([
               this._state.bars,
               getAllFenxingSignals(this._state.fenxingBuildState),
               nextFenxingSignalIndex,
+              minBarDistance,
             )
           }
 
-          advanceFenxingState(this._state.fenxingBuildState, this._state.bars)
+          advanceFenxingState(this._state.fenxingBuildState, this._state.bars, maxIncludedRawBarCount)
           advanceBaseSegmentState(
             this._state.baseSegmentBuildState,
             this._state.bars,
             getAllFenxingSignals(this._state.fenxingBuildState),
+            minBarDistance,
           )
         }
+
+        this._state.lastSettingsKey = settingsKey
+
         const latestBaseSegment = getLatestDrawableBaseSegment(this._state.baseSegmentBuildState)
         const baseSegmentOutput = (() => {
           if (!latestBaseSegment) {
@@ -181,10 +223,6 @@ const getCustomIndicators = (PineJS: PineJsLike) => Promise.resolve([
             baseSegmentColor,
           ]
         })()
-
-        console.log("🚀🚀🚀🚀🚀🚀🚀🚀🚀🚀🚀🚀🚀🚀🚀🚀🚀🚀")
-        console.log(this._state.fenxingBuildState.confirmedFenxingSignals)
-        console.log(this._state.baseSegmentBuildState.historicalBaseSegments)
 
         return baseSegmentOutput
       }

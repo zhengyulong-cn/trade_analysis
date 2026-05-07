@@ -6,8 +6,6 @@ import type {
   UpsertFenxingBarResult,
 } from './types'
 
-const MAX_INCLUDED_RAW_BAR_COUNT = 4
-
 export const isFiniteNumber = (value: unknown): value is number => {
   return typeof value === 'number' && Number.isFinite(value)
 }
@@ -96,8 +94,12 @@ const hasInclusion = (first: MergedFenxingBar, second: MergedFenxingBar) => {
   )
 }
 
-const canMergeWithinIncludedBarLimit = (first: MergedFenxingBar, second: MergedFenxingBar) => {
-  return second.sourceEndIndex - first.sourceStartIndex + 1 <= MAX_INCLUDED_RAW_BAR_COUNT
+const canMergeWithinIncludedBarLimit = (
+  first: MergedFenxingBar,
+  second: MergedFenxingBar,
+  maxIncludedRawBarCount: number,
+) => {
+  return second.sourceEndIndex - first.sourceStartIndex + 1 <= maxIncludedRawBarCount
 }
 
 const mergeIncludedBars = (first: MergedFenxingBar, second: MergedFenxingBar): MergedFenxingBar => {
@@ -208,7 +210,11 @@ const appendConfirmedSignal = (buildState: FenxingBuildState) => {
   return signal
 }
 
-const processFenxingBar = (buildState: FenxingBuildState, bar: FenxingBar) => {
+const processFenxingBar = (
+  buildState: FenxingBuildState,
+  bar: FenxingBar,
+  maxIncludedRawBarCount: number,
+) => {
   const nextMergedBar = createMergedBar(bar)
   const previousMergedBar = buildState.mergedBars[buildState.mergedBars.length - 1]
 
@@ -219,7 +225,7 @@ const processFenxingBar = (buildState: FenxingBuildState, bar: FenxingBar) => {
 
   if (
     hasInclusion(previousMergedBar, nextMergedBar)
-    && canMergeWithinIncludedBarLimit(previousMergedBar, nextMergedBar)
+    && canMergeWithinIncludedBarLimit(previousMergedBar, nextMergedBar, maxIncludedRawBarCount)
   ) {
     buildState.mergedBars[buildState.mergedBars.length - 1] = mergeIncludedBars(previousMergedBar, nextMergedBar)
     return null
@@ -253,31 +259,36 @@ export const advanceFenxingStateByIndex = (
   buildState: FenxingBuildState,
   bars: FenxingBar[],
   barIndex: number,
+  maxIncludedRawBarCount: number,
 ) => {
   const bar = bars[barIndex]
   if (!bar) {
     return null
   }
 
-  const signal = processFenxingBar(buildState, bar)
+  const signal = processFenxingBar(buildState, bar, maxIncludedRawBarCount)
   buildState.processedBarCount = Math.max(buildState.processedBarCount, barIndex + 1)
   return signal
 }
 
-export const advanceFenxingState = (buildState: FenxingBuildState, bars: FenxingBar[]) => {
+export const advanceFenxingState = (
+  buildState: FenxingBuildState,
+  bars: FenxingBar[],
+  maxIncludedRawBarCount: number,
+) => {
   let latestSignal: FenxingSignal | null = null
 
   for (let index = buildState.processedBarCount; index < bars.length; index += 1) {
-    latestSignal = advanceFenxingStateByIndex(buildState, bars, index) ?? latestSignal
+    latestSignal = advanceFenxingStateByIndex(buildState, bars, index, maxIncludedRawBarCount) ?? latestSignal
   }
 
   buildState.processedBarCount = bars.length
   return latestSignal
 }
 
-export const rebuildFenxingState = (bars: FenxingBar[]) => {
+export const rebuildFenxingState = (bars: FenxingBar[], maxIncludedRawBarCount: number) => {
   const buildState = createEmptyFenxingBuildState()
-  advanceFenxingState(buildState, bars)
+  advanceFenxingState(buildState, bars, maxIncludedRawBarCount)
   return buildState
 }
 
