@@ -2,6 +2,7 @@ import type { TradingViewWidget } from '@/components/charts/tradingViewTypes'
 import { localAtrStrategy } from '@/strategy_core/local_atr'
 import { localBollStrategy } from '@/strategy_core/local_boll'
 import { localEmaSegmentStrategy } from '@/strategy_core/local_ema_segment'
+import { localFenxinSegmentStrategy } from '@/strategy_core/local_fenxing_segment'
 
 const LOCAL_BOLL_STUDY_LENGTH = 20
 const LOCAL_BOLL_STUDY_STD_DEV = 2
@@ -16,6 +17,9 @@ export const addDefaultCustomStudies = (currentWidget: TradingViewWidget) => {
   const hasLocalAtr = existingStudies.some((study) => study.name === localAtrStrategy.getLocalAtrIndicatorName())
   const hasLocalEmaSegment = existingStudies.some(
     (study) => study.name === localEmaSegmentStrategy.getLocalEmaSegmentIndicatorName(),
+  )
+  const hasLocalFenxinSegment = existingStudies.some(
+    (study) => study.name === localFenxinSegmentStrategy.getLocalFenxinSegmentIndicatorName(),
   )
 
   const createStudy = activeChart.createStudy
@@ -61,6 +65,15 @@ export const addDefaultCustomStudies = (currentWidget: TradingViewWidget) => {
         },
       )
     }
+
+    if (!hasLocalFenxinSegment) {
+      void createStudy.call(
+        activeChart,
+        localFenxinSegmentStrategy.getLocalFenxinSegmentIndicatorName(),
+        true,
+        false,
+      )
+    }
   } catch (error) {
     console.warn('Failed to create local custom studies', error)
   }
@@ -71,6 +84,7 @@ export const getCustomIndicators = async (PineJS: unknown) => {
     localBollStrategy.getCustomIndicators(PineJS as Parameters<typeof localBollStrategy.getCustomIndicators>[0]),
     localAtrStrategy.getCustomIndicators(PineJS as Parameters<typeof localAtrStrategy.getCustomIndicators>[0]),
     localEmaSegmentStrategy.getCustomIndicators(PineJS as Parameters<typeof localEmaSegmentStrategy.getCustomIndicators>[0]),
+    localFenxinSegmentStrategy.getCustomIndicators(PineJS as Parameters<typeof localFenxinSegmentStrategy.getCustomIndicators>[0]),
   ])
 
   return indicatorGroups.flat()
@@ -83,5 +97,6 @@ export const getWhitelistedStudyTools = () => {
     { name: localBollStrategy.getLocalBollIndicatorName() },
     { name: localAtrStrategy.getLocalAtrIndicatorName() },
     { name: localEmaSegmentStrategy.getLocalEmaSegmentIndicatorName() },
+    { name: localFenxinSegmentStrategy.getLocalFenxinSegmentIndicatorName() },
   ]
 }
