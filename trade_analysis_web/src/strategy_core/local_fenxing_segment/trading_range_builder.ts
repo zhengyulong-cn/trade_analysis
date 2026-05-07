@@ -1,5 +1,6 @@
 import type {
   BaseSegment,
+  FenxingBar,
   HigherLevelSegment,
   SegmentDirection,
   TradingRange,
@@ -7,8 +8,11 @@ import type {
   TradingRangeFeatureSegment,
 } from './types'
 
+/** 初次成区间时，对两段特征序列重叠程度的要求。 */
 const INITIAL_OVERLAP_THRESHOLD = 0.4
+/** 区间已存在后，新增特征序列继续并入的重叠要求。 */
 const EXTENSION_OVERLAP_THRESHOLD = 0.5
+/** 单根特征序列太大时，不允许拿它继续扩展交易区间。 */
 const EXTENSION_FEATURE_RANGE_LIMIT_MULTIPLIER = 2
 
 const clonePoint = <T extends { index: number; price: number; time: number }>(point: T): T => ({
@@ -37,6 +41,7 @@ const cloneTradingRange = (range: TradingRange): TradingRange => ({
   top: range.top,
 })
 
+/** 交易区间状态机构造函数。 */
 export const createEmptyTradingRangeBuildState = (): TradingRangeBuildState => ({
   activeTradingRange: null,
   historicalTradingRanges: [],
@@ -45,6 +50,7 @@ export const createEmptyTradingRangeBuildState = (): TradingRangeBuildState => (
   processedBaseSegmentCount: 0,
 })
 
+/** 交易区间只关心与大级别方向相反的本级别线段。 */
 const getOppositeDirection = (direction: SegmentDirection): SegmentDirection => (
   direction === 'up' ? 'down' : 'up'
 )
@@ -66,6 +72,7 @@ const getOverlapRange = (
   secondHigh: number,
 ) => Math.max(0, Math.min(firstHigh, secondHigh) - Math.max(firstLow, secondLow))
 
+/** 交易区间上下边界取特征序列高低值的“次高 / 次低”，避免被单一极值拉坏。 */
 const getSecondValue = (values: number[], direction: 'asc' | 'desc') => {
   const sortedValues = [...values].sort((first, second) => (
     direction === 'asc' ? first - second : second - first
@@ -74,8 +81,14 @@ const getSecondValue = (values: number[], direction: 'asc' | 'desc') => {
   return sortedValues[Math.min(1, sortedValues.length - 1)]
 }
 
+/**
+ * 由特征序列反推出矩形区间。
+ * 首次成区间时，左边界还会按原始 K 线向左回溯扩展，
+ * 直到左侧 K 线不再与区间价格带发生交集。
+ */
 export const calculateTradingRangeFromFeatures = (
   features: TradingRangeFeatureSegment[],
+  bars?: FenxingBar[],
 ): TradingRange | null => {
   if (features.length === 0) {
     return null
@@ -92,15 +105,47 @@ export const calculateTradingRangeFromFeatures = (
     return null
   }
 
+  const leftPoint = (() => {
+    if (!bars) {
+      return clonePoint(firstFeature.segment.start)
+    }
+
+    let leftBar = bars[firstFeature.segment.start.index]
+    if (!leftBar) {
+      return clonePoint(firstFeature.segment.start)
+    }
+
+    for (let index = firstFeature.segment.start.index - 1; index >= 0; index -= 1) {
+      const bar = bars[index]
+      if (!bar) {
+        break
+      }
+
+      const isInsideTradingRange = bar.high >= bottom && bar.low <= top
+      if (!isInsideTradingRange) {
+        break
+      }
+
+      leftBar = bar
+    }
+
+    return {
+      index: leftBar.index,
+      price: firstFeature.segment.start.price,
+      time: leftBar.time,
+    }
+  })()
+
   return {
     bottom,
     features: features.map(cloneFeatureSegment),
-    left: clonePoint(firstFeature.segment.start),
+    left: leftPoint,
     right: clonePoint(lastFeature.segment.end),
     top,
   }
 }
 
+/** 给本级别线段匹配一个所属的大级别方向。 */
 const findHigherDirectionForBaseSegment = (
   baseSegment: BaseSegment,
   higherSegments: HigherLevelSegment[],
@@ -126,6 +171,7 @@ const findHigherDirectionForBaseSegment = (
   return latestStartedHigherSegment?.direction ?? higherSegments[higherSegments.length - 1]?.direction ?? null
 }
 
+/** 三段结构是否足以首次确认一个交易区间。 */
 const canCreateTradingRange = (
   previousFeature: TradingRangeFeatureSegment,
   middleSegment: BaseSegment | undefined,
@@ -168,6 +214,7 @@ const canCreateTradingRange = (
   return overlapRange / structureRange >= INITIAL_OVERLAP_THRESHOLD
 }
 
+/** 已有交易区间后，新特征序列是否还能继续扩展这个区间。 */
 const canExtendTradingRange = (range: TradingRange, feature: TradingRangeFeatureSegment) => {
   const rangeHeight = range.top - range.bottom
   if (rangeHeight <= 0 || feature.higherDirection !== range.features[range.features.length - 1]?.higherDirection) {
@@ -189,6 +236,7 @@ const canExtendTradingRange = (range: TradingRange, feature: TradingRangeFeature
   return overlapRange / rangeHeight >= EXTENSION_OVERLAP_THRESHOLD
 }
 
+/** 活动区间失效后转入历史，同时通知主入口刷新矩形图形。 */
 const finalizeActiveTradingRange = (buildState: TradingRangeBuildState) => {
   if (!buildState.activeTradingRange) {
     return
@@ -199,8 +247,13 @@ const finalizeActiveTradingRange = (buildState: TradingRangeBuildState) => {
   buildState.pendingGraphicsRefresh = true
 }
 
+/**
+ * 只处理“符合大级别反向条件”的本级别线段。
+ * 它们要么作为新区间的特征序列起点，要么继续扩展已有区间。
+ */
 const processConfirmedBaseSegment = (
   buildState: TradingRangeBuildState,
+  bars: FenxingBar[],
   baseSegments: BaseSegment[],
   higherSegments: HigherLevelSegment[],
   baseSegmentIndex: number,
@@ -227,7 +280,7 @@ const processConfirmedBaseSegment = (
     const extendedRange = calculateTradingRangeFromFeatures([
       ...buildState.activeTradingRange.features,
       feature,
-    ])
+    ], bars)
 
     if (extendedRange) {
       buildState.activeTradingRange = extendedRange
@@ -245,7 +298,7 @@ const processConfirmedBaseSegment = (
     && previousFeature.baseSegmentIndex + 2 === feature.baseSegmentIndex
     && canCreateTradingRange(previousFeature, baseSegments[previousFeature.baseSegmentIndex + 1], feature)
   ) {
-    const nextTradingRange = calculateTradingRangeFromFeatures([previousFeature, feature])
+    const nextTradingRange = calculateTradingRangeFromFeatures([previousFeature, feature], bars)
     if (nextTradingRange) {
       buildState.activeTradingRange = nextTradingRange
       buildState.pendingGraphicsRefresh = true
@@ -255,28 +308,33 @@ const processConfirmedBaseSegment = (
   buildState.lastFeatureSegment = feature
 }
 
+/** 整体重建交易区间状态。 */
 export const rebuildTradingRangeState = (
+  bars: FenxingBar[],
   baseSegments: BaseSegment[],
   higherSegments: HigherLevelSegment[],
 ) => {
   const buildState = createEmptyTradingRangeBuildState()
-  advanceTradingRangeState(buildState, baseSegments, higherSegments)
+  advanceTradingRangeState(buildState, bars, baseSegments, higherSegments)
   return buildState
 }
 
+/** 从 processedBaseSegmentCount 继续增量推进交易区间。 */
 export const advanceTradingRangeState = (
   buildState: TradingRangeBuildState,
+  bars: FenxingBar[],
   baseSegments: BaseSegment[],
   higherSegments: HigherLevelSegment[],
 ) => {
   for (let index = buildState.processedBaseSegmentCount; index < baseSegments.length; index += 1) {
-    processConfirmedBaseSegment(buildState, baseSegments, higherSegments, index)
+    processConfirmedBaseSegment(buildState, bars, baseSegments, higherSegments, index)
   }
 
   buildState.processedBaseSegmentCount = baseSegments.length
   return buildState.activeTradingRange
 }
 
+/** 对外返回可绘制的全部区间。 */
 export const getAllTradingRanges = (buildState: TradingRangeBuildState) => {
   if (!buildState.activeTradingRange) {
     return buildState.historicalTradingRanges.map(cloneTradingRange)
@@ -288,6 +346,7 @@ export const getAllTradingRanges = (buildState: TradingRangeBuildState) => {
   ]
 }
 
+/** 图形层按需刷新，避免每根 K 线都重发矩形。 */
 export const consumeTradingRangeGraphicsRefresh = (buildState: TradingRangeBuildState) => {
   const shouldRefresh = buildState.pendingGraphicsRefresh
   buildState.pendingGraphicsRefresh = false

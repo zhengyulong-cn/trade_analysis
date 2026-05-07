@@ -48,6 +48,7 @@ const DEFAULT_MIN_BAR_DISTANCE = 4
 const SEGMENT_LINE_WIDTH = 2
 const BASE_SEGMENT_COLOR = '#000000'
 const HIGHER_LEVEL_SEGMENT_COLOR = '#FF00FF'
+const TRADING_RANGE_COLOR = '#FFCC00'
 const TRADING_RANGE_POLYGON_STYLE_ID = 'tradingRange'
 
 const getLocalFenxinSegmentIndicatorName = () => LOCAL_FENXIN_SEGMENT_INDICATOR_NAME
@@ -143,7 +144,7 @@ const getCustomIndicators = (PineJS: PineJsLike) => Promise.resolve([
         graphics: {
           polygons: {
             [TRADING_RANGE_POLYGON_STYLE_ID]: {
-              color: '#00ffff',
+              color: TRADING_RANGE_COLOR,
               transparency: 85,
             },
           },
@@ -325,9 +326,18 @@ const getCustomIndicators = (PineJS: PineJsLike) => Promise.resolve([
           shouldRebuildTradingRanges
           || this._state.tradingRangeBuildState.processedBaseSegmentCount > confirmedBaseSegments.length
         ) {
-          this._state.tradingRangeBuildState = rebuildTradingRangeState(confirmedBaseSegments, higherLevelSegments)
+          this._state.tradingRangeBuildState = rebuildTradingRangeState(
+            this._state.bars,
+            confirmedBaseSegments,
+            higherLevelSegments,
+          )
         } else if (this._state.tradingRangeBuildState.processedBaseSegmentCount < confirmedBaseSegments.length) {
-          advanceTradingRangeState(this._state.tradingRangeBuildState, confirmedBaseSegments, higherLevelSegments)
+          advanceTradingRangeState(
+            this._state.tradingRangeBuildState,
+            this._state.bars,
+            confirmedBaseSegments,
+            higherLevelSegments,
+          )
         }
 
         const baseSegmentOutput = (() => {

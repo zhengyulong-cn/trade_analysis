@@ -6,16 +6,22 @@ import type {
   UpsertFenxingBarResult,
 } from './types'
 
+/** 基础数值守卫，主入口会用它过滤 TradingView 计算早期的 NaN。 */
 export const isFiniteNumber = (value: unknown): value is number => {
   return typeof value === 'number' && Number.isFinite(value)
 }
 
+/** 创建空的分型构建状态。 */
 export const createEmptyFenxingBuildState = (): FenxingBuildState => ({
   confirmedFenxingSignals: [],
   mergedBars: [],
   processedBarCount: 0,
 })
 
+/**
+ * 增量写入原始 K 线。
+ * 支持追加、替换最后一根、替换历史同时间 K 线，以及插入历史 K 线。
+ */
 export const upsertFenxingBar = (
   bars: FenxingBar[],
   bar: Omit<FenxingBar, 'index'>,
@@ -71,6 +77,7 @@ export const upsertFenxingBar = (
   }
 }
 
+/** 原始 K 线先转换成“可参与包含处理”的初始合成 K 线。 */
 const createMergedBar = (bar: FenxingBar): MergedFenxingBar => ({
   firstBarCloseBelowEma20: bar.close < bar.ema20,
   high: bar.high,
@@ -87,6 +94,7 @@ const createMergedBar = (bar: FenxingBar): MergedFenxingBar => ({
   time: bar.time,
 })
 
+/** 相邻两根处理后 K 线是否存在包含关系。 */
 const hasInclusion = (first: MergedFenxingBar, second: MergedFenxingBar) => {
   return (
     (first.high >= second.high && first.low <= second.low)
@@ -94,6 +102,7 @@ const hasInclusion = (first: MergedFenxingBar, second: MergedFenxingBar) => {
   )
 }
 
+/** 递归包含最多只允许覆盖限定数量的原始 K 线。 */
 const canMergeWithinIncludedBarLimit = (
   first: MergedFenxingBar,
   second: MergedFenxingBar,
@@ -102,6 +111,11 @@ const canMergeWithinIncludedBarLimit = (
   return second.sourceEndIndex - first.sourceStartIndex + 1 <= maxIncludedRawBarCount
 }
 
+/**
+ * 包含合成规则：
+ * 方向由参与合成序列第一根原始 K 线是否在 EMA20 下方决定，
+ * 之后整段递归合成都沿用这套 high/low 规则。
+ */
 const mergeIncludedBars = (first: MergedFenxingBar, second: MergedFenxingBar): MergedFenxingBar => {
   const mergedHigh = first.firstBarCloseBelowEma20
     ? Math.min(first.high, second.high)
@@ -129,12 +143,14 @@ const mergeIncludedBars = (first: MergedFenxingBar, second: MergedFenxingBar): M
   }
 }
 
+/** 截断历史后，需要重排处理后 K 线索引，保证三根结构判断仍连续。 */
 const normalizeMergedBarIndexes = (bars: MergedFenxingBar[]) => {
   bars.forEach((bar, index) => {
     bar.index = index
   })
 }
 
+/** 在三根处理后 K 线上判断中间一根是否构成顶/底分型。 */
 const buildFenxingSignal = (
   left: MergedFenxingBar,
   middle: MergedFenxingBar,
@@ -187,6 +203,7 @@ const buildFenxingSignal = (
   return null
 }
 
+/** 每新增一根独立处理后 K 线，只需要检查倒数第二根是否成为新的分型中心。 */
 const appendConfirmedSignal = (buildState: FenxingBuildState) => {
   const centerIndex = buildState.mergedBars.length - 2
   if (centerIndex < 1) {
@@ -210,6 +227,7 @@ const appendConfirmedSignal = (buildState: FenxingBuildState) => {
   return signal
 }
 
+/** 推进单根原始 K 线：先做包含处理，再在必要时确认新分型。 */
 const processFenxingBar = (
   buildState: FenxingBuildState,
   bar: FenxingBar,
@@ -238,6 +256,10 @@ const processFenxingBar = (
   return appendConfirmedSignal(buildState)
 }
 
+/**
+ * 当历史 K 线被替换/插入时，从受影响原始 K 线开始截断分型状态。
+ * 返回值是后续线段重建时需要保留到的分型信号数量。
+ */
 export const truncateFenxingBuildState = (buildState: FenxingBuildState, rawBarIndex: number) => {
   const keepMergedBars = buildState.mergedBars.filter((bar) => bar.sourceEndIndex < rawBarIndex)
   normalizeMergedBarIndexes(keepMergedBars)
@@ -255,6 +277,7 @@ export const truncateFenxingBuildState = (buildState: FenxingBuildState, rawBarI
   return buildState.confirmedFenxingSignals.length
 }
 
+/** 按原始 K 线索引推进一次分型状态。 */
 export const advanceFenxingStateByIndex = (
   buildState: FenxingBuildState,
   bars: FenxingBar[],
@@ -271,6 +294,7 @@ export const advanceFenxingStateByIndex = (
   return signal
 }
 
+/** 从 processedBarCount 继续向后做增量分型构建。 */
 export const advanceFenxingState = (
   buildState: FenxingBuildState,
   bars: FenxingBar[],
@@ -286,16 +310,19 @@ export const advanceFenxingState = (
   return latestSignal
 }
 
+/** 完整重建分型状态，主要用于历史数据变动后的回放。 */
 export const rebuildFenxingState = (bars: FenxingBar[], maxIncludedRawBarCount: number) => {
   const buildState = createEmptyFenxingBuildState()
   advanceFenxingState(buildState, bars, maxIncludedRawBarCount)
   return buildState
 }
 
+/** 对外暴露拷贝，避免外部误改内部状态对象。 */
 export const getAllMergedFenxingBars = (buildState: FenxingBuildState) => {
   return buildState.mergedBars.map((bar) => ({ ...bar }))
 }
 
+/** 对外暴露已确认分型信号拷贝。 */
 export const getAllFenxingSignals = (buildState: FenxingBuildState) => {
   return buildState.confirmedFenxingSignals.map((signal) => ({
     ...signal,
@@ -303,6 +330,7 @@ export const getAllFenxingSignals = (buildState: FenxingBuildState) => {
   }))
 }
 
+/** TradingView dataoffset 需要的是“相对当前最后一根 K 线的偏移”。 */
 export const getOffsetFromCurrentBar = (bars: FenxingBar[], point: { index: number }) => {
   const lastBar = bars[bars.length - 1]
   if (!lastBar) {
