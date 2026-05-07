@@ -119,13 +119,25 @@ export const useKLineReplay = ({
 
   const teardownReplayHeaderButtons = (targetWidget?: TradingViewWidget | null) => {
     const currentWidget = targetWidget ?? getWidget()
-    if (currentWidget?.removeButton && replayToggleButton.value) {
-      currentWidget.removeButton(replayToggleButton.value)
-    } else if (replayToggleButton.value instanceof HTMLElement) {
-      replayToggleButton.value.remove()
+    const replayButton = replayToggleButton.value
+    replayToggleButton.value = null
+
+    if (!replayButton) {
+      return
     }
 
-    replayToggleButton.value = null
+    try {
+      if (currentWidget?.removeButton) {
+        currentWidget.removeButton(replayButton)
+        return
+      }
+    } catch {
+      // TradingView clears its header before widget.remove() finishes during route changes.
+    }
+
+    if (replayButton instanceof HTMLElement) {
+      replayButton.remove()
+    }
   }
 
   const setupReplayHeaderButtons = async (currentWidget: TradingViewWidget, token: number) => {
@@ -133,7 +145,11 @@ export const useKLineReplay = ({
       return
     }
 
-    await currentWidget.headerReady()
+    try {
+      await currentWidget.headerReady()
+    } catch {
+      return
+    }
 
     if (token !== getCreateWidgetToken() || getWidget() !== currentWidget) {
       return
@@ -141,13 +157,17 @@ export const useKLineReplay = ({
 
     teardownReplayHeaderButtons(currentWidget)
 
-    replayToggleButton.value = currentWidget.createButton({
-      align: 'left',
-      useTradingViewStyle: true,
-      text: isReplayMode.value ? '复盘中' : '复盘',
-      title: '复盘功能',
-      onClick: toggleReplayPanel,
-    })
+    try {
+      replayToggleButton.value = currentWidget.createButton({
+        align: 'left',
+        useTradingViewStyle: true,
+        text: isReplayMode.value ? '复盘中' : '复盘',
+        title: '复盘功能',
+        onClick: toggleReplayPanel,
+      })
+    } catch {
+      // Ignore header disposal races while the chart is being rebuilt or unmounted.
+    }
   }
 
   const enterReplayMode = () => {
