@@ -18,10 +18,18 @@ import {
 import {
   advanceHigherLevelSegmentState,
   createEmptyHigherLevelSegmentBuildState,
+  getAllHigherLevelSegments,
   getHigherLevelSegmentKey,
   getLatestDrawableHigherLevelSegment,
   truncateHigherLevelSegmentBuildState,
 } from './higher_level_segment_builder'
+import {
+  advanceTradingRangeState,
+  consumeTradingRangeGraphicsRefresh,
+  createEmptyTradingRangeBuildState,
+  getAllTradingRanges,
+  rebuildTradingRangeState,
+} from './trading_range_builder'
 import type {
   BaseSegmentBuildState,
   FenxingBar,
@@ -29,6 +37,7 @@ import type {
   HigherLevelSegmentBuildState,
   PineContextLike,
   PineJsLike,
+  TradingRangeBuildState,
 } from './types'
 
 const LOCAL_FENXIN_SEGMENT_INDICATOR_NAME = 'Local Fenxing Segment'
@@ -39,6 +48,7 @@ const DEFAULT_MIN_BAR_DISTANCE = 4
 const SEGMENT_LINE_WIDTH = 2
 const BASE_SEGMENT_COLOR = '#000000'
 const HIGHER_LEVEL_SEGMENT_COLOR = '#FF00FF'
+const TRADING_RANGE_POLYGON_STYLE_ID = 'tradingRange'
 
 const getLocalFenxinSegmentIndicatorName = () => LOCAL_FENXIN_SEGMENT_INDICATOR_NAME
 
@@ -50,6 +60,7 @@ type LocalFenxingSegmentStudyState = {
   fenxingBuildState: FenxingBuildState
   higherLevelSegmentBuildState: HigherLevelSegmentBuildState
   lastSettingsKey: string | null
+  tradingRangeBuildState: TradingRangeBuildState
 }
 
 const createStudyState = (): LocalFenxingSegmentStudyState => ({
@@ -60,6 +71,7 @@ const createStudyState = (): LocalFenxingSegmentStudyState => ({
   fenxingBuildState: createEmptyFenxingBuildState(),
   higherLevelSegmentBuildState: createEmptyHigherLevelSegmentBuildState(),
   lastSettingsKey: null,
+  tradingRangeBuildState: createEmptyTradingRangeBuildState(),
 })
 
 const getCustomIndicators = (PineJS: PineJsLike) => Promise.resolve([
@@ -98,6 +110,15 @@ const getCustomIndicators = (PineJS: PineJsLike) => Promise.resolve([
           joinPoints: false,
         },
       },
+      graphics: {
+        polygons: {
+          [TRADING_RANGE_POLYGON_STYLE_ID]: {
+            mouseTouchable: false,
+            name: 'Trading Range',
+            showBorder: true,
+          },
+        },
+      },
       defaults: {
         styles: {
           higherSegment: {
@@ -117,6 +138,14 @@ const getCustomIndicators = (PineJS: PineJsLike) => Promise.resolve([
             trackPrice: false,
             transparency: 0,
             visible: true,
+          },
+        },
+        graphics: {
+          polygons: {
+            [TRADING_RANGE_POLYGON_STYLE_ID]: {
+              color: '#00ffff',
+              transparency: 85,
+            },
           },
         },
         palettes: {
@@ -179,7 +208,7 @@ const getCustomIndicators = (PineJS: PineJsLike) => Promise.resolve([
       inputs: [
         {
           id: 'maxIncludedRawBarCount',
-          name: 'Max Included Raw Bars',
+          name: '最大包含K线数',
           defval: DEFAULT_MAX_INCLUDED_RAW_BAR_COUNT,
           type: 'integer',
           min: 1,
@@ -187,7 +216,7 @@ const getCustomIndicators = (PineJS: PineJsLike) => Promise.resolve([
         },
         {
           id: 'minBarDistance',
-          name: 'Min Extreme Bar Distance',
+          name: '最小线段K线距离',
           defval: DEFAULT_MIN_BAR_DISTANCE,
           type: 'integer',
           min: 1,
@@ -220,6 +249,7 @@ const getCustomIndicators = (PineJS: PineJsLike) => Promise.resolve([
         const low = PineJS.Std.low(context)
         const open = PineJS.Std.open(context)
         const time = PineJS.Std.time(context)
+        let shouldRebuildTradingRanges = false
         const shouldRebuildStates = this._state.lastSettingsKey !== null && this._state.lastSettingsKey !== settingsKey
 
         if ([close, ema20, ema120, high, low, open, time].every(isFiniteNumber)) {
@@ -237,8 +267,10 @@ const getCustomIndicators = (PineJS: PineJsLike) => Promise.resolve([
             this._state.fenxingBuildState = createEmptyFenxingBuildState()
             this._state.baseSegmentBuildState = createEmptyBaseSegmentBuildState()
             this._state.higherLevelSegmentBuildState = createEmptyHigherLevelSegmentBuildState()
+            this._state.tradingRangeBuildState = createEmptyTradingRangeBuildState()
             this._state.emittedInitialDrawableSegmentStartKey = null
             this._state.emittedInitialHigherDrawableSegmentStartKey = null
+            shouldRebuildTradingRanges = true
           } else if (upsertResult.type !== 'append') {
             const nextFenxingSignalIndex = truncateFenxingBuildState(this._state.fenxingBuildState, upsertResult.index)
             this._state.emittedInitialDrawableSegmentStartKey = null
@@ -257,6 +289,7 @@ const getCustomIndicators = (PineJS: PineJsLike) => Promise.resolve([
               upsertResult.index,
               minBarDistance,
             )
+            shouldRebuildTradingRanges = true
           }
 
           advanceFenxingState(this._state.fenxingBuildState, this._state.bars, maxIncludedRawBarCount)
@@ -281,6 +314,21 @@ const getCustomIndicators = (PineJS: PineJsLike) => Promise.resolve([
           this._state.higherLevelSegmentBuildState,
           minBarDistance,
         )
+
+        const confirmedBaseSegments = this._state.baseSegmentBuildState.historicalBaseSegments
+        const higherLevelSegments = getAllHigherLevelSegments(
+          this._state.higherLevelSegmentBuildState,
+          minBarDistance,
+        )
+
+        if (
+          shouldRebuildTradingRanges
+          || this._state.tradingRangeBuildState.processedBaseSegmentCount > confirmedBaseSegments.length
+        ) {
+          this._state.tradingRangeBuildState = rebuildTradingRangeState(confirmedBaseSegments, higherLevelSegments)
+        } else if (this._state.tradingRangeBuildState.processedBaseSegmentCount < confirmedBaseSegments.length) {
+          advanceTradingRangeState(this._state.tradingRangeBuildState, confirmedBaseSegments, higherLevelSegments)
+        }
 
         const baseSegmentOutput = (() => {
           if (!latestBaseSegment) {
@@ -330,10 +378,54 @@ const getCustomIndicators = (PineJS: PineJsLike) => Promise.resolve([
           ]
         })()
 
-        return [
+        const seriesOutput = [
           ...baseSegmentOutput,
           ...higherLevelSegmentOutput,
         ]
+
+        const shouldEmitTradingRangeGraphics = context.symbol?.isLastBar && (
+          shouldRebuildTradingRanges || consumeTradingRangeGraphicsRefresh(this._state.tradingRangeBuildState)
+        )
+
+        if (!shouldEmitTradingRangeGraphics) {
+          return seriesOutput
+        }
+
+        const graphData = getAllTradingRanges(this._state.tradingRangeBuildState).map((range, index) => ({
+          id: `${range.left.time}-${range.right.time}-${index}`,
+          points: [
+            { index: range.left.time, level: range.top },
+            { index: range.right.time, level: range.top },
+            { index: range.right.time, level: range.bottom },
+            { index: range.left.time, level: range.bottom },
+          ],
+        }))
+
+        const tradingRangeGraphics = {
+          nonseries: true,
+          type: 'study_graphics',
+          data: {
+            graphicsCmds: {
+              create: {
+                polygons: [
+                  {
+                    styleId: TRADING_RANGE_POLYGON_STYLE_ID,
+                    data: graphData,
+                  },
+                ],
+              },
+              erase: [{ action: 'all' }],
+            },
+          },
+        }
+
+        return {
+          type: 'composite',
+          data: [
+            seriesOutput,
+            tradingRangeGraphics,
+          ],
+        }
       }
     },
   },

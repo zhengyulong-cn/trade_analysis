@@ -33,11 +33,15 @@ const createHigherLevelSegment = (
   start: clonePoint(start),
 })
 
+const getMinBarDistance = (minBarDistance: number) => {
+  return minBarDistance * 5
+}
+
 const isValidHigherLevelSegment = (
   segment: HigherLevelSegment,
   minBarDistance: number,
 ) => {
-  return Math.abs(segment.end.index - segment.start.index) + 1 >= minBarDistance * 6
+  return Math.abs(segment.end.index - segment.start.index) + 1 >= getMinBarDistance(minBarDistance)
 }
 
 const isValidHigherLevelSegmentRange = (
@@ -45,7 +49,7 @@ const isValidHigherLevelSegmentRange = (
   end: FenxingPoint,
   minBarDistance: number,
 ) => {
-  return Math.abs(end.index - start.index) + 1 >= minBarDistance * 6
+  return Math.abs(end.index - start.index) + 1 >= getMinBarDistance(minBarDistance)
 }
 
 const getCrossRelation = (bar: FenxingBar): CrossRelation | null => {

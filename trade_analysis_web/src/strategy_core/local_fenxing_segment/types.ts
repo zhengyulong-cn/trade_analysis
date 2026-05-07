@@ -106,3 +106,25 @@ export type HigherLevelSegmentBuildState = {
   lastCrossRelation: 'above' | 'below' | null
   processedBarCount: number
 }
+
+export type TradingRangeFeatureSegment = {
+  baseSegmentIndex: number
+  higherDirection: SegmentDirection
+  segment: BaseSegment
+}
+
+export type TradingRange = {
+  bottom: number
+  features: TradingRangeFeatureSegment[]
+  left: FenxingPoint
+  right: FenxingPoint
+  top: number
+}
+
+export type TradingRangeBuildState = {
+  activeTradingRange: TradingRange | null
+  historicalTradingRanges: TradingRange[]
+  lastFeatureSegment: TradingRangeFeatureSegment | null
+  pendingGraphicsRefresh: boolean
+  processedBaseSegmentCount: number
+}
