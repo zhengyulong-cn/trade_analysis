@@ -10,36 +10,55 @@ import {
 import {
   advanceBaseSegmentState,
   createEmptyBaseSegmentBuildState,
+  getAllBaseSegments,
   getBaseSegmentKey,
   getLatestDrawableBaseSegment,
   truncateBaseSegmentBuildState,
 } from './base_segment_builder'
-import type { BaseSegmentBuildState, FenxingBar, FenxingBuildState } from './types'
-import type { PineContextLike, PineJsLike } from './types'
+import {
+  advanceHigherLevelSegmentState,
+  createEmptyHigherLevelSegmentBuildState,
+  getHigherLevelSegmentKey,
+  getLatestDrawableHigherLevelSegment,
+  truncateHigherLevelSegmentBuildState,
+} from './higher_level_segment_builder'
+import type {
+  BaseSegmentBuildState,
+  FenxingBar,
+  FenxingBuildState,
+  HigherLevelSegmentBuildState,
+  PineContextLike,
+  PineJsLike,
+} from './types'
 
-const LOCAL_FENXIN_SEGMENT_INDICATOR_NAME = '分型线段'
-const DEFAULT_EMA_LENGTH = 20
-// 默认分型包含运算最多K线数量
+const LOCAL_FENXIN_SEGMENT_INDICATOR_NAME = 'Local Fenxing Segment'
+const DEFAULT_EMA20_LENGTH = 20
+const DEFAULT_EMA120_LENGTH = 120
 const DEFAULT_MAX_INCLUDED_RAW_BAR_COUNT = 4
-// 默认线段最短K线距离
 const DEFAULT_MIN_BAR_DISTANCE = 4
 const SEGMENT_LINE_WIDTH = 2
+const BASE_SEGMENT_COLOR = '#000000'
+const HIGHER_LEVEL_SEGMENT_COLOR = '#FF00FF'
 
 const getLocalFenxinSegmentIndicatorName = () => LOCAL_FENXIN_SEGMENT_INDICATOR_NAME
 
 type LocalFenxingSegmentStudyState = {
   bars: FenxingBar[]
-  fenxingBuildState: FenxingBuildState
   baseSegmentBuildState: BaseSegmentBuildState
   emittedInitialDrawableSegmentStartKey: string | null
+  emittedInitialHigherDrawableSegmentStartKey: string | null
+  fenxingBuildState: FenxingBuildState
+  higherLevelSegmentBuildState: HigherLevelSegmentBuildState
   lastSettingsKey: string | null
 }
 
 const createStudyState = (): LocalFenxingSegmentStudyState => ({
   bars: [],
   baseSegmentBuildState: createEmptyBaseSegmentBuildState(),
-  fenxingBuildState: createEmptyFenxingBuildState(),
   emittedInitialDrawableSegmentStartKey: null,
+  emittedInitialHigherDrawableSegmentStartKey: null,
+  fenxingBuildState: createEmptyFenxingBuildState(),
+  higherLevelSegmentBuildState: createEmptyHigherLevelSegmentBuildState(),
   lastSettingsKey: null,
 })
 
@@ -50,7 +69,7 @@ const getCustomIndicators = (PineJS: PineJsLike) => Promise.resolve([
       _metainfoVersion: 53,
       id: `${LOCAL_FENXIN_SEGMENT_INDICATOR_NAME}@tv-basicstudies-1`,
       description: LOCAL_FENXIN_SEGMENT_INDICATOR_NAME,
-      shortDescription: 'Fenxing',
+      shortDescription: 'Fenxing Segment',
       isCustomIndicator: true,
       is_price_study: true,
       linkedToSeries: true,
@@ -63,18 +82,35 @@ const getCustomIndicators = (PineJS: PineJsLike) => Promise.resolve([
         { id: 'segment', type: 'line' },
         { id: 'segmentOffset', target: 'segment', type: 'dataoffset' },
         { id: 'segmentColor', palette: 'segmentPalette', target: 'segment', type: 'colorer' },
+        { id: 'higherSegment', type: 'line' },
+        { id: 'higherSegmentOffset', target: 'higherSegment', type: 'dataoffset' },
+        { id: 'higherSegmentColor', palette: 'higherSegmentPalette', target: 'higherSegment', type: 'colorer' },
       ],
       styles: {
+        higherSegment: {
+          title: 'Higher Segment',
+          histogramBase: 0,
+          joinPoints: false,
+        },
         segment: {
-          title: 'Fenxing Segment',
+          title: 'Segment',
           histogramBase: 0,
           joinPoints: false,
         },
       },
       defaults: {
         styles: {
+          higherSegment: {
+            color: HIGHER_LEVEL_SEGMENT_COLOR,
+            linestyle: 0,
+            linewidth: SEGMENT_LINE_WIDTH,
+            plottype: 0,
+            trackPrice: false,
+            transparency: 0,
+            visible: true,
+          },
           segment: {
-            color: '#000000',
+            color: BASE_SEGMENT_COLOR,
             linestyle: 0,
             linewidth: SEGMENT_LINE_WIDTH,
             plottype: 0,
@@ -84,15 +120,29 @@ const getCustomIndicators = (PineJS: PineJsLike) => Promise.resolve([
           },
         },
         palettes: {
-          segmentPalette: {
+          higherSegmentPalette: {
             colors: {
               0: {
-                color: '#000000',
+                color: HIGHER_LEVEL_SEGMENT_COLOR,
                 style: 0,
                 width: SEGMENT_LINE_WIDTH,
               },
               1: {
-                color: '#000000',
+                color: HIGHER_LEVEL_SEGMENT_COLOR,
+                style: 0,
+                width: SEGMENT_LINE_WIDTH,
+              },
+            },
+          },
+          segmentPalette: {
+            colors: {
+              0: {
+                color: BASE_SEGMENT_COLOR,
+                style: 0,
+                width: SEGMENT_LINE_WIDTH,
+              },
+              1: {
+                color: BASE_SEGMENT_COLOR,
                 style: 0,
                 width: SEGMENT_LINE_WIDTH,
               },
@@ -105,6 +155,16 @@ const getCustomIndicators = (PineJS: PineJsLike) => Promise.resolve([
         },
       },
       palettes: {
+        higherSegmentPalette: {
+          colors: {
+            0: { name: 'Higher Up' },
+            1: { name: 'Higher Down' },
+          },
+          valToIndex: {
+            0: 0,
+            1: 1,
+          },
+        },
         segmentPalette: {
           colors: {
             0: { name: 'Up' },
@@ -119,7 +179,7 @@ const getCustomIndicators = (PineJS: PineJsLike) => Promise.resolve([
       inputs: [
         {
           id: 'maxIncludedRawBarCount',
-          name: '分型包含运算最多K线数量',
+          name: 'Max Included Raw Bars',
           defval: DEFAULT_MAX_INCLUDED_RAW_BAR_COUNT,
           type: 'integer',
           min: 1,
@@ -127,7 +187,7 @@ const getCustomIndicators = (PineJS: PineJsLike) => Promise.resolve([
         },
         {
           id: 'minBarDistance',
-          name: '线段最短K线距离',
+          name: 'Min Extreme Bar Distance',
           defval: DEFAULT_MIN_BAR_DISTANCE,
           type: 'integer',
           min: 1,
@@ -151,21 +211,22 @@ const getCustomIndicators = (PineJS: PineJsLike) => Promise.resolve([
 
         const maxIncludedRawBarCount = Math.max(1, Number(input(0)) || DEFAULT_MAX_INCLUDED_RAW_BAR_COUNT)
         const minBarDistance = Math.max(1, Number(input(1)) || DEFAULT_MIN_BAR_DISTANCE)
-
         const settingsKey = `${maxIncludedRawBarCount}:${minBarDistance}`
         const close = PineJS.Std.close(context)
         const closeSeries = context.new_var(close)
-        const ema20 = PineJS.Std.ema(closeSeries, DEFAULT_EMA_LENGTH, context)
+        const ema20 = PineJS.Std.ema(closeSeries, DEFAULT_EMA20_LENGTH, context)
+        const ema120 = PineJS.Std.ema(closeSeries, DEFAULT_EMA120_LENGTH, context)
         const high = PineJS.Std.high(context)
         const low = PineJS.Std.low(context)
         const open = PineJS.Std.open(context)
         const time = PineJS.Std.time(context)
         const shouldRebuildStates = this._state.lastSettingsKey !== null && this._state.lastSettingsKey !== settingsKey
 
-        if ([close, ema20, high, low, open, time].every(isFiniteNumber)) {
+        if ([close, ema20, ema120, high, low, open, time].every(isFiniteNumber)) {
           const upsertResult = upsertFenxingBar(this._state.bars, {
             close,
             ema20,
+            ema120,
             high,
             low,
             open,
@@ -175,15 +236,25 @@ const getCustomIndicators = (PineJS: PineJsLike) => Promise.resolve([
           if (shouldRebuildStates) {
             this._state.fenxingBuildState = createEmptyFenxingBuildState()
             this._state.baseSegmentBuildState = createEmptyBaseSegmentBuildState()
+            this._state.higherLevelSegmentBuildState = createEmptyHigherLevelSegmentBuildState()
             this._state.emittedInitialDrawableSegmentStartKey = null
+            this._state.emittedInitialHigherDrawableSegmentStartKey = null
           } else if (upsertResult.type !== 'append') {
             const nextFenxingSignalIndex = truncateFenxingBuildState(this._state.fenxingBuildState, upsertResult.index)
             this._state.emittedInitialDrawableSegmentStartKey = null
+            this._state.emittedInitialHigherDrawableSegmentStartKey = null
             truncateBaseSegmentBuildState(
               this._state.baseSegmentBuildState,
               this._state.bars,
               getAllFenxingSignals(this._state.fenxingBuildState),
               nextFenxingSignalIndex,
+              minBarDistance,
+            )
+            truncateHigherLevelSegmentBuildState(
+              this._state.higherLevelSegmentBuildState,
+              this._state.bars,
+              getAllBaseSegments(this._state.baseSegmentBuildState),
+              upsertResult.index,
               minBarDistance,
             )
           }
@@ -195,11 +266,22 @@ const getCustomIndicators = (PineJS: PineJsLike) => Promise.resolve([
             getAllFenxingSignals(this._state.fenxingBuildState),
             minBarDistance,
           )
+          advanceHigherLevelSegmentState(
+            this._state.higherLevelSegmentBuildState,
+            this._state.bars,
+            getAllBaseSegments(this._state.baseSegmentBuildState),
+            minBarDistance,
+          )
         }
 
         this._state.lastSettingsKey = settingsKey
 
         const latestBaseSegment = getLatestDrawableBaseSegment(this._state.baseSegmentBuildState)
+        const latestHigherLevelSegment = getLatestDrawableHigherLevelSegment(
+          this._state.higherLevelSegmentBuildState,
+          minBarDistance,
+        )
+
         const baseSegmentOutput = (() => {
           if (!latestBaseSegment) {
             return [Number.NaN, Number.NaN, Number.NaN]
@@ -224,7 +306,34 @@ const getCustomIndicators = (PineJS: PineJsLike) => Promise.resolve([
           ]
         })()
 
-        return baseSegmentOutput
+        const higherLevelSegmentOutput = (() => {
+          if (!latestHigherLevelSegment) {
+            return [Number.NaN, Number.NaN, Number.NaN]
+          }
+
+          const higherSegmentColor = latestHigherLevelSegment.direction === 'up' ? 0 : 1
+          const latestHigherSegmentKey = getHigherLevelSegmentKey(latestHigherLevelSegment)
+
+          if (this._state.emittedInitialHigherDrawableSegmentStartKey !== latestHigherSegmentKey) {
+            this._state.emittedInitialHigherDrawableSegmentStartKey = latestHigherSegmentKey
+            return [
+              latestHigherLevelSegment.start.price,
+              getOffsetFromCurrentBar(this._state.bars, latestHigherLevelSegment.start),
+              higherSegmentColor,
+            ]
+          }
+
+          return [
+            latestHigherLevelSegment.end.price,
+            getOffsetFromCurrentBar(this._state.bars, latestHigherLevelSegment.end),
+            higherSegmentColor,
+          ]
+        })()
+
+        return [
+          ...baseSegmentOutput,
+          ...higherLevelSegmentOutput,
+        ]
       }
     },
   },

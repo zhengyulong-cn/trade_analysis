@@ -23,6 +23,7 @@ export type FenxingType = 'top' | 'bottom'
 export type FenxingBar = {
   close: number
   ema20: number
+  ema120?: number
   high: number
   index: number
   low: number
@@ -90,4 +91,18 @@ export type BaseSegmentBuildState = {
   processedFenxingSignalCount: number
   seedBottomFenxingSignal: FenxingSignal | null
   seedTopFenxingSignal: FenxingSignal | null
+}
+
+export type HigherLevelSegment = {
+  direction: SegmentDirection
+  end: FenxingPoint
+  start: FenxingPoint
+}
+
+export type HigherLevelSegmentBuildState = {
+  activeHigherLevelSegment: HigherLevelSegment | null
+  historicalHigherLevelSegments: HigherLevelSegment[]
+  lastCrossBarIndex: number | null
+  lastCrossRelation: 'above' | 'below' | null
+  processedBarCount: number
 }

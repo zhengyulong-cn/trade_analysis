@@ -331,6 +331,14 @@ export const getLatestDrawableBaseSegment = (buildState: BaseSegmentBuildState) 
   return buildState.historicalBaseSegments[buildState.historicalBaseSegments.length - 1] ?? null
 }
 
+export const getBaseSegmentHighPoint = (segment: BaseSegment): FenxingPoint => (
+  segment.direction === 'up' ? clonePoint(segment.end) : clonePoint(segment.start)
+)
+
+export const getBaseSegmentLowPoint = (segment: BaseSegment): FenxingPoint => (
+  segment.direction === 'up' ? clonePoint(segment.start) : clonePoint(segment.end)
+)
+
 export const getBaseSegmentKey = (segment: BaseSegment) => {
   return `${segment.start.time}-${segment.direction}`
 }
