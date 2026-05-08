@@ -27,13 +27,6 @@ import {
   buildMomentumExhaustionSignals,
   getMomentumExhaustionOutput,
 } from './momentum_exhaustion'
-import {
-  advanceTradingRangeState,
-  consumeTradingRangeGraphicsRefresh,
-  createEmptyTradingRangeBuildState,
-  getAllTradingRanges,
-  rebuildTradingRangeState,
-} from './trading_range_builder'
 import type {
   BaseSegmentBuildState,
   FenxingBar,
@@ -42,7 +35,6 @@ import type {
   MomentumExhaustionSignal,
   PineContextLike,
   PineJsLike,
-  TradingRangeBuildState,
 } from './types'
 
 const LOCAL_FENXIN_SEGMENT_INDICATOR_NAME = 'Local Fenxing Segment'
@@ -53,10 +45,8 @@ const DEFAULT_MIN_BAR_DISTANCE = 4
 const SEGMENT_LINE_WIDTH = 2
 const BASE_SEGMENT_COLOR = '#000000'
 const HIGHER_LEVEL_SEGMENT_COLOR = '#FF00FF'
-const TRADING_RANGE_COLOR = '#FFCC00'
 const MOMENTUM_EXHAUSTION_UP_COLOR = '#00AA00'
 const MOMENTUM_EXHAUSTION_DOWN_COLOR = '#CC0000'
-const TRADING_RANGE_POLYGON_STYLE_ID = 'tradingRange'
 
 const getLocalFenxinSegmentIndicatorName = () => LOCAL_FENXIN_SEGMENT_INDICATOR_NAME
 
@@ -69,7 +59,6 @@ type LocalFenxingSegmentStudyState = {
   higherLevelSegmentBuildState: HigherLevelSegmentBuildState
   lastSettingsKey: string | null
   momentumExhaustionSignals: MomentumExhaustionSignal[]
-  tradingRangeBuildState: TradingRangeBuildState
 }
 
 const createStudyState = (): LocalFenxingSegmentStudyState => ({
@@ -81,7 +70,6 @@ const createStudyState = (): LocalFenxingSegmentStudyState => ({
   higherLevelSegmentBuildState: createEmptyHigherLevelSegmentBuildState(),
   lastSettingsKey: null,
   momentumExhaustionSignals: [],
-  tradingRangeBuildState: createEmptyTradingRangeBuildState(),
 })
 
 const getCustomIndicators = (PineJS: PineJsLike) => Promise.resolve([
@@ -134,15 +122,6 @@ const getCustomIndicators = (PineJS: PineJsLike) => Promise.resolve([
           joinPoints: false,
         },
       },
-      graphics: {
-        polygons: {
-          [TRADING_RANGE_POLYGON_STYLE_ID]: {
-            mouseTouchable: false,
-            name: 'Trading Range',
-            showBorder: true,
-          },
-        },
-      },
       defaults: {
         styles: {
           higherSegment: {
@@ -178,14 +157,6 @@ const getCustomIndicators = (PineJS: PineJsLike) => Promise.resolve([
             trackPrice: false,
             transparency: 0,
             visible: true,
-          },
-        },
-        graphics: {
-          polygons: {
-            [TRADING_RANGE_POLYGON_STYLE_ID]: {
-              color: TRADING_RANGE_COLOR,
-              transparency: 85,
-            },
           },
         },
         palettes: {
@@ -289,7 +260,6 @@ const getCustomIndicators = (PineJS: PineJsLike) => Promise.resolve([
         const low = PineJS.Std.low(context)
         const open = PineJS.Std.open(context)
         const time = PineJS.Std.time(context)
-        let shouldRebuildTradingRanges = false
         const shouldRebuildStates = this._state.lastSettingsKey !== null && this._state.lastSettingsKey !== settingsKey
 
         if ([close, ema20, ema120, high, low, open, time].every(isFiniteNumber)) {
@@ -308,10 +278,8 @@ const getCustomIndicators = (PineJS: PineJsLike) => Promise.resolve([
             this._state.baseSegmentBuildState = createEmptyBaseSegmentBuildState()
             this._state.higherLevelSegmentBuildState = createEmptyHigherLevelSegmentBuildState()
             this._state.momentumExhaustionSignals = []
-            this._state.tradingRangeBuildState = createEmptyTradingRangeBuildState()
             this._state.emittedInitialDrawableSegmentStartKey = null
             this._state.emittedInitialHigherDrawableSegmentStartKey = null
-            shouldRebuildTradingRanges = true
           } else if (upsertResult.type !== 'append') {
             const nextFenxingSignalIndex = truncateFenxingBuildState(this._state.fenxingBuildState, upsertResult.index)
             this._state.emittedInitialDrawableSegmentStartKey = null
@@ -330,7 +298,6 @@ const getCustomIndicators = (PineJS: PineJsLike) => Promise.resolve([
               upsertResult.index,
               minBarDistance,
             )
-            shouldRebuildTradingRanges = true
           }
 
           advanceFenxingState(this._state.fenxingBuildState, this._state.bars, maxIncludedRawBarCount)
@@ -356,35 +323,15 @@ const getCustomIndicators = (PineJS: PineJsLike) => Promise.resolve([
           minBarDistance,
         )
 
-        const confirmedBaseSegments = this._state.baseSegmentBuildState.historicalBaseSegments
         const higherLevelSegments = getAllHigherLevelSegments(
           this._state.higherLevelSegmentBuildState,
           minBarDistance,
         )
 
-        if (
-          shouldRebuildTradingRanges
-          || this._state.tradingRangeBuildState.processedBaseSegmentCount > confirmedBaseSegments.length
-        ) {
-          this._state.tradingRangeBuildState = rebuildTradingRangeState(
-            this._state.bars,
-            confirmedBaseSegments,
-            higherLevelSegments,
-          )
-        } else if (this._state.tradingRangeBuildState.processedBaseSegmentCount < confirmedBaseSegments.length) {
-          advanceTradingRangeState(
-            this._state.tradingRangeBuildState,
-            this._state.bars,
-            confirmedBaseSegments,
-            higherLevelSegments,
-          )
-        }
-
         this._state.momentumExhaustionSignals = buildMomentumExhaustionSignals(
           this._state.bars,
           getAllBaseSegments(this._state.baseSegmentBuildState),
           higherLevelSegments,
-          getAllTradingRanges(this._state.tradingRangeBuildState),
         )
 
         const baseSegmentOutput = (() => {
@@ -445,50 +392,7 @@ const getCustomIndicators = (PineJS: PineJsLike) => Promise.resolve([
           ...higherLevelSegmentOutput,
           ...momentumExhaustionOutput,
         ]
-
-        const shouldEmitTradingRangeGraphics = context.symbol?.isLastBar && (
-          shouldRebuildTradingRanges || consumeTradingRangeGraphicsRefresh(this._state.tradingRangeBuildState)
-        )
-
-        if (!shouldEmitTradingRangeGraphics) {
-          return seriesOutput
-        }
-
-        const graphData = getAllTradingRanges(this._state.tradingRangeBuildState).map((range, index) => ({
-          id: `${range.left.time}-${range.right.time}-${index}`,
-          points: [
-            { index: range.left.time, level: range.top },
-            { index: range.right.time, level: range.top },
-            { index: range.right.time, level: range.bottom },
-            { index: range.left.time, level: range.bottom },
-          ],
-        }))
-
-        const tradingRangeGraphics = {
-          nonseries: true,
-          type: 'study_graphics',
-          data: {
-            graphicsCmds: {
-              create: {
-                polygons: [
-                  {
-                    styleId: TRADING_RANGE_POLYGON_STYLE_ID,
-                    data: graphData,
-                  },
-                ],
-              },
-              erase: [{ action: 'all' }],
-            },
-          },
-        }
-
-        return {
-          type: 'composite',
-          data: [
-            seriesOutput,
-            tradingRangeGraphics,
-          ],
-        }
+        return seriesOutput
       }
     },
   },
