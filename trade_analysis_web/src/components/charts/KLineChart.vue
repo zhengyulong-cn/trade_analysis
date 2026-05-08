@@ -1,7 +1,6 @@
 <script setup lang="ts">
 import { INITIAL_VISIBLE_K_LINE_COUNT } from '@/constants/chart'
 import { computed, onMounted, onUnmounted, ref, watch } from 'vue'
-import ChartSidebar from '@/components/charts/sidebar_panel/ChartSidebar.vue'
 import KLineReplayPanel from '@/components/charts/kline_replay/KLineReplayPanel.vue'
 import type { ContractOption, KLineItem, PeriodOption } from '@/components/charts/chartModels'
 import {
@@ -543,11 +542,6 @@ defineExpose({
       @enter-replay-mode="enterReplayMode"
       @step-replay-forward="stepReplayForward"
       @exit-replay-mode="exitReplayMode"
-    />
-    <ChartSidebar
-      :contract-options="contractOptions"
-      :selected-contract="selectedContract"
-      @update:selected-contract="emit('update:selectedContract', $event)"
     />
   </div>
 </template>

@@ -28,8 +28,8 @@ const emit = defineEmits<{
 const activeSidePanel = ref<'contracts' | 'news' | null>(null)
 
 const hasContractOptions = computed(() => props.contractOptions.length > 0)
-
 const isContractPanelOpen = computed(() => activeSidePanel.value === 'contracts')
+const isNewsPanelOpen = computed(() => activeSidePanel.value === 'news')
 
 const toggleSidePanel = (panel: 'contracts' | 'news') => {
   activeSidePanel.value = activeSidePanel.value === panel ? null : panel
@@ -43,99 +43,118 @@ const handleContractSelect = (contractValue: string) => {
 </script>
 
 <template>
-  <div class="chart-sidebar">
-    <ContractListPanel
-      v-if="isContractPanelOpen"
-      :contract-options="contractOptions"
-      :selected-contract="selectedContract"
-      @close="toggleSidePanel('contracts')"
-      @select="handleContractSelect"
-    />
+  <div class="chart-sidebar-box">
+    <div v-if="activeSidePanel" class="sidebar-panel-content">
+      <ContractListPanel
+        v-if="isContractPanelOpen"
+        :contract-options="contractOptions"
+        :selected-contract="selectedContract"
+        @close="toggleSidePanel('contracts')"
+        @select="handleContractSelect"
+      />
 
+      <div v-else-if="isNewsPanelOpen" class="news-panel">
+        <div class="panel-empty">暂无资讯内容</div>
+      </div>
+    </div>
     <div class="sidebar-actions">
-      <el-tooltip content="合约列表" placement="left">
-        <button
-          type="button"
-          class="sidebar-action"
-          :class="{ 'is-active': isContractPanelOpen }"
-          :disabled="!hasContractOptions"
-          @click="toggleSidePanel('contracts')"
-        >
-          <el-icon><Collection /></el-icon>
-        </button>
-      </el-tooltip>
+      <button
+        type="button"
+        class="sidebar-action"
+        :class="{ 'is-active': isContractPanelOpen }"
+        :disabled="!hasContractOptions"
+        @click="toggleSidePanel('contracts')"
+      >
+        <el-icon><Collection /></el-icon>
+      </button>
 
-      <el-tooltip content="资讯" placement="left">
-        <button
-          type="button"
-          class="sidebar-action"
-          @click="toggleSidePanel('news')"
-        >
-          <el-icon><ChatDotSquare /></el-icon>
-        </button>
-      </el-tooltip>
+      <button
+        type="button"
+        class="sidebar-action"
+        :class="{ 'is-active': isNewsPanelOpen }"
+        @click="toggleSidePanel('news')"
+      >
+        <el-icon><ChatDotSquare /></el-icon>
+      </button>
     </div>
   </div>
 </template>
 
 <style lang="less" scoped>
-.chart-sidebar {
-  position: absolute;
-  top: 16px;
-  right: 16px;
-  bottom: 16px;
+.chart-sidebar-box {
   display: flex;
-  align-items: flex-end;
-  gap: 12px;
-  pointer-events: none;
+  flex-direction: row;
+  gap: .5rem;
+  min-height: 0;
+  padding: 0.5rem;
 }
 
 .sidebar-actions {
-  pointer-events: auto;
   display: flex;
   flex-direction: column;
-  gap: 10px;
+  row-gap: 2px;
+  justify-content: flex-start;
 }
 
 .sidebar-action {
-  width: 40px;
-  height: 40px;
-  border: 1px solid rgba(15, 23, 42, 0.08);
+  height: 32px;
+  padding: 0 10px;
+  border: none;
   border-radius: 8px;
-  background: rgba(255, 255, 255, 0.92);
-  color: #475569;
+  background: transparent;
+  color: #94a3b8;
   display: inline-flex;
   align-items: center;
-  justify-content: center;
-  box-shadow: 0 10px 24px rgba(15, 23, 42, 0.1);
+  gap: 4px;
   cursor: pointer;
-  transition: background-color 0.2s ease, color 0.2s ease, border-color 0.2s ease;
+  font-size: 13px;
+  transition: background-color 0.15s ease, color 0.15s ease;
 }
 
-.sidebar-action:hover:not(:disabled),
+.sidebar-action:hover:not(:disabled) {
+  background: #f1f5f9;
+  color: #475569;
+}
+
 .sidebar-action.is-active {
-  background: #111827;
-  color: #ffffff;
-  border-color: #111827;
+  background: #f1f5f9;
+  color: #0f172a;
 }
 
 .sidebar-action:disabled {
-  opacity: 0.45;
+  opacity: 0.35;
   cursor: not-allowed;
-  box-shadow: none;
 }
 
 .sidebar-action .el-icon {
-  font-size: 18px;
+  font-size: 16px;
 }
 
-@media (max-width: 768px) {
-  .chart-sidebar {
-    top: 12px;
-    right: 12px;
-    left: 12px;
-    bottom: auto;
-    justify-content: flex-end;
-  }
+.sidebar-action-label {
+  font-size: 12px;
+}
+
+.sidebar-panel-content {
+  flex: 1;
+  min-width: 16rem;
+}
+
+.news-panel {
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  border-radius: 10px;
+  background: #f8fafc;
+}
+
+.panel-empty {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 20px 16px;
+  color: #94a3b8;
+  font-size: 13px;
+  text-align: center;
 }
 </style>

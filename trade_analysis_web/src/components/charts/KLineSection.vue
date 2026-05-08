@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import type { ChartOptions, DeepPartial } from 'lightweight-charts'
 import KLineChart from './KLineChart.vue'
+import ChartSidebar from './sidebar_panel/ChartSidebar.vue'
 
 interface KLineItem {
   time: number
@@ -76,18 +77,27 @@ const handleCrosshairMove = (value: KLineItem | null) => {
 <template>
   <section v-loading="loading" class="chart-section">
     <template v-if="available">
-      <div class="chart-card">
-        <KLineChart
-          :data="chartData"
-          :selected-contract="selectedContract"
-          :selected-period="selectedPeriod"
-          :contract-options="contractOptions"
-          :period-options="periodOptions"
-          :common-chart-options="chartOptions"
-          @update:selected-contract="handleSelectedContractChange"
-          @update:selected-period="handleSelectedPeriodChange"
-          @crosshair-move="handleCrosshairMove"
-        />
+      <div class="chart-box">
+        <div class="chart-card">
+          <KLineChart
+            :data="chartData"
+            :selected-contract="selectedContract"
+            :selected-period="selectedPeriod"
+            :contract-options="contractOptions"
+            :period-options="periodOptions"
+            :common-chart-options="chartOptions"
+            @update:selected-contract="handleSelectedContractChange"
+            @update:selected-period="handleSelectedPeriodChange"
+            @crosshair-move="handleCrosshairMove"
+          />
+        </div>
+        <div class="chart-sidebar">
+          <ChartSidebar
+            :contract-options="contractOptions"
+            :selected-contract="selectedContract"
+            @update:selected-contract="handleSelectedContractChange"
+          />
+        </div>
       </div>
     </template>
     <el-empty v-else :description="unavailableDescription" />
@@ -101,17 +111,41 @@ const handleCrosshairMove = (value: KLineItem | null) => {
   background: #ffffff;
   box-shadow: 0 8px 24px rgba(15, 23, 42, 0.06);
 }
+.chart-box {
+  display: flex;
+  flex-direction: row;
+  column-gap: .5rem;
+  align-items: stretch;
 
-.chart-card {
-  min-width: 0;
-  border: 1px solid #ebeef5;
-  border-radius: 12px;
-  overflow: hidden;
+  .chart-sidebar {
+    flex: 0 0 auto;
+    min-width: 0;
+    box-sizing: border-box;
+    border-left: 1px solid #ebeef5;
+    border-radius: 12px;
+    height: calc(100vh - 3.5rem);
+  }
+
+  .chart-card {
+    min-width: 0;
+    flex: 1;
+    border: 1px solid #ebeef5;
+    border-radius: 12px;
+    overflow: hidden;
+  }
 }
 
 @media (max-width: 640px) {
   .chart-section {
     padding: 12px;
+  }
+
+  .chart-box {
+    flex-direction: column;
+
+    .chart-sidebar {
+      width: 100%;
+    }
   }
 }
 </style>
