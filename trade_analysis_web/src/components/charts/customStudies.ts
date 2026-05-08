@@ -1,23 +1,17 @@
 import type { TradingViewWidget } from '@/components/charts/tradingViewTypes'
 import { localAtrStrategy } from '@/strategy_core/local_atr'
 import { localBollStrategy } from '@/strategy_core/local_boll'
-import { localEmaSegmentStrategy } from '@/strategy_core/local_ema_segment'
 import { localFenxinSegmentStrategy } from '@/strategy_core/local_fenxing_segment'
 
 const LOCAL_BOLL_STUDY_LENGTH = 20
 const LOCAL_BOLL_STUDY_STD_DEV = 2
 const LOCAL_ATR_STUDY_LENGTH = 14
-const LOCAL_EMA_SEGMENT_LENGTH = 20
-const LOCAL_EMA_SEGMENT_MIN_BARS = 4
 
 export const addDefaultCustomStudies = (currentWidget: TradingViewWidget) => {
   const activeChart = currentWidget.activeChart()
   const existingStudies = activeChart.getAllStudies?.() ?? []
   const hasLocalBoll = existingStudies.some((study) => study.name === localBollStrategy.getLocalBollIndicatorName())
   const hasLocalAtr = existingStudies.some((study) => study.name === localAtrStrategy.getLocalAtrIndicatorName())
-  const hasLocalEmaSegment = existingStudies.some(
-    (study) => study.name === localEmaSegmentStrategy.getLocalEmaSegmentIndicatorName(),
-  )
   const hasLocalFenxinSegment = existingStudies.some(
     (study) => study.name === localFenxinSegmentStrategy.getLocalFenxinSegmentIndicatorName(),
   )
@@ -53,19 +47,6 @@ export const addDefaultCustomStudies = (currentWidget: TradingViewWidget) => {
       )
     }
 
-    if (!hasLocalEmaSegment) {
-      void createStudy.call(
-        activeChart,
-        localEmaSegmentStrategy.getLocalEmaSegmentIndicatorName(),
-        true,
-        false,
-        {
-          emaLength: LOCAL_EMA_SEGMENT_LENGTH,
-          minSegmentBars: LOCAL_EMA_SEGMENT_MIN_BARS,
-        },
-      )
-    }
-
     if (!hasLocalFenxinSegment) {
       void createStudy.call(
         activeChart,
@@ -83,7 +64,6 @@ export const getCustomIndicators = async (PineJS: unknown) => {
   const indicatorGroups = await Promise.all([
     localBollStrategy.getCustomIndicators(PineJS as Parameters<typeof localBollStrategy.getCustomIndicators>[0]),
     localAtrStrategy.getCustomIndicators(PineJS as Parameters<typeof localAtrStrategy.getCustomIndicators>[0]),
-    localEmaSegmentStrategy.getCustomIndicators(PineJS as Parameters<typeof localEmaSegmentStrategy.getCustomIndicators>[0]),
     localFenxinSegmentStrategy.getCustomIndicators(PineJS as Parameters<typeof localFenxinSegmentStrategy.getCustomIndicators>[0]),
   ])
 
@@ -96,7 +76,6 @@ export const getWhitelistedStudyTools = () => {
     { name: 'MACD' },
     { name: localBollStrategy.getLocalBollIndicatorName() },
     { name: localAtrStrategy.getLocalAtrIndicatorName() },
-    { name: localEmaSegmentStrategy.getLocalEmaSegmentIndicatorName() },
     { name: localFenxinSegmentStrategy.getLocalFenxinSegmentIndicatorName() },
   ]
 }
