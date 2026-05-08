@@ -85,7 +85,7 @@ const handleContractSelect = (contractValue: string) => {
   right: 16px;
   bottom: 16px;
   display: flex;
-  align-items: flex-start;
+  align-items: flex-end;
   gap: 12px;
   pointer-events: none;
 }

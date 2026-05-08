@@ -37,6 +37,14 @@ export const RouterModules: RouteRecordRaw[] = [
           title: "期货K线管理",
         },
       },
+      {
+        path: "/futures/open_opportunity_analysis",
+        component: () => import("@/views/futures/open_opportunity_analysis/OpenOpportunityAnalysis.vue"),
+        meta: {
+          icon: "",
+          title: "开仓机会分析",
+        },
+      },
     ],
   },
 ]
