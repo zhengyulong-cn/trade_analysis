@@ -18,20 +18,23 @@ import {
 import {
   advanceHigherLevelSegmentState,
   createEmptyHigherLevelSegmentBuildState,
-  getAllHigherLevelSegments,
   getHigherLevelSegmentKey,
   getLatestDrawableHigherLevelSegment,
   truncateHigherLevelSegmentBuildState,
 } from './higher_level_segment_builder'
 import {
-  buildMomentumExhaustionSignals,
+  advanceMomentumExhaustionState,
+  createEmptyMomentumExhaustionBuildState,
+  getAllMomentumExhaustionSignals,
   getMomentumExhaustionOutput,
+  rebuildMomentumExhaustionState,
 } from './momentum_exhaustion'
 import type {
   BaseSegmentBuildState,
   FenxingBar,
   FenxingBuildState,
   HigherLevelSegmentBuildState,
+  MomentumExhaustionBuildState,
   MomentumExhaustionSignal,
   PineContextLike,
   PineJsLike,
@@ -40,13 +43,16 @@ import type {
 const LOCAL_FENXIN_SEGMENT_INDICATOR_NAME = 'Local Fenxing Segment'
 const DEFAULT_EMA20_LENGTH = 20
 const DEFAULT_EMA120_LENGTH = 120
+const DEFAULT_MACD_SHORT_LENGTH = 4
+const DEFAULT_MACD_LONG_LENGTH = 20
+const DEFAULT_MACD_MID_LENGTH = 20
 const DEFAULT_MAX_INCLUDED_RAW_BAR_COUNT = 4
 const DEFAULT_MIN_BAR_DISTANCE = 4
 const SEGMENT_LINE_WIDTH = 2
 const BASE_SEGMENT_COLOR = '#000000'
 const HIGHER_LEVEL_SEGMENT_COLOR = '#FF00FF'
-const MOMENTUM_EXHAUSTION_UP_COLOR = '#00AA00'
-const MOMENTUM_EXHAUSTION_DOWN_COLOR = '#CC0000'
+const MOMENTUM_EXHAUSTION_UP_COLOR = '#CC0000'
+const MOMENTUM_EXHAUSTION_DOWN_COLOR = '#00AA00'
 
 const getLocalFenxinSegmentIndicatorName = () => LOCAL_FENXIN_SEGMENT_INDICATOR_NAME
 
@@ -58,7 +64,7 @@ type LocalFenxingSegmentStudyState = {
   fenxingBuildState: FenxingBuildState
   higherLevelSegmentBuildState: HigherLevelSegmentBuildState
   lastSettingsKey: string | null
-  momentumExhaustionSignals: MomentumExhaustionSignal[]
+  momentumExhaustionBuildState: MomentumExhaustionBuildState
 }
 
 const createStudyState = (): LocalFenxingSegmentStudyState => ({
@@ -69,7 +75,7 @@ const createStudyState = (): LocalFenxingSegmentStudyState => ({
   fenxingBuildState: createEmptyFenxingBuildState(),
   higherLevelSegmentBuildState: createEmptyHigherLevelSegmentBuildState(),
   lastSettingsKey: null,
-  momentumExhaustionSignals: [],
+  momentumExhaustionBuildState: createEmptyMomentumExhaustionBuildState(),
 })
 
 const getCustomIndicators = (PineJS: PineJsLike) => Promise.resolve([
@@ -137,16 +143,16 @@ const getCustomIndicators = (PineJS: PineJsLike) => Promise.resolve([
             color: MOMENTUM_EXHAUSTION_DOWN_COLOR,
             location: 'Absolute',
             plottype: 'shape_label_up',
-            textColor: '#FFFFFF',
-            transparency: 0,
+            textColor: BASE_SEGMENT_COLOR,
+            transparency: 0.5,
             visible: true,
           },
           momentumExhaustionUp: {
             color: MOMENTUM_EXHAUSTION_UP_COLOR,
             location: 'Absolute',
             plottype: 'shape_label_down',
-            textColor: '#FFFFFF',
-            transparency: 0,
+            textColor: BASE_SEGMENT_COLOR,
+            transparency: 0.5,
             visible: true,
           },
           segment: {
@@ -256,19 +262,28 @@ const getCustomIndicators = (PineJS: PineJsLike) => Promise.resolve([
         const closeSeries = context.new_var(close)
         const ema20 = PineJS.Std.ema(closeSeries, DEFAULT_EMA20_LENGTH, context)
         const ema120 = PineJS.Std.ema(closeSeries, DEFAULT_EMA120_LENGTH, context)
+        const macdShort = PineJS.Std.ema(closeSeries, DEFAULT_MACD_SHORT_LENGTH, context)
+        const macdLong = PineJS.Std.ema(closeSeries, DEFAULT_MACD_LONG_LENGTH, context)
+        const macdDiff = macdShort - macdLong
+        const macdDiffSeries = context.new_var(macdDiff)
+        const macdDea = PineJS.Std.ema(macdDiffSeries, DEFAULT_MACD_MID_LENGTH, context)
+        const macdHistogram = macdDiff - macdDea
         const high = PineJS.Std.high(context)
         const low = PineJS.Std.low(context)
         const open = PineJS.Std.open(context)
         const time = PineJS.Std.time(context)
         const shouldRebuildStates = this._state.lastSettingsKey !== null && this._state.lastSettingsKey !== settingsKey
 
-        if ([close, ema20, ema120, high, low, open, time].every(isFiniteNumber)) {
+        if ([close, ema20, ema120, macdDiff, macdDea, macdHistogram, high, low, open, time].every(isFiniteNumber)) {
           const upsertResult = upsertFenxingBar(this._state.bars, {
             close,
             ema20,
             ema120,
             high,
             low,
+            macdDea,
+            macdDiff,
+            macdHistogram,
             open,
             time,
           })
@@ -277,7 +292,7 @@ const getCustomIndicators = (PineJS: PineJsLike) => Promise.resolve([
             this._state.fenxingBuildState = createEmptyFenxingBuildState()
             this._state.baseSegmentBuildState = createEmptyBaseSegmentBuildState()
             this._state.higherLevelSegmentBuildState = createEmptyHigherLevelSegmentBuildState()
-            this._state.momentumExhaustionSignals = []
+            this._state.momentumExhaustionBuildState = createEmptyMomentumExhaustionBuildState()
             this._state.emittedInitialDrawableSegmentStartKey = null
             this._state.emittedInitialHigherDrawableSegmentStartKey = null
           } else if (upsertResult.type !== 'append') {
@@ -298,6 +313,7 @@ const getCustomIndicators = (PineJS: PineJsLike) => Promise.resolve([
               upsertResult.index,
               minBarDistance,
             )
+            this._state.momentumExhaustionBuildState = createEmptyMomentumExhaustionBuildState()
           }
 
           advanceFenxingState(this._state.fenxingBuildState, this._state.bars, maxIncludedRawBarCount)
@@ -323,16 +339,19 @@ const getCustomIndicators = (PineJS: PineJsLike) => Promise.resolve([
           minBarDistance,
         )
 
-        const higherLevelSegments = getAllHigherLevelSegments(
-          this._state.higherLevelSegmentBuildState,
-          minBarDistance,
-        )
-
-        this._state.momentumExhaustionSignals = buildMomentumExhaustionSignals(
-          this._state.bars,
-          getAllBaseSegments(this._state.baseSegmentBuildState),
-          higherLevelSegments,
-        )
+        const allBaseSegments = getAllBaseSegments(this._state.baseSegmentBuildState)
+        if (shouldRebuildStates) {
+          this._state.momentumExhaustionBuildState = rebuildMomentumExhaustionState(
+            this._state.bars,
+            allBaseSegments,
+          )
+        } else {
+          advanceMomentumExhaustionState(
+            this._state.momentumExhaustionBuildState,
+            this._state.bars,
+            allBaseSegments,
+          )
+        }
 
         const baseSegmentOutput = (() => {
           if (!latestBaseSegment) {
@@ -384,7 +403,7 @@ const getCustomIndicators = (PineJS: PineJsLike) => Promise.resolve([
 
         const momentumExhaustionOutput = getMomentumExhaustionOutput(
           this._state.bars,
-          this._state.momentumExhaustionSignals,
+          getAllMomentumExhaustionSignals(this._state.momentumExhaustionBuildState),
         )
 
         const seriesOutput = [

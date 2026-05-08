@@ -2,173 +2,270 @@ import { getBaseSegmentHighPoint, getBaseSegmentLowPoint } from './base_segment_
 import { getOffsetFromCurrentBar } from './base_fenxing_builder'
 import type {
   BaseSegment,
-  BaseSegmentMetrics,
   FenxingBar,
-  HigherLevelSegment,
+  MomentumExhaustionBuildState,
   MomentumExhaustionSignal,
   SegmentDirection,
 } from './types'
 
-/**
- * 当当前段的绝对价差小于前一同向段的 80% 时，直接判定为动能衰竭。
- *
- * 这里强调的是“priceRange 优先于 barSpan”：
- * 即使当前段耗时更短，只要推进价差明显缩小，也更倾向于认为它的动能已经弱了。
- */
-const MOMENTUM_EXHAUSTION_PRICE_RANGE_EXHAUSTED_RATIO = 0.8
+type MacdCrossType = 'golden' | 'dead'
 
-/**
- * 当当前段与前一同向段的价差比例达到这个阈值后，才认为两者价差足够接近，
- * 可以把 `strength = priceRange / barSpan` 作为最后一道辅助判断。
- */
-const MOMENTUM_EXHAUSTION_PRICE_RANGE_CLOSE_RATIO = 0.9
+type SegmentRange = {
+  high: number
+  low: number
+}
 
-const getSegmentMetrics = (
+const isGoldenCross = (previousBar: FenxingBar, currentBar: FenxingBar) => {
+  return previousBar.macdDiff <= previousBar.macdDea && currentBar.macdDiff > currentBar.macdDea
+}
+
+const isDeadCross = (previousBar: FenxingBar, currentBar: FenxingBar) => {
+  return previousBar.macdDiff >= previousBar.macdDea && currentBar.macdDiff < currentBar.macdDea
+}
+
+const getSegmentClosedInterval = (segment: BaseSegment) => {
+  return {
+    endIndex: Math.max(segment.start.index, segment.end.index),
+    startIndex: Math.min(segment.start.index, segment.end.index),
+  }
+}
+
+const getRecentThreeSegmentsBeforeIndex = (
+  baseSegments: BaseSegment[],
+  barIndex: number,
+) => {
+  const availableSegments = baseSegments.filter((segment) => {
+    const { endIndex } = getSegmentClosedInterval(segment)
+    return endIndex <= barIndex
+  })
+
+  if (availableSegments.length < 3) {
+    return null
+  }
+
+  return availableSegments.slice(-3)
+}
+
+const getSegmentRange = (segment: BaseSegment): SegmentRange => {
+  return {
+    high: getBaseSegmentHighPoint(segment).price,
+    low: getBaseSegmentLowPoint(segment).price,
+  }
+}
+
+const getSameDirectionMacdArea = (
   bars: FenxingBar[],
-  baseSegment: BaseSegment,
-): BaseSegmentMetrics | null => {
-  const startIndex = Math.min(baseSegment.start.index, baseSegment.end.index)
-  const endIndex = Math.max(baseSegment.start.index, baseSegment.end.index)
-  const high = getBaseSegmentHighPoint(baseSegment)
-  const low = getBaseSegmentLowPoint(baseSegment)
-  const priceRange = Math.max(0, high.price - low.price)
-  const barSpan = Math.max(1, endIndex - startIndex + 1)
+  segment: BaseSegment,
+) => {
+  const { startIndex, endIndex } = getSegmentClosedInterval(segment)
+  let area = 0
 
-  if (!bars[startIndex] || !bars[endIndex]) {
+  for (let index = startIndex; index <= endIndex; index += 1) {
+    const bar = bars[index]
+    if (!bar) {
+      continue
+    }
+
+    if (segment.direction === 'up') {
+      area += Math.max(bar.macdHistogram, 0)
+      continue
+    }
+
+    area += Math.abs(Math.min(bar.macdHistogram, 0))
+  }
+
+  return area
+}
+
+const isValidThreeSegmentStructure = (
+  segments: BaseSegment[],
+  crossType: MacdCrossType,
+) => {
+  const [segmentA, segmentB, segmentC] = segments
+  if (!segmentA || !segmentB || !segmentC) {
+    return false
+  }
+
+  if (crossType === 'golden') {
+    return segmentA.direction === 'down'
+      && segmentB.direction === 'up'
+      && segmentC.direction === 'down'
+  }
+
+  return segmentA.direction === 'up'
+    && segmentB.direction === 'down'
+    && segmentC.direction === 'up'
+}
+
+const isUpMomentumExhausted = (
+  rangeA: SegmentRange,
+  rangeC: SegmentRange,
+  areaA: number,
+  areaC: number,
+) => {
+  if (rangeA.low <= rangeC.low && rangeA.high < rangeC.high) {
+    return areaC < areaA
+  }
+
+  if (rangeA.low <= rangeC.low && rangeA.high >= rangeC.high) {
+    return true
+  }
+
+  if (rangeA.low > rangeC.low && rangeA.high < rangeC.high) {
+    return false
+  }
+
+  return false
+}
+
+const isDownMomentumExhausted = (
+  rangeA: SegmentRange,
+  rangeC: SegmentRange,
+  areaA: number,
+  areaC: number,
+) => {
+  if (rangeA.high >= rangeC.high && rangeA.low > rangeC.low) {
+    return areaC < areaA
+  }
+
+  if (rangeA.high >= rangeC.high && rangeA.low <= rangeC.low) {
+    return true
+  }
+
+  if (rangeA.high < rangeC.high && rangeA.low > rangeC.low) {
+    return false
+  }
+
+  return false
+}
+
+const buildSignalFromCross = (
+  bars: FenxingBar[],
+  crossBarIndex: number,
+  direction: SegmentDirection,
+  previousArea: number,
+  currentArea: number,
+): MomentumExhaustionSignal | null => {
+  const crossBar = bars[crossBarIndex]
+  if (!crossBar) {
     return null
   }
 
   return {
-    barSpan,
-    high,
-    low,
-    priceRange,
-    strength: priceRange / barSpan,
+    currentStrength: currentArea,
+    direction,
+    point: {
+      index: crossBar.index,
+      price: direction === 'up' ? crossBar.high : crossBar.low,
+      time: crossBar.time,
+    },
+    previousStrength: previousArea,
   }
 }
 
-/**
- * 判断前一同向段(段1)与当前同向段(段3)之间是否构成动能衰竭。
- *
- * 规则：
- * 1. `priceRange` 是主因子，`barSpan` 只在价差接近时参与辅助判断；
- * 2. 当前段价差更小，即使更快，也更偏向衰竭；
- * 3. 当前段价差更大，即使更慢，也更偏向不衰竭。
- */
-const isMomentumExhausted = (
-  direction: SegmentDirection,
-  previousMetrics: BaseSegmentMetrics,
-  currentMetrics: BaseSegmentMetrics,
+const appendSignalForBar = (
+  bars: FenxingBar[],
+  baseSegments: BaseSegment[],
+  barIndex: number,
 ) => {
-  if (direction === 'up' && previousMetrics.low.price > currentMetrics.low.price) {
-    return false
+  const previousBar = bars[barIndex - 1]
+  const currentBar = bars[barIndex]
+  if (!previousBar || !currentBar) {
+    return null
   }
 
-  if (direction === 'down' && previousMetrics.high.price < currentMetrics.high.price) {
-    return false
+  let crossType: MacdCrossType | null = null
+  if (isGoldenCross(previousBar, currentBar)) {
+    crossType = 'golden'
+  } else if (isDeadCross(previousBar, currentBar)) {
+    crossType = 'dead'
   }
 
-  if (direction === 'up' && previousMetrics.high.price >= currentMetrics.high.price) {
-    return true
+  if (!crossType) {
+    return null
   }
 
-  if (direction === 'down' && previousMetrics.low.price <= currentMetrics.low.price) {
-    return true
+  const recentSegments = getRecentThreeSegmentsBeforeIndex(baseSegments, currentBar.index)
+  if (!recentSegments || !isValidThreeSegmentStructure(recentSegments, crossType)) {
+    return null
   }
 
-  if (previousMetrics.priceRange <= 0) {
-    return false
+  const [segmentA, _, segmentC] = recentSegments
+  if (!segmentA || !segmentC) {
+    return null
   }
 
-  if (currentMetrics.priceRange > previousMetrics.priceRange) {
-    return false
+  const areaA = getSameDirectionMacdArea(bars, segmentA)
+  const areaC = getSameDirectionMacdArea(bars, segmentC)
+  const rangeA = getSegmentRange(segmentA)
+  const rangeC = getSegmentRange(segmentC)
+
+  if (crossType === 'dead') {
+    if (!isUpMomentumExhausted(rangeA, rangeC, areaA, areaC)) {
+      return null
+    }
+
+    return buildSignalFromCross(bars, currentBar.index, 'up', areaA, areaC)
   }
 
-  const currentPriceRangeRatio = currentMetrics.priceRange / previousMetrics.priceRange
-
-  if (currentPriceRangeRatio < MOMENTUM_EXHAUSTION_PRICE_RANGE_EXHAUSTED_RATIO) {
-    return true
+  if (!isDownMomentumExhausted(rangeA, rangeC, areaA, areaC)) {
+    return null
   }
 
-  if (currentPriceRangeRatio < MOMENTUM_EXHAUSTION_PRICE_RANGE_CLOSE_RATIO) {
-    return false
-  }
-
-  return previousMetrics.strength >= currentMetrics.strength
+  return buildSignalFromCross(bars, currentBar.index, 'down', areaA, areaC)
 }
 
-const getHigherDirectionForBaseSegment = (
-  baseSegment: BaseSegment,
-  higherSegments: HigherLevelSegment[],
-): SegmentDirection | null => {
-  const baseStartIndex = Math.min(baseSegment.start.index, baseSegment.end.index)
-  const baseEndIndex = Math.max(baseSegment.start.index, baseSegment.end.index)
+export const createEmptyMomentumExhaustionBuildState = (): MomentumExhaustionBuildState => ({
+  processedBarCount: 0,
+  signals: [],
+})
 
-  const containingHigherSegment = [...higherSegments].reverse().find((higherSegment) => {
-    const higherStartIndex = Math.min(higherSegment.start.index, higherSegment.end.index)
-    const higherEndIndex = Math.max(higherSegment.start.index, higherSegment.end.index)
-    return higherStartIndex <= baseStartIndex && higherEndIndex >= baseEndIndex
-  })
+export const advanceMomentumExhaustionState = (
+  buildState: MomentumExhaustionBuildState,
+  bars: FenxingBar[],
+  baseSegments: BaseSegment[],
+) => {
+  let latestSignal: MomentumExhaustionSignal | null = null
+  const startBarIndex = Math.max(1, buildState.processedBarCount)
 
-  if (containingHigherSegment) {
-    return containingHigherSegment.direction
+  for (let barIndex = startBarIndex; barIndex < bars.length; barIndex += 1) {
+    const signal = appendSignalForBar(bars, baseSegments, barIndex)
+    if (!signal) {
+      continue
+    }
+
+    buildState.signals.push(signal)
+    latestSignal = signal
   }
 
-  const latestStartedHigherSegment = [...higherSegments].reverse().find((higherSegment) => {
-    const higherStartIndex = Math.min(higherSegment.start.index, higherSegment.end.index)
-    return higherStartIndex <= baseStartIndex
-  })
+  buildState.processedBarCount = bars.length
+  return latestSignal
+}
 
-  return latestStartedHigherSegment?.direction ?? higherSegments[higherSegments.length - 1]?.direction ?? null
+export const rebuildMomentumExhaustionState = (
+  bars: FenxingBar[],
+  baseSegments: BaseSegment[],
+) => {
+  const buildState = createEmptyMomentumExhaustionBuildState()
+  advanceMomentumExhaustionState(buildState, bars, baseSegments)
+  return buildState
 }
 
 export const buildMomentumExhaustionSignals = (
   bars: FenxingBar[],
   baseSegments: BaseSegment[],
-  higherSegments: HigherLevelSegment[],
 ) => {
-  const signals: MomentumExhaustionSignal[] = []
+  return rebuildMomentumExhaustionState(bars, baseSegments).signals.map((signal) => ({
+    ...signal,
+    point: { ...signal.point },
+  }))
+}
 
-  for (let index = 2; index < baseSegments.length; index += 1) {
-    const currentSegment = baseSegments[index]
-    const previousSameDirectionSegment = baseSegments[index - 2]
-    if (!currentSegment || !previousSameDirectionSegment) {
-      continue
-    }
-
-    if (currentSegment.direction !== previousSameDirectionSegment.direction) {
-      continue
-    }
-
-    const higherDirection = getHigherDirectionForBaseSegment(currentSegment, higherSegments)
-    if (!higherDirection || currentSegment.direction !== higherDirection) {
-      continue
-    }
-
-    const previousHigherDirection = getHigherDirectionForBaseSegment(previousSameDirectionSegment, higherSegments)
-    if (previousHigherDirection !== higherDirection) {
-      continue
-    }
-
-    const previousMetrics = getSegmentMetrics(bars, previousSameDirectionSegment)
-    const currentMetrics = getSegmentMetrics(bars, currentSegment)
-    if (!previousMetrics || !currentMetrics) {
-      continue
-    }
-
-    if (!isMomentumExhausted(currentSegment.direction, previousMetrics, currentMetrics)) {
-      continue
-    }
-
-    signals.push({
-      currentStrength: currentMetrics.strength,
-      direction: currentSegment.direction,
-      point: currentSegment.direction === 'up' ? currentMetrics.high : currentMetrics.low,
-      previousStrength: previousMetrics.strength,
-    })
-  }
-
-  return signals
+export const getAllMomentumExhaustionSignals = (buildState: MomentumExhaustionBuildState) => {
+  return buildState.signals.map((signal) => ({
+    ...signal,
+    point: { ...signal.point },
+  }))
 }
 
 export const getMomentumExhaustionOutput = (

@@ -30,6 +30,9 @@ export type FenxingBar = {
   high: number
   index: number
   low: number
+  macdDea: number
+  macdDiff: number
+  macdHistogram: number
   open: number
   time: number
 }
@@ -163,4 +166,9 @@ export type MomentumExhaustionSignal = {
   point: FenxingPoint
   previousStrength: number
   currentStrength: number
+}
+
+export type MomentumExhaustionBuildState = {
+  processedBarCount: number
+  signals: MomentumExhaustionSignal[]
 }
