@@ -55,3 +55,18 @@ class BaseSegment:
     end: FenxingPoint
     start_signal_index: int  # 起点分型在 signals 列表中的序号
     end_signal_index: int    # 终点分型在 signals 列表中的序号
+
+
+@dataclass
+class HigherLevelSegment:
+    direction: str  # 'up' | 'down'
+    start: FenxingPoint
+    end: FenxingPoint
+
+
+@dataclass
+class TradingRange:
+    top: float
+    bottom: float
+    left: FenxingPoint
+    right: FenxingPoint

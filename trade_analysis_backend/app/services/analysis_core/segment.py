@@ -124,7 +124,7 @@ def _make_segment(
 def build_base_segments(
     bars: list[AnalysisBar],
     signals: list[FenxingSignal],
-    min_bar_distance: int = 4,
+    min_bar_distance: int = 3,
 ) -> list[BaseSegment]:
     """从分型信号构建本级别线段。
 

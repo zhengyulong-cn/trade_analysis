@@ -8,15 +8,28 @@ export interface SegmentData {
   end: { index: number; time: number; price: number }
 }
 
+export interface TradingRangeData {
+  top: number
+  bottom: number
+  left: { index: number; time: number; price: number }
+  right: { index: number; time: number; price: number }
+}
+
 interface AnalysisResponse extends FractalListResponse {
   segments: SegmentData[]
+  higher_segments: SegmentData[]
+  trading_ranges: TradingRangeData[]
 }
 
 const UP_COLOR = '#CC0000'
 const DOWN_COLOR = '#00AA00'
 const TOP_COLOR = '#CC0000'
 const BOTTOM_COLOR = '#00AA00'
+const HIGHER_UP_COLOR = '#FF00FF'
+const HIGHER_DOWN_COLOR = '#0000FF'
 const SEGMENT_LINE_WIDTH = 2
+const HIGHER_LINE_WIDTH = 3
+const TRADING_RANGE_COLOR = '#FFCC00'
 
 export function useAnalysisDrawer() {
   let drawGeneration = 0
@@ -77,6 +90,53 @@ export function useAnalysisDrawer() {
     }
   }
 
+  const drawHigherSegments = (widget: TradingViewWidget, segments: SegmentData[]) => {
+    const chart = widget.activeChart()
+    for (const seg of segments) {
+      const color = seg.direction === 'up' ? HIGHER_UP_COLOR : HIGHER_DOWN_COLOR
+      chart.createMultipointShape(
+        [
+          { time: seg.start.time, price: seg.start.price },
+          { time: seg.end.time, price: seg.end.price },
+        ],
+        {
+          shape: 'polyline',
+          lock: true,
+          disableSelection: true,
+          disableSave: true,
+          overrides: {
+            linecolor: color,
+            linewidth: HIGHER_LINE_WIDTH,
+            linestyle: 0,
+          },
+        },
+      )
+    }
+  }
+
+  const drawTradingRanges = (widget: TradingViewWidget, ranges: TradingRangeData[]) => {
+    const chart = widget.activeChart()
+    for (const r of ranges) {
+      const lb = { time: r.left.time, price: r.bottom }
+      const rt = { time: r.right.time, price: r.top }
+      chart.createMultipointShape(
+        [lb, rt],
+        {
+          shape: 'rectangle',
+          lock: true,
+          disableSelection: true,
+          disableSave: true,
+          overrides: {
+            linecolor: TRADING_RANGE_COLOR,
+            fillbackground: TRADING_RANGE_COLOR,
+            transparency: 80,
+            linewidth: 1,
+          },
+        },
+      )
+    }
+  }
+
   const fetchAndDraw = async (
     widget: TradingViewWidget | null,
     symbol: string,
@@ -94,6 +154,8 @@ export function useAnalysisDrawer() {
       if (gen !== drawGeneration || !widget) return
 
       drawSegments(widget, data.segments)
+      drawHigherSegments(widget, data.higher_segments)
+      drawTradingRanges(widget, data.trading_ranges)
     } catch {
       // silently ignore
     }

@@ -3,7 +3,7 @@ from typing import Annotated
 from fastapi import APIRouter, Query
 
 from app.api.dependencies import AnalysisServiceDep
-from app.schemas.analysis import AnalysisOut, _FractalOut, _SegmentOut, _SegmentPointOut
+from app.schemas.analysis import AnalysisOut, _FractalOut, _HigherSegmentOut, _SegmentOut, _SegmentPointOut, _TradingRangeOut
 
 router = APIRouter()
 
@@ -32,5 +32,22 @@ def get_analysis(
                 end=_SegmentPointOut(**s["end"]),
             )
             for s in result["segments"]
+        ],
+        higher_segments=[
+            _HigherSegmentOut(
+                direction=s["direction"],
+                start=_SegmentPointOut(**s["start"]),
+                end=_SegmentPointOut(**s["end"]),
+            )
+            for s in result["higher_segments"]
+        ],
+        trading_ranges=[
+            _TradingRangeOut(
+                top=r["top"],
+                bottom=r["bottom"],
+                left=_SegmentPointOut(**r["left"]),
+                right=_SegmentPointOut(**r["right"]),
+            )
+            for r in result["trading_ranges"]
         ],
     )

@@ -2,7 +2,7 @@ import math
 from datetime import datetime
 
 from app.core.kline_intervals import is_supported_kline_interval
-from app.services.analysis import AnalysisBar, build_base_segments, build_fractals, calc_ema
+from app.services.analysis_core import AnalysisBar, build_base_segments, build_fractals, build_higher_level_segments, build_trading_ranges, calc_ema
 
 
 def _datetime_to_unix(dt: datetime) -> int:
@@ -38,6 +38,8 @@ class AnalysisService:
 
         _, signals = build_fractals(bars)
         segments = build_base_segments(bars, signals)
+        higher_segments = build_higher_level_segments(bars, segments)
+        trading_ranges = build_trading_ranges(bars, segments, higher_segments)
 
         fractals = [
             {
@@ -56,11 +58,30 @@ class AnalysisService:
             }
             for s in segments
         ]
+        higher_dicts = [
+            {
+                "direction": s.direction,
+                "start": {"index": s.start.index, "time": s.start.time, "price": s.start.price},
+                "end": {"index": s.end.index, "time": s.end.time, "price": s.end.price},
+            }
+            for s in higher_segments
+        ]
+        range_dicts = [
+            {
+                "top": r.top,
+                "bottom": r.bottom,
+                "left": {"index": r.left.index, "time": r.left.time, "price": r.left.price},
+                "right": {"index": r.right.index, "time": r.right.time, "price": r.right.price},
+            }
+            for r in trading_ranges
+        ]
 
         return {
             "bar_count": len(bars),
             "fractals": fractals,
             "segments": segment_dicts,
+            "higher_segments": higher_dicts,
+            "trading_ranges": range_dicts,
         }
 
 
