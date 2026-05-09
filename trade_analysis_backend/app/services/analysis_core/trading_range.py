@@ -93,6 +93,31 @@ def _make_range(
     )
 
 
+def _merge_overlapping(ranges: list[TradingRange]) -> list[TradingRange]:
+    """合并时间重叠的交易区间。"""
+    if len(ranges) < 2:
+        return ranges
+
+    # 按左边界时间排序
+    sorted_ranges = sorted(ranges, key=lambda r: r.left.time)
+    merged: list[TradingRange] = [sorted_ranges[0]]
+
+    for r in sorted_ranges[1:]:
+        last = merged[-1]
+        if r.left.time <= last.right.time:
+            # 重叠：合并为更宽的范围
+            merged[-1] = TradingRange(
+                top=max(last.top, r.top),
+                bottom=min(last.bottom, r.bottom),
+                left=last.left if last.left.time <= r.left.time else r.left,
+                right=last.right if last.right.time >= r.right.time else r.right,
+            )
+        else:
+            merged.append(r)
+
+    return merged
+
+
 def advance_trading_range(
     state: TradingRangeState,
     bars: list[AnalysisBar],
@@ -100,7 +125,8 @@ def advance_trading_range(
     current_higher_dir: str | None,
 ) -> None:
     """本级别线段完成后立即判定，不等大级别反转。"""
-    # 从上次处理到的位置开始，检查每条新线段能否和前面两条构成交易区间
+    new_ranges: list[TradingRange] = []
+
     for i in range(state.processed_count, len(base_segments)):
         if current_higher_dir is None:
             break
@@ -112,6 +138,12 @@ def advance_trading_range(
         if _check_abc(a, b, c, current_higher_dir):
             rng = _make_range(a, c, bars)
             if rng is not None:
-                state.ranges.append(rng)
+                new_ranges.append(rng)
 
     state.processed_count = len(base_segments)
+
+    if new_ranges:
+        # 新找到的区间和已有的合并
+        all_ranges = state.ranges + new_ranges
+        state.ranges = _merge_overlapping(all_ranges)
+
