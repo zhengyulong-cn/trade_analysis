@@ -4,7 +4,7 @@ from typing import Annotated
 from fastapi import APIRouter, Query
 
 from app.api.dependencies import AnalysisServiceDep
-from app.schemas.analysis import AnalysisOut, _FractalOut, _HigherSegmentOut, _SegmentOut, _SegmentPointOut, _TradingRangeOut
+from app.schemas.analysis import AnalysisOut, _FractalOut, _HigherSegmentOut, _MomentumExhaustionOut, _SegmentOut, _SegmentPointOut, _TradingRangeOut
 
 router = APIRouter()
 
@@ -54,5 +54,14 @@ def get_analysis(
                 right=_SegmentPointOut(**r["right"]),
             )
             for r in result["trading_ranges"]
+        ],
+        momentum_exhaustions=[
+            _MomentumExhaustionOut(
+                direction=s["direction"],
+                point=_SegmentPointOut(**s["point"]),
+                previous_strength=s["previous_strength"],
+                current_strength=s["current_strength"],
+            )
+            for s in result["momentum_exhaustions"]
         ],
     )

@@ -10,6 +10,7 @@ from .higher_level_segment import (
     create_higher_level_state,
 )
 from .segment import advance_segment, create_segment_state
+from .momentum_exhaustion import advance_momentum_exhaustion, create_momentum_exhaustion_state
 from .trading_range import advance_trading_range, create_trading_range_state
 
 
@@ -23,6 +24,7 @@ def analyze(
     seg = create_segment_state()
     higher = create_higher_level_state()
     tr = create_trading_range_state()
+    me = create_momentum_exhaustion_state()
 
     for bar in bars:
         # 1. 分型
@@ -36,7 +38,7 @@ def analyze(
         current_segs = seg.historical + ([seg.active] if seg.active else [])
         advance_higher_level(higher, bar, bar.index, current_segs, min_distance)
 
-        # 4. 交易区间：本级别线段完成后立即判定，使用当前大级别方向
+        # 4. 交易区间
         current_higher_dir: str | None = None
         if higher.last_cross_relation == "above":
             current_higher_dir = "up"
@@ -44,8 +46,11 @@ def analyze(
             current_higher_dir = "down"
         advance_trading_range(tr, bars, current_segs, current_higher_dir)
 
-    # 收集结果
+        # 5. 动能衰竭：包含活动段（end 已确定，不算未来数据）
+        advance_momentum_exhaustion(me, bars, current_segs, bar.index)
+
     final_segs = seg.historical + ([seg.active] if seg.active else [])
+
     final_higher = all_higher_segments(higher, min_distance)
 
     return {
@@ -71,5 +76,12 @@ def analyze(
              "left": {"index": r.left.index, "time": r.left.time, "price": r.left.price},
              "right": {"index": r.right.index, "time": r.right.time, "price": r.right.price}}
             for r in tr.ranges
+        ],
+        "momentum_exhaustions": [
+            {"direction": s.direction,
+             "point": {"index": s.point.index, "time": s.point.time, "price": s.point.price},
+             "previous_strength": s.previous_strength,
+             "current_strength": s.current_strength}
+            for s in me.signals
         ],
     }

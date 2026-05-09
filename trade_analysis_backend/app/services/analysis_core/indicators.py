@@ -1,18 +1,22 @@
+import math
+
+
 def calc_ema(values: list[float], length: int) -> list[float | None]:
     """计算 EMA 序列，前 length-1 根返回 None。"""
     result: list[float | None] = [None] * len(values)
-    valid_indices = [i for i, v in enumerate(values) if v is not None]
+    valid_indices = [i for i, v in enumerate(values) if v is not None and not math.isnan(v)]
     if len(valid_indices) < length:
         return result
 
     start = valid_indices[length - 1]
-    sma = sum(values[valid_indices[0] : start + 1]) / length  # noqa: RUF017
+    sma = sum(values[i] for i in range(valid_indices[0], start + 1) if values[i] is not None and not math.isnan(values[i])) / length  # type: ignore[arg-type]
     result[start] = sma
 
     multiplier = 2 / (length + 1)
     for i in range(start + 1, len(values)):
-        if values[i] is not None:
-            result[i] = (values[i] - result[i - 1]) * multiplier + result[i - 1]  # type: ignore[operator]
+        v = values[i]
+        if v is not None and not math.isnan(v):
+            result[i] = (v - result[i - 1]) * multiplier + result[i - 1]  # type: ignore[operator]
         else:
             result[i] = result[i - 1]
 

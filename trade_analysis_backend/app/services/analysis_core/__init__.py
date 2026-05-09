@@ -1,6 +1,15 @@
 from .engine import analyze
 from .indicators import calc_ema, calc_macd
-from .types import AnalysisBar, BaseSegment, FenxingPoint, FenxingSignal, HigherLevelSegment, MergedBar, TradingRange
+from .types import (
+    AnalysisBar,
+    BaseSegment,
+    FenxingPoint,
+    FenxingSignal,
+    HigherLevelSegment,
+    MergedBar,
+    MomentumExhaustionSignal,
+    TradingRange,
+)
 
 __all__ = [
     "AnalysisBar",
@@ -9,6 +18,7 @@ __all__ = [
     "FenxingSignal",
     "HigherLevelSegment",
     "MergedBar",
+    "MomentumExhaustionSignal",
     "TradingRange",
     "analyze",
     "calc_ema",

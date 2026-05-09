@@ -2,7 +2,7 @@ import math
 from datetime import datetime
 
 from app.core.kline_intervals import is_supported_kline_interval
-from app.services.analysis_core import AnalysisBar, analyze, calc_ema
+from app.services.analysis_core import AnalysisBar, analyze, calc_ema, calc_macd
 
 
 def _datetime_to_unix(dt: datetime) -> int:
@@ -34,11 +34,12 @@ class AnalysisService:
         )
         items = kline_result.kline_data
         if not items:
-            return {"bar_count": 0, "fractals": [], "segments": [], "higher_segments": [], "trading_ranges": []}
+            return {"bar_count": 0, "fractals": [], "segments": [], "higher_segments": [], "trading_ranges": [], "momentum_exhaustions": []}
 
         bars = _build_analysis_bars(items)
         _attach_ema(bars, 20, "ema20")
         _attach_ema(bars, 120, "ema120")
+        _attach_macd(bars)
 
         return analyze(bars)
 
@@ -64,3 +65,15 @@ def _attach_ema(bars: list[AnalysisBar], length: int, field: str) -> None:
         ema_val = ema_list[i]
         if ema_val is not None and not math.isnan(ema_val):
             setattr(bar, field, ema_val)
+
+
+def _attach_macd(bars: list[AnalysisBar]) -> None:
+    closes = [b.close for b in bars]
+    diff, dea, hist = calc_macd(closes, short=4, long=20, mid=20)
+    for i, bar in enumerate(bars):
+        if diff[i] is not None:
+            bar.macd_diff = diff[i]
+        if dea[i] is not None:
+            bar.macd_dea = dea[i]
+        if hist[i] is not None:
+            bar.macd_histogram = hist[i]

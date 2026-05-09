@@ -15,10 +15,18 @@ export interface TradingRangeData {
   right: { index: number; time: number; price: number }
 }
 
+export interface MomentumExhaustionData {
+  direction: 'up' | 'down'
+  point: { index: number; time: number; price: number }
+  previous_strength: number
+  current_strength: number
+}
+
 interface AnalysisResponse extends FractalListResponse {
   segments: SegmentData[]
   higher_segments: SegmentData[]
   trading_ranges: TradingRangeData[]
+  momentum_exhaustions: MomentumExhaustionData[]
 }
 
 const UP_COLOR = '#CC0000'
@@ -141,6 +149,28 @@ export function useAnalysisDrawer() {
     }
   }
 
+  const drawMomentumExhaustions = (widget: TradingViewWidget, exhaustions: MomentumExhaustionData[]) => {
+    const chart = widget.activeChart()
+    for (const ex of exhaustions) {
+      const isUp = ex.direction === 'up'
+      chart.createShape(
+        { time: ex.point.time, price: ex.point.price },
+        {
+          shape: isUp ? 'arrow_down' : 'arrow_up',
+          text: isUp ? '多衰' : '空衰',
+          lock: true,
+          disableSelection: true,
+          disableSave: true,
+          overrides: {
+            arrowcolor: isUp ? '#CC0000' : '#00AA00',
+            textcolor: isUp ? '#CC0000' : '#00AA00',
+            fontsize: 12,
+          },
+        },
+      )
+    }
+  }
+
   const fetchAndDraw = async (
     widget: TradingViewWidget | null,
     symbol: string,
@@ -162,6 +192,7 @@ export function useAnalysisDrawer() {
       drawSegments(widget, data.segments)
       drawHigherSegments(widget, data.higher_segments)
       drawTradingRanges(widget, data.trading_ranges)
+      drawMomentumExhaustions(widget, data.momentum_exhaustions)
     } catch {
       // silently ignore
     }

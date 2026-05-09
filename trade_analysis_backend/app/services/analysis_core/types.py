@@ -70,3 +70,11 @@ class TradingRange:
     bottom: float
     left: FenxingPoint
     right: FenxingPoint
+
+
+@dataclass
+class MomentumExhaustionSignal:
+    direction: str  # 'up' | 'down'
+    point: FenxingPoint
+    previous_strength: float  # segment A 的 MACD 面积
+    current_strength: float   # segment C 的 MACD 面积

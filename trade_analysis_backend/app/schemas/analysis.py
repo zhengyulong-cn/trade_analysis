@@ -33,6 +33,13 @@ class _TradingRangeOut(SQLModel):
     right: _SegmentPointOut
 
 
+class _MomentumExhaustionOut(SQLModel):
+    direction: str  # 'up' | 'down'
+    point: _SegmentPointOut
+    previous_strength: float
+    current_strength: float
+
+
 class AnalysisOut(SQLModel):
     symbol: str
     interval: int
@@ -41,3 +48,4 @@ class AnalysisOut(SQLModel):
     segments: list[_SegmentOut]
     higher_segments: list[_HigherSegmentOut]
     trading_ranges: list[_TradingRangeOut]
+    momentum_exhaustions: list[_MomentumExhaustionOut]
