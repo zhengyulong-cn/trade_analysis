@@ -24,8 +24,6 @@ def analyze(
     higher = create_higher_level_state()
     tr = create_trading_range_state()
 
-    prev_higher_count = 0
-
     for bar in bars:
         # 1. 分型
         new_signal = advance_fenxing(fx, bar, max_included)
@@ -38,17 +36,9 @@ def analyze(
         current_segs = seg.historical + ([seg.active] if seg.active else [])
         advance_higher_level(higher, bar, bar.index, current_segs, min_distance)
 
-        # 4. 交易区间：大级别变化时重新评估所有可用线段
+        # 4. 交易区间：大级别段变化时自动重建
         current_higher = all_higher_segments(higher, min_distance)
-        if current_higher and len(current_higher) != prev_higher_count:
-            prev_higher_count = len(current_higher)
-            # 重新过一遍所有已知线段，只追加未处理过的
-            tr.processed_segment_count = 0
-            tr.ranges = []
-            tr.last_feature = None
-        if current_higher:
-            for i in range(tr.processed_segment_count, len(current_segs)):
-                advance_trading_range(tr, bars, current_segs, current_higher, i)
+        advance_trading_range(tr, bars, current_segs, current_higher)
 
     # 收集结果
     final_segs = seg.historical + ([seg.active] if seg.active else [])

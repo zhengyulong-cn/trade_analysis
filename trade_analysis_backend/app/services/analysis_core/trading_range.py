@@ -1,7 +1,9 @@
 """交易区间构建（增量版本）。
 
-特征序列 = 与大级别方向相反的本级别线段。
-只做首次 a-b-c 三段确认，每次新线段完成后推进。
+遍历每个大级别线段覆盖的本级别线段，找连续 a-b-c 三段：
+- 大级别上涨 → 下跌a - 上涨b - 下跌c（a、c 为特征序列）
+- 大级别下跌 → 上涨a - 下跌b - 上涨c
+不做左右延申。
 """
 
 from dataclasses import dataclass, field
@@ -12,17 +14,9 @@ _INITIAL_OVERLAP = 0.4
 
 
 @dataclass
-class _Feature:
-    base_index: int
-    higher_direction: str
-    seg: BaseSegment
-
-
-@dataclass
 class TradingRangeState:
     ranges: list[TradingRange] = field(default_factory=list)
-    last_feature: _Feature | None = None
-    processed_segment_count: int = 0
+    prev_higher_count: int = 0
 
 
 def create_trading_range_state() -> TradingRangeState:
@@ -52,49 +46,59 @@ def _second_val(values: list[float], reverse: bool) -> float | None:
     return sv[min(1, len(sv) - 1)]
 
 
-def _find_higher_dir(seg: BaseSegment, higher_segs: list[HigherLevelSegment]) -> str | None:
-    bs = min(seg.start.index, seg.end.index)
-    be = max(seg.start.index, seg.end.index)
-    for hs in reversed(higher_segs):
-        if min(hs.start.index, hs.end.index) <= bs and max(hs.start.index, hs.end.index) >= be:
-            return hs.direction
-    for hs in reversed(higher_segs):
-        if min(hs.start.index, hs.end.index) <= bs:
-            return hs.direction
-    return higher_segs[-1].direction if higher_segs else None
+def _seg_inside_higher(seg: BaseSegment, hs: HigherLevelSegment) -> bool:
+    """本级别线段是否完全在大级别段范围内。"""
+    s_s = min(seg.start.index, seg.end.index)
+    s_e = max(seg.start.index, seg.end.index)
+    h_s = min(hs.start.index, hs.end.index)
+    h_e = max(hs.start.index, hs.end.index)
+    return h_s <= s_s and s_e <= h_e
 
 
-def _calc_range(features: list[_Feature], bars: list[AnalysisBar]) -> TradingRange | None:
-    highs = [_seg_high(f.seg) for f in features]
-    lows = [_seg_low(f.seg) for f in features]
+def _make_range(seg_a: BaseSegment, seg_c: BaseSegment, bars: list[AnalysisBar]) -> TradingRange | None:
+    highs = [_seg_high(seg_a), _seg_high(seg_c)]
+    lows = [_seg_low(seg_a), _seg_low(seg_c)]
     top = _second_val(highs, reverse=True)
     bottom = _second_val(lows, reverse=False)
     if top is None or bottom is None or top <= bottom:
         return None
-    first, last = features[0], features[-1]
-    lb = bars[first.seg.start.index]
+
+    # left = a 段起点 bar，right = c 段终点 bar（不做左右延申）
+    a_start_idx = min(seg_a.start.index, seg_a.end.index)
+    c_end_idx = max(seg_c.start.index, seg_c.end.index)
+    lb = bars[a_start_idx]
+    rb = bars[c_end_idx]
+
     return TradingRange(
         top=top, bottom=bottom,
-        left=FenxingPoint(index=lb.index, price=first.seg.start.price, time=lb.time),
-        right=FenxingPoint(index=last.seg.end.index, price=last.seg.end.price, time=last.seg.end.time),
+        left=FenxingPoint(index=lb.index, price=lb.low, time=lb.time),
+        right=FenxingPoint(index=rb.index, price=rb.high, time=rb.time),
     )
 
 
-def _can_create(prev: _Feature, middle: BaseSegment | None, curr: _Feature) -> bool:
-    if middle is None:
+def _check_abc(
+    seg_a: BaseSegment,
+    seg_b: BaseSegment,
+    seg_c: BaseSegment,
+    higher_dir: str,
+) -> bool:
+    """验证 a-b-c 是否符合交易区间条件。
+
+    higher_dir='up' → a=down, b=up, c=down
+    higher_dir='down' → a=up, b=down, c=up
+    """
+    feature_dir = _opposite(higher_dir)
+    if seg_a.direction != feature_dir or seg_c.direction != feature_dir:
         return False
-    if prev.higher_direction != curr.higher_direction:
+    if seg_b.direction == feature_dir:
         return False
-    if prev.seg.direction != curr.seg.direction:
-        return False
-    if middle.direction == curr.seg.direction:
-        return False
-    sh = max(_seg_high(prev.seg), _seg_high(middle), _seg_high(curr.seg))
-    sl = min(_seg_low(prev.seg), _seg_low(middle), _seg_low(curr.seg))
+
+    sh = max(_seg_high(seg_a), _seg_high(seg_b), _seg_high(seg_c))
+    sl = min(_seg_low(seg_a), _seg_low(seg_b), _seg_low(seg_c))
     sr = sh - sl
     if sr <= 0:
         return False
-    ov = _overlap(_seg_low(prev.seg), _seg_high(prev.seg), _seg_low(curr.seg), _seg_high(curr.seg))
+    ov = _overlap(_seg_low(seg_a), _seg_high(seg_a), _seg_low(seg_c), _seg_high(seg_c))
     return ov / sr >= _INITIAL_OVERLAP
 
 
@@ -103,23 +107,30 @@ def advance_trading_range(
     bars: list[AnalysisBar],
     base_segments: list[BaseSegment],
     higher_segments: list[HigherLevelSegment],
-    seg_index: int,
 ) -> None:
-    """处理一条新完成的本级别线段，尝试形成交易区间。"""
-    seg = base_segments[seg_index]
-    h_dir = _find_higher_dir(seg, higher_segments)
-    if h_dir is None or seg.direction != _opposite(h_dir):
-        state.processed_segment_count += 1
+    """增量推进：大级别段数量变化时重建全部交易区间。
+
+    只在当前已知的大级别段和本级别段范围内计算，
+    不使用未来的线段信息。
+    """
+    if len(higher_segments) == state.prev_higher_count:
         return
+    state.prev_higher_count = len(higher_segments)
 
-    feat = _Feature(base_index=seg_index, higher_direction=h_dir, seg=seg)
+    ranges: list[TradingRange] = []
 
-    if state.last_feature is not None and seg_index == state.last_feature.base_index + 2:
-        middle = base_segments[state.last_feature.base_index + 1]
-        if _can_create(state.last_feature, middle, feat):
-            rng = _calc_range([state.last_feature, feat], bars)
-            if rng is not None:
-                state.ranges.append(rng)
+    for hs in higher_segments:
+        # 收集该大级别段完全覆盖的本级别线段
+        inside = [s for s in base_segments if _seg_inside_higher(s, hs)]
+        if len(inside) < 3:
+            continue
 
-    state.last_feature = feat
-    state.processed_segment_count += 1
+        # 连续三段滑动窗口
+        for i in range(len(inside) - 2):
+            a, b, c = inside[i], inside[i + 1], inside[i + 2]
+            if _check_abc(a, b, c, hs.direction):
+                rng = _make_range(a, c, bars)
+                if rng is not None:
+                    ranges.append(rng)
+
+    state.ranges = ranges

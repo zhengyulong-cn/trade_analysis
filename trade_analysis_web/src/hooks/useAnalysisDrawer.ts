@@ -39,7 +39,7 @@ export function useAnalysisDrawer() {
       symbol,
       interval,
       // start_time: '2026-04-09T21:35:00',
-      end_time: '2026-04-24T11:30:00',
+      // end_time: '2026-04-24T22:50:00',
     }) as unknown as AnalysisResponse
     return data
   }
@@ -158,6 +158,7 @@ export function useAnalysisDrawer() {
       clearAll(widget)
       if (gen !== drawGeneration || !widget) return
 
+      // drawFractals(widget, data.fractals)
       drawSegments(widget, data.segments)
       drawHigherSegments(widget, data.higher_segments)
       drawTradingRanges(widget, data.trading_ranges)
