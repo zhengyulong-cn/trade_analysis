@@ -35,7 +35,12 @@ export function useAnalysisDrawer() {
   let drawGeneration = 0
 
   const fetchAnalysis = async (symbol: string, interval: number) => {
-    const data = await axios.get<AnalysisResponse>('/analysis', { symbol, interval }) as unknown as AnalysisResponse
+    const data = await axios.get<AnalysisResponse>('/analysis', {
+      symbol,
+      interval,
+      // start_time: '2026-04-09T21:35:00',
+      end_time: '2026-04-24T11:30:00',
+    }) as unknown as AnalysisResponse
     return data
   }
 

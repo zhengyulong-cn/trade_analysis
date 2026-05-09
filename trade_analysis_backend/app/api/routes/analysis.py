@@ -1,3 +1,4 @@
+from datetime import datetime
 from typing import Annotated
 
 from fastapi import APIRouter, Query
@@ -14,11 +15,15 @@ def get_analysis(
     interval: int,
     service: AnalysisServiceDep,
     limit: Annotated[int, Query(ge=1, le=5000)] = 2000,
+    start_time: datetime | None = None,
+    end_time: datetime | None = None,
 ) -> AnalysisOut:
     result = service.analyze(
         symbol=symbol,
         interval_seconds=interval,
         limit=limit,
+        start_time=start_time,
+        end_time=end_time,
     )
     return AnalysisOut(
         symbol=symbol,

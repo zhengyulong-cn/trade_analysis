@@ -2,7 +2,7 @@ import math
 from datetime import datetime
 
 from app.core.kline_intervals import is_supported_kline_interval
-from app.services.analysis_core import AnalysisBar, build_base_segments, build_fractals, build_higher_level_segments, build_trading_ranges, calc_ema
+from app.services.analysis_core import AnalysisBar, analyze, calc_ema
 
 
 def _datetime_to_unix(dt: datetime) -> int:
@@ -18,8 +18,10 @@ class AnalysisService:
         symbol: str,
         interval_seconds: int,
         limit: int = 2000,
+        start_time: datetime | None = None,
+        end_time: datetime | None = None,
     ) -> dict:
-        """一次调用返回全部分析结果。"""
+        """增量分析，无未来函数。"""
         if not is_supported_kline_interval(interval_seconds):
             raise ValueError(f"Unsupported kline interval: {interval_seconds}")
 
@@ -27,62 +29,18 @@ class AnalysisService:
             symbol=symbol,
             interval_seconds=interval_seconds,
             limit=limit,
+            start_time=start_time,
+            end_time=end_time,
         )
         items = kline_result.kline_data
         if not items:
-            return {"bar_count": 0, "fractals": [], "segments": []}
+            return {"bar_count": 0, "fractals": [], "segments": [], "higher_segments": [], "trading_ranges": []}
 
         bars = _build_analysis_bars(items)
         _attach_ema(bars, 20, "ema20")
         _attach_ema(bars, 120, "ema120")
 
-        _, signals = build_fractals(bars)
-        segments = build_base_segments(bars, signals)
-        higher_segments = build_higher_level_segments(bars, segments)
-        trading_ranges = build_trading_ranges(bars, segments, higher_segments)
-
-        fractals = [
-            {
-                "index": s.point.index,
-                "time": s.point.time,
-                "price": s.point.price,
-                "type": s.type,
-            }
-            for s in signals
-        ]
-        segment_dicts = [
-            {
-                "direction": s.direction,
-                "start": {"index": s.start.index, "time": s.start.time, "price": s.start.price},
-                "end": {"index": s.end.index, "time": s.end.time, "price": s.end.price},
-            }
-            for s in segments
-        ]
-        higher_dicts = [
-            {
-                "direction": s.direction,
-                "start": {"index": s.start.index, "time": s.start.time, "price": s.start.price},
-                "end": {"index": s.end.index, "time": s.end.time, "price": s.end.price},
-            }
-            for s in higher_segments
-        ]
-        range_dicts = [
-            {
-                "top": r.top,
-                "bottom": r.bottom,
-                "left": {"index": r.left.index, "time": r.left.time, "price": r.left.price},
-                "right": {"index": r.right.index, "time": r.right.time, "price": r.right.price},
-            }
-            for r in trading_ranges
-        ]
-
-        return {
-            "bar_count": len(bars),
-            "fractals": fractals,
-            "segments": segment_dicts,
-            "higher_segments": higher_dicts,
-            "trading_ranges": range_dicts,
-        }
+        return analyze(bars)
 
 
 def _build_analysis_bars(items) -> list[AnalysisBar]:
@@ -91,12 +49,9 @@ def _build_analysis_bars(items) -> list[AnalysisBar]:
         t = _datetime_to_unix(item.date_time)
         bars.append(
             AnalysisBar(
-                index=i,
-                time=t,
-                open=float(item.open),
-                high=float(item.high),
-                low=float(item.low),
-                close=float(item.close),
+                index=i, time=t,
+                open=float(item.open), high=float(item.high),
+                low=float(item.low), close=float(item.close),
             )
         )
     return bars
