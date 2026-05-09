@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { INITIAL_VISIBLE_K_LINE_COUNT } from '@/constants/chart'
+import dayjs from 'dayjs'
 import { computed, onMounted, onUnmounted, ref, watch } from 'vue'
 import KLineReplayPanel from '@/components/charts/kline_replay/KLineReplayPanel.vue'
 import type { ContractOption, KLineItem, PeriodOption } from '@/components/charts/chartModels'
@@ -120,6 +121,31 @@ const {
 })
 
 const { clearAll, fetchAndDraw } = useAnalysisDrawer()
+
+const formatAnalysisEndTime = (bar: KLineItem | null) => {
+  if (!bar) {
+    return undefined
+  }
+
+  return dayjs(normalizeTimeToMilliseconds(bar.time)).format('YYYY-MM-DDTHH:mm:ss')
+}
+
+const runAnalysisForCurrentReplayBar = () => {
+  const currentWidget = widget
+  const intervalSeconds = Number(props.selectedPeriod)
+  if (!currentWidget || !isReplayMode.value || !intervalSeconds) {
+    return
+  }
+
+  console.log(replayCursorBar)
+
+  void fetchAndDraw(
+    currentWidget,
+    symbolName.value,
+    intervalSeconds,
+    formatAnalysisEndTime(replayCursorBar.value),
+  )
+}
 
 const clearRealtimeSubscriptions = () => {
   realtimeSubscriptionIntervals.forEach((intervalId) => {
@@ -461,7 +487,12 @@ const createWidget = async () => {
       if (token === createWidgetToken && widget === currentWidget) {
         const intervalSeconds = Number(props.selectedPeriod)
         if (intervalSeconds) {
-          void fetchAndDraw(currentWidget, persistenceSymbol, intervalSeconds)
+          void fetchAndDraw(
+            currentWidget,
+            persistenceSymbol,
+            intervalSeconds,
+            isReplayMode.value ? formatAnalysisEndTime(replayCursorBar.value) : undefined,
+          )
         }
       }
     })()
@@ -527,6 +558,13 @@ watch(
     if (widget) {
       void setupReplayHeaderButtons(widget, createWidgetToken)
     }
+  },
+)
+
+watch(
+  () => replayCursorIndex.value,
+  () => {
+    runAnalysisForCurrentReplayBar()
   },
 )
 

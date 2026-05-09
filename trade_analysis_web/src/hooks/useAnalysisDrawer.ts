@@ -34,12 +34,11 @@ const TRADING_RANGE_COLOR = '#FFCC00'
 export function useAnalysisDrawer() {
   let drawGeneration = 0
 
-  const fetchAnalysis = async (symbol: string, interval: number) => {
+  const fetchAnalysis = async (symbol: string, interval: number, endTime?: string) => {
     const data = await axios.get<AnalysisResponse>('/analysis', {
       symbol,
       interval,
-      // start_time: '2026-04-09T21:35:00',
-      // end_time: '2026-04-24T22:50:00',
+      end_time: endTime,
     }) as unknown as AnalysisResponse
     return data
   }
@@ -146,13 +145,14 @@ export function useAnalysisDrawer() {
     widget: TradingViewWidget | null,
     symbol: string,
     interval: number,
+    endTime?: string,
   ) => {
     if (!widget || !symbol || !interval) return
 
     const gen = ++drawGeneration
 
     try {
-      const data = await fetchAnalysis(symbol, interval)
+      const data = await fetchAnalysis(symbol, interval, endTime)
       if (gen !== drawGeneration || !widget) return
 
       clearAll(widget)

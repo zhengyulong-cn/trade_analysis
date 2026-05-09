@@ -36,9 +36,13 @@ def analyze(
         current_segs = seg.historical + ([seg.active] if seg.active else [])
         advance_higher_level(higher, bar, bar.index, current_segs, min_distance)
 
-        # 4. 交易区间：大级别段变化时自动重建
-        current_higher = all_higher_segments(higher, min_distance)
-        advance_trading_range(tr, bars, current_segs, current_higher)
+        # 4. 交易区间：本级别线段完成后立即判定，使用当前大级别方向
+        current_higher_dir: str | None = None
+        if higher.last_cross_relation == "above":
+            current_higher_dir = "up"
+        elif higher.last_cross_relation == "below":
+            current_higher_dir = "down"
+        advance_trading_range(tr, bars, current_segs, current_higher_dir)
 
     # 收集结果
     final_segs = seg.historical + ([seg.active] if seg.active else [])
