@@ -29,6 +29,10 @@ export interface TradingViewActiveChart {
   applyLineToolsState?: (state: TradingViewLineToolsAndGroupsState) => Promise<void>
   setVisibleRange: (range: { from: number; to: number }, options?: Record<string, unknown>) => Promise<void>
   resetData?: () => void
+  createShape: (point: { time: number; price: number }, options: Record<string, unknown>) => string
+  createMultipointShape: (points: Array<{ time: number; price: number }>, options: Record<string, unknown>) => string
+  removeShape: (id: string) => void
+  removeAllShapes: () => void
 }
 
 export interface TradingViewWidget {

@@ -15,6 +15,7 @@ from app.services.market_data import (
     create_quote_provider,
 )
 from app.services.realtime_bar_service import RealtimeBarService
+from app.services.analysis_service import AnalysisService
 from app.services.redis_client import redis_client_manager
 
 SessionDep = Annotated[Session, Depends(get_session)]
@@ -76,3 +77,10 @@ KlineServiceDep = Annotated[KlineService, Depends(get_kline_service)]
 RealtimeBarServiceDep = Annotated[
     RealtimeBarService, Depends(get_realtime_bar_service)
 ]
+
+
+def get_analysis_service(kline_service: KlineServiceDep) -> AnalysisService:
+    return AnalysisService(kline_service=kline_service)
+
+
+AnalysisServiceDep = Annotated[AnalysisService, Depends(get_analysis_service)]

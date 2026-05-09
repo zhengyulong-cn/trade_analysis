@@ -29,6 +29,7 @@ import {
 } from '@/components/charts/customStudies'
 import type { TradingViewWidget } from '@/components/charts/tradingViewTypes'
 import { useKLineReplay } from '@/components/charts/kline_replay/useKlineReplay'
+import { useAnalysisDrawer } from '@/hooks/useAnalysisDrawer'
 
 const TRADING_VIEW_LIBRARY_PATH = '/charting_library/'
 const DEFAULT_SYMBOL = 'FUTURES'
@@ -117,6 +118,8 @@ const {
     widget?.activeChart().resetData?.()
   },
 })
+
+const { clearAll, fetchAndDraw } = useAnalysisDrawer()
 
 const clearRealtimeSubscriptions = () => {
   realtimeSubscriptionIntervals.forEach((intervalId) => {
@@ -229,6 +232,7 @@ const resetWidgetHandlers = () => {
 const teardownWidget = () => {
   const currentWidget = widget
   teardownReplayHeaderButtons(currentWidget)
+  clearAll(currentWidget)
   widget = null
   datafeedController = null
   clearChartAutoSaveTimeout()
@@ -452,6 +456,13 @@ const createWidget = async () => {
         && widget === currentWidget
       ) {
         void applyVisibleRange()
+      }
+
+      if (token === createWidgetToken && widget === currentWidget) {
+        const intervalSeconds = Number(props.selectedPeriod)
+        if (intervalSeconds) {
+          void fetchAndDraw(currentWidget, persistenceSymbol, intervalSeconds)
+        }
       }
     })()
   })
