@@ -4,21 +4,21 @@ import {
   type FutureOpportunityAnalysisItem,
 } from '@/api/modules'
 import { ElMessage } from 'element-plus'
-import dayjs from 'dayjs'
 import { computed, onMounted, ref } from 'vue'
 
 const TEXT = {
   pageTitle: '开仓机会分析',
-  pageSubtitle: '按流程图展示 30F 结构、30F/5F 动能衰竭判断以及最终机会结论。',
+  pageSubtitle: '基于 30F/5F 线段及线段上的动能衰竭标记，判断当前开仓机会。',
   refresh: '刷新分析结果',
   symbolFilter: '合约筛选',
   segmentTypeFilter: '30F线段类型',
   allSymbols: '全部合约',
   allSegmentTypes: '全部类型',
   totalContracts: '合约总数',
-  openZoneContracts: '处于开仓区',
   opportunityContracts: '机会合约数',
   noOpportunityContracts: '无机会合约数',
+  longContracts: '做多视角',
+  shortContracts: '做空视角',
   tableEmpty: '暂无开仓机会分析结果',
   contract: '合约',
   latestPrice: '最新价',
@@ -29,13 +29,9 @@ const TEXT = {
   momentum30f: '30F动能判断',
   momentum5f: '5F动能判断',
   openSide: '操作视角',
-  openZoneStatus: '开仓区域',
-  zonePrice: '开仓区价格',
   tradingRange: '30F交易区间',
   opportunity: '机会判断',
   unknown: '-',
-  noZone: '否',
-  inZone: '是',
   loadError: '获取开仓机会分析失败',
 } as const
 
@@ -74,14 +70,6 @@ const formatNumber = (value?: number | null) => {
     minimumFractionDigits: 0,
     maximumFractionDigits: 4,
   })
-}
-
-const formatUnixTime = (value?: number | null) => {
-  if (!value) {
-    return TEXT.unknown
-  }
-
-  return dayjs.unix(value).format('YYYY-MM-DD HH:mm:ss')
 }
 
 const formatDirection = (value?: string | null) => {
@@ -125,24 +113,13 @@ const formatPriceRange = (low?: number | null, high?: number | null) => {
   return `${formatNumber(low)} ~ ${formatNumber(high)}`
 }
 
-const formatMomentumState = (
-  checkDirection?: string | null,
-  exhausted?: boolean | null,
-  latestDirection?: string | null,
-  latestTime?: number | null,
-) => {
+const formatMomentumState = (checkDirection?: string | null, exhausted?: boolean | null) => {
   if (!checkDirection || exhausted === null || exhausted === undefined) {
     return TEXT.unknown
   }
-
   const checkText = checkDirection === 'up' ? '检查上涨段' : '检查下跌段'
   const stateText = exhausted ? '已衰竭' : '未衰竭'
-  if (!latestDirection || !latestTime) {
-    return `${checkText} · ${stateText}`
-  }
-
-  const latestText = latestDirection === 'up' ? '最近上涨衰竭' : '最近下跌衰竭'
-  return `${checkText} · ${stateText} · ${latestText} ${formatUnixTime(latestTime)}`
+  return `${checkText} · ${stateText}`
 }
 
 const formatOpportunityAction = (row: FutureOpportunityAnalysisItem) => {
@@ -156,10 +133,6 @@ const formatOpportunityAction = (row: FutureOpportunityAnalysisItem) => {
     return '开空机会：等待5F上涨段结束'
   }
   return '不操作'
-}
-
-const statusTagType = (row: FutureOpportunityAnalysisItem) => {
-  return row.in_open_zone ? 'danger' : 'success'
 }
 
 const filteredRows = computed(() => {
@@ -185,9 +158,10 @@ const symbolOptions = computed(() => {
 })
 
 const totalContracts = computed(() => filteredRows.value.length)
-const openZoneContracts = computed(() => filteredRows.value.filter((row) => row.in_open_zone).length)
 const opportunityContracts = computed(() => filteredRows.value.filter((row) => row.has_opportunity).length)
 const noOpportunityContracts = computed(() => filteredRows.value.filter((row) => !row.has_opportunity).length)
+const longContracts = computed(() => filteredRows.value.filter((row) => row.open_side === 'long').length)
+const shortContracts = computed(() => filteredRows.value.filter((row) => row.open_side === 'short').length)
 
 const loadData = async () => {
   loading.value = true
@@ -197,9 +171,6 @@ const loadData = async () => {
     rows.value = [...result.items].sort((first, second) => {
       if (first.has_opportunity !== second.has_opportunity) {
         return first.has_opportunity ? -1 : 1
-      }
-      if (first.in_open_zone !== second.in_open_zone) {
-        return first.in_open_zone ? -1 : 1
       }
       return first.symbol.localeCompare(second.symbol, 'zh-CN')
     })
@@ -234,16 +205,16 @@ onMounted(() => {
         <strong class="summary-value">{{ totalContracts }}</strong>
       </div>
       <div class="summary-card">
-        <span class="summary-label">{{ TEXT.openZoneContracts }}</span>
-        <strong class="summary-value summary-value--danger">{{ openZoneContracts }}</strong>
-      </div>
-      <div class="summary-card">
         <span class="summary-label">{{ TEXT.opportunityContracts }}</span>
         <strong class="summary-value summary-value--up">{{ opportunityContracts }}</strong>
       </div>
       <div class="summary-card">
-        <span class="summary-label">{{ TEXT.noOpportunityContracts }}</span>
-        <strong class="summary-value summary-value--down">{{ noOpportunityContracts }}</strong>
+        <span class="summary-label">{{ TEXT.longContracts }}</span>
+        <strong class="summary-value">{{ longContracts }}</strong>
+      </div>
+      <div class="summary-card">
+        <span class="summary-label">{{ TEXT.shortContracts }}</span>
+        <strong class="summary-value summary-value--down">{{ shortContracts }}</strong>
       </div>
     </section>
 
@@ -326,29 +297,15 @@ onMounted(() => {
           </template>
         </el-table-column>
 
-        <el-table-column :label="TEXT.momentum30f" min-width="240">
+        <el-table-column :label="TEXT.momentum30f" min-width="200">
           <template #default="{ row }">
-            {{
-              formatMomentumState(
-                row.current_30f_momentum_check_direction,
-                row.current_30f_momentum_exhausted,
-                row.latest_30f_momentum_exhaustion_direction,
-                row.latest_30f_momentum_exhaustion_time,
-              )
-            }}
+            {{ formatMomentumState(row.current_30f_momentum_check_direction, row.current_30f_momentum_exhausted) }}
           </template>
         </el-table-column>
 
-        <el-table-column :label="TEXT.momentum5f" min-width="240">
+        <el-table-column :label="TEXT.momentum5f" min-width="200">
           <template #default="{ row }">
-            {{
-              formatMomentumState(
-                row.current_5f_momentum_check_direction,
-                row.current_5f_momentum_exhausted,
-                row.latest_5f_momentum_exhaustion_direction,
-                row.latest_5f_momentum_exhaustion_time,
-              )
-            }}
+            {{ formatMomentumState(row.current_5f_momentum_check_direction, row.current_5f_momentum_exhausted) }}
           </template>
         </el-table-column>
 
@@ -357,20 +314,6 @@ onMounted(() => {
             <span :class="row.open_side === 'long' ? 'text-up' : row.open_side === 'short' ? 'text-down' : ''">
               {{ formatOpenSide(row.open_side) }}
             </span>
-          </template>
-        </el-table-column>
-
-        <el-table-column prop="in_open_zone" :label="TEXT.openZoneStatus" width="100">
-          <template #default="{ row }">
-            <el-tag :type="statusTagType(row)">
-              {{ row.in_open_zone ? TEXT.inZone : TEXT.noZone }}
-            </el-tag>
-          </template>
-        </el-table-column>
-
-        <el-table-column :label="TEXT.zonePrice" min-width="160">
-          <template #default="{ row }">
-            {{ formatPriceRange(row.zone_low, row.zone_high) }}
           </template>
         </el-table-column>
 
@@ -458,10 +401,6 @@ onMounted(() => {
   font-size: 28px;
   line-height: 1;
   color: #303133;
-}
-
-.summary-value--danger {
-  color: #c45656;
 }
 
 .summary-value--up,

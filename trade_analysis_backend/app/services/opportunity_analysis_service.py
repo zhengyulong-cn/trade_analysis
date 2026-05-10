@@ -23,24 +23,15 @@ class OpportunityAnalysisSummary:
     current_30f_segment_direction: str | None
     current_4h_segment_direction: str | None
     current_5f_segment_direction: str | None
-    latest_30f_momentum_exhaustion_direction: str | None
-    latest_30f_momentum_exhaustion_time: int | None
-    latest_30f_momentum_exhaustion_price: float | None
-    latest_5f_momentum_exhaustion_direction: str | None
-    latest_5f_momentum_exhaustion_time: int | None
-    latest_5f_momentum_exhaustion_price: float | None
     current_30f_momentum_check_direction: str | None
     current_30f_momentum_exhausted: bool | None
     current_5f_momentum_check_direction: str | None
     current_5f_momentum_exhausted: bool | None
     current_5f_wait_direction: str | None
     open_side: str | None
-    in_open_zone: bool
     has_opportunity: bool
     opportunity_action: str | None
     zone_source: str | None
-    zone_low: float | None
-    zone_high: float | None
     trading_range_top: float | None
     trading_range_bottom: float | None
     current_30f_segment_start_time: int | None
@@ -104,8 +95,6 @@ class OpportunityAnalysisService:
         current_4h_segment = self._last_item(analysis_30f["higher_segments"])
         current_5f_segment = self._last_item(analysis_5f["segments"])
         latest_range = self._last_item(analysis_30f["trading_ranges"])
-        latest_30f_momentum_exhaustion = self._last_item(analysis_30f["momentum_exhaustions"])
-        latest_5f_momentum_exhaustion = self._last_item(analysis_5f["momentum_exhaustions"])
 
         if current_30f_segment is None or current_4h_segment is None:
             return OpportunityAnalysisSummary(
@@ -120,24 +109,15 @@ class OpportunityAnalysisService:
                 current_30f_segment_direction=current_30f_segment["direction"] if current_30f_segment else None,
                 current_4h_segment_direction=current_4h_segment["direction"] if current_4h_segment else None,
                 current_5f_segment_direction=current_5f_segment["direction"] if current_5f_segment else None,
-                latest_30f_momentum_exhaustion_direction=self._momentum_direction(latest_30f_momentum_exhaustion),
-                latest_30f_momentum_exhaustion_time=self._momentum_time(latest_30f_momentum_exhaustion),
-                latest_30f_momentum_exhaustion_price=self._momentum_price(latest_30f_momentum_exhaustion),
-                latest_5f_momentum_exhaustion_direction=self._momentum_direction(latest_5f_momentum_exhaustion),
-                latest_5f_momentum_exhaustion_time=self._momentum_time(latest_5f_momentum_exhaustion),
-                latest_5f_momentum_exhaustion_price=self._momentum_price(latest_5f_momentum_exhaustion),
                 current_30f_momentum_check_direction=None,
                 current_30f_momentum_exhausted=None,
                 current_5f_momentum_check_direction=None,
                 current_5f_momentum_exhausted=None,
                 current_5f_wait_direction=None,
                 open_side=None,
-                in_open_zone=False,
                 has_opportunity=False,
                 opportunity_action=None,
                 zone_source=None,
-                zone_low=None,
-                zone_high=None,
                 trading_range_top=float(latest_range["top"]) if latest_range else None,
                 trading_range_bottom=float(latest_range["bottom"]) if latest_range else None,
                 current_30f_segment_start_time=self._segment_start_time(current_30f_segment),
@@ -155,8 +135,6 @@ class OpportunityAnalysisService:
             current_4h_segment=current_4h_segment,
             current_5f_segment=current_5f_segment,
             latest_range=latest_range,
-            latest_30f_momentum_exhaustion=latest_30f_momentum_exhaustion,
-            latest_5f_momentum_exhaustion=latest_5f_momentum_exhaustion,
         )
 
         return self._attach_five_minute_opportunity(
@@ -176,8 +154,6 @@ class OpportunityAnalysisService:
         current_4h_segment: dict,
         current_5f_segment: dict | None,
         latest_range: dict | None,
-        latest_30f_momentum_exhaustion: dict | None,
-        latest_5f_momentum_exhaustion: dict | None,
     ) -> OpportunityAnalysisSummary:
         segment_type = self._classify_30f_segment(
             latest_price=latest_price,
@@ -193,11 +169,9 @@ class OpportunityAnalysisService:
         current_5f_momentum_check_direction = None
         current_5f_wait_direction = None
         open_side: str | None = None
-        in_open_zone = segment_type == "trend_pullback"
 
         if segment_type == "range_internal":
             open_side = range_open_side
-            in_open_zone = open_side is not None
             if open_side is not None:
                 current_5f_wait_direction = "down" if open_side == "long" else "up"
                 current_5f_momentum_check_direction = current_5f_wait_direction
@@ -207,25 +181,13 @@ class OpportunityAnalysisService:
             current_5f_momentum_check_direction = current_5f_wait_direction
         else:
             current_30f_momentum_check_direction = current_30f_segment["direction"]
-            current_30f_exhausted = self._is_direction_segment_exhausted(
-                segments=analysis_30f["segments"],
-                momentum_signals=analysis_30f["momentum_exhaustions"],
-                direction=current_30f_segment["direction"],
-                latest_time=latest_time,
-            )
+            current_30f_exhausted = bool(current_30f_segment.get("is_momentum_exhaustion_segment", False))
             trend_side = "long" if current_30f_segment["direction"] == "up" else "short"
             open_side = self._opposite_side(trend_side) if current_30f_exhausted else trend_side
             current_5f_wait_direction = "down" if open_side == "long" else "up"
             current_5f_momentum_check_direction = (
                 current_5f_wait_direction if current_30f_exhausted else current_30f_segment["direction"]
             )
-
-        zone_low = None
-        zone_high = None
-        if segment_type == "trend_pullback":
-            zone_low, zone_high = self._segment_price_bounds(current_30f_segment)
-        elif segment_type == "range_internal" and latest_range is not None:
-            zone_low, zone_high = self._resolve_range_zone_bounds(latest_price, latest_range)
 
         return OpportunityAnalysisSummary(
             symbol=contract.symbol,
@@ -239,24 +201,15 @@ class OpportunityAnalysisService:
             current_30f_segment_direction=current_30f_segment["direction"],
             current_4h_segment_direction=current_4h_segment["direction"],
             current_5f_segment_direction=current_5f_segment["direction"] if current_5f_segment else None,
-            latest_30f_momentum_exhaustion_direction=self._momentum_direction(latest_30f_momentum_exhaustion),
-            latest_30f_momentum_exhaustion_time=self._momentum_time(latest_30f_momentum_exhaustion),
-            latest_30f_momentum_exhaustion_price=self._momentum_price(latest_30f_momentum_exhaustion),
-            latest_5f_momentum_exhaustion_direction=self._momentum_direction(latest_5f_momentum_exhaustion),
-            latest_5f_momentum_exhaustion_time=self._momentum_time(latest_5f_momentum_exhaustion),
-            latest_5f_momentum_exhaustion_price=self._momentum_price(latest_5f_momentum_exhaustion),
             current_30f_momentum_check_direction=current_30f_momentum_check_direction,
             current_30f_momentum_exhausted=current_30f_exhausted,
             current_5f_momentum_check_direction=current_5f_momentum_check_direction,
             current_5f_momentum_exhausted=None,
             current_5f_wait_direction=current_5f_wait_direction,
             open_side=open_side,
-            in_open_zone=in_open_zone,
             has_opportunity=False,
             opportunity_action=None,
             zone_source=self._resolve_zone_source(segment_type),
-            zone_low=zone_low,
-            zone_high=zone_high,
             trading_range_top=float(latest_range["top"]) if latest_range else None,
             trading_range_bottom=float(latest_range["bottom"]) if latest_range else None,
             current_30f_segment_start_time=self._segment_start_time(current_30f_segment),
@@ -275,9 +228,8 @@ class OpportunityAnalysisService:
         if summary.open_side is None or summary.current_5f_momentum_check_direction is None:
             return summary
 
-        summary.current_5f_momentum_exhausted = self._is_direction_segment_exhausted(
+        summary.current_5f_momentum_exhausted = self._latest_direction_segment_exhausted(
             segments=analysis_5f["segments"],
-            momentum_signals=analysis_5f["momentum_exhaustions"],
             direction=summary.current_5f_momentum_check_direction,
             latest_time=latest_time,
         )
@@ -286,12 +238,14 @@ class OpportunityAnalysisService:
             current_5f_segment is not None
             and summary.current_5f_wait_direction is not None
             and current_5f_segment["direction"] == summary.current_5f_wait_direction
-            and summary.current_5f_momentum_exhausted
+            and bool(current_5f_segment.get("is_momentum_exhaustion_segment", False))
         ):
             summary.has_opportunity = True
             summary.opportunity_action = (
                 "open_long_wait_5f_down_end" if summary.open_side == "long" else "open_short_wait_5f_up_end"
             )
+            summary.current_5f_zone_segment_start_time = self._segment_start_time(current_5f_segment)
+            summary.current_5f_zone_segment_end_time = self._segment_end_time(current_5f_segment)
 
         return summary
 
@@ -333,20 +287,6 @@ class OpportunityAnalysisService:
             return "short"
         return None
 
-    def _resolve_range_zone_bounds(self, latest_price: float, latest_range: dict) -> tuple[float | None, float | None]:
-        top = float(latest_range["top"])
-        bottom = float(latest_range["bottom"])
-        range_size = top - bottom
-        if range_size <= 0:
-            return None, None
-        lower_threshold = bottom + math.ceil(range_size / 3)
-        upper_threshold = top - math.ceil(range_size / 3)
-        if latest_price <= lower_threshold:
-            return bottom, lower_threshold
-        if latest_price >= upper_threshold:
-            return upper_threshold, top
-        return None, None
-
     def _resolve_zone_source(self, segment_type: str) -> str | None:
         if segment_type == "range_internal":
             return "30f_trading_range_third"
@@ -369,24 +309,15 @@ class OpportunityAnalysisService:
             current_30f_segment_direction=None,
             current_4h_segment_direction=None,
             current_5f_segment_direction=None,
-            latest_30f_momentum_exhaustion_direction=None,
-            latest_30f_momentum_exhaustion_time=None,
-            latest_30f_momentum_exhaustion_price=None,
-            latest_5f_momentum_exhaustion_direction=None,
-            latest_5f_momentum_exhaustion_time=None,
-            latest_5f_momentum_exhaustion_price=None,
             current_30f_momentum_check_direction=None,
             current_30f_momentum_exhausted=None,
             current_5f_momentum_check_direction=None,
             current_5f_momentum_exhausted=None,
             current_5f_wait_direction=None,
             open_side=None,
-            in_open_zone=False,
             has_opportunity=False,
             opportunity_action=None,
             zone_source=None,
-            zone_low=None,
-            zone_high=None,
             trading_range_top=None,
             trading_range_bottom=None,
             current_30f_segment_start_time=None,
@@ -403,10 +334,6 @@ class OpportunityAnalysisService:
     def _price_in_range(self, price: float, trading_range: dict) -> bool:
         return float(trading_range["bottom"]) <= price <= float(trading_range["top"])
 
-    def _segment_price_bounds(self, segment: dict) -> tuple[float, float]:
-        prices = [float(segment["start"]["price"]), float(segment["end"]["price"])]
-        return min(prices), max(prices)
-
     def _segment_start_time(self, segment: dict | None) -> int | None:
         if segment is None:
             return None
@@ -417,92 +344,23 @@ class OpportunityAnalysisService:
             return None
         return int(segment["end"]["time"])
 
-    def _segment_overlaps(self, segment: dict, window_start: int | None, window_end: int) -> bool:
-        start_time = self._segment_start_time(segment)
-        end_time = self._segment_end_time(segment)
-        if start_time is None or end_time is None:
-            return False
-        if window_start is None:
-            return end_time <= window_end
-        return end_time >= window_start and start_time <= window_end
-
-    def _opposite_direction(self, direction: str) -> str:
-        return "down" if direction == "up" else "up"
-
     def _opposite_side(self, side: str) -> str:
         return "short" if side == "long" else "long"
 
-    def _momentum_direction(self, momentum_signal: dict | None) -> str | None:
-        if momentum_signal is None:
-            return None
-        return momentum_signal.get("direction")
-
-    def _momentum_time(self, momentum_signal: dict | None) -> int | None:
-        if momentum_signal is None:
-            return None
-        point = momentum_signal.get("point")
-        if not point:
-            return None
-        return int(point["time"])
-
-    def _momentum_price(self, momentum_signal: dict | None) -> float | None:
-        if momentum_signal is None:
-            return None
-        point = momentum_signal.get("point")
-        if not point:
-            return None
-        return float(point["price"])
-
-    def _is_direction_segment_exhausted(
+    def _latest_direction_segment_exhausted(
         self,
         segments: list[dict],
-        momentum_signals: list[dict],
         direction: str,
         latest_time: int,
     ) -> bool:
-        target_segment = self._latest_segment_by_direction(segments, direction, latest_time)
-        if target_segment is None:
-            return False
-        matched_signal = self._latest_momentum_by_direction(momentum_signals, direction, latest_time)
-        if matched_signal is None:
-            return False
-        signal_time = self._momentum_time(matched_signal)
-        segment_start_time = self._segment_start_time(target_segment)
-        if signal_time is None or segment_start_time is None:
-            return False
-        return signal_time >= segment_start_time
-
-    def _latest_segment_by_direction(
-        self,
-        segments: list[dict],
-        direction: str,
-        latest_time: int,
-    ) -> dict | None:
-        matched_segment: dict | None = None
-        for segment in segments:
+        for segment in reversed(segments):
             if segment.get("direction") != direction:
                 continue
             end_time = self._segment_end_time(segment)
             if end_time is None or end_time > latest_time:
                 continue
-            matched_segment = segment
-        return matched_segment
-
-    def _latest_momentum_by_direction(
-        self,
-        momentum_signals: list[dict],
-        direction: str,
-        latest_time: int,
-    ) -> dict | None:
-        matched_signal: dict | None = None
-        for signal in momentum_signals:
-            if signal.get("direction") != direction:
-                continue
-            signal_time = self._momentum_time(signal)
-            if signal_time is None or signal_time > latest_time:
-                continue
-            matched_signal = signal
-        return matched_signal
+            return bool(segment.get("is_momentum_exhaustion_segment", False))
+        return False
 
     def _is_current_segment_near_trading_range(
         self,
