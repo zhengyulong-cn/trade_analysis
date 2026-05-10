@@ -19,6 +19,7 @@ export interface SegmentData {
   direction: 'up' | 'down'
   start: { index: number; time: number; price: number }
   end: { index: number; time: number; price: number }
+  is_momentum_exhaustion_segment?: boolean
 }
 
 export interface TradingRangeData {

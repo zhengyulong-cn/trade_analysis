@@ -14,6 +14,39 @@ from .momentum_exhaustion import advance_momentum_exhaustion, create_momentum_ex
 from .trading_range import advance_trading_range, create_trading_range_state
 
 
+def _segment_closed_interval(segment) -> tuple[int, int]:
+    return min(segment.start.index, segment.end.index), max(segment.start.index, segment.end.index)
+
+
+def _build_segment_exhaustion_flags(segments, momentum_signals, bars) -> list[bool]:
+    if not segments:
+        return []
+
+    last_bar_index = bars[-1].index if bars else -1
+    flags: list[bool] = []
+
+    for index, segment in enumerate(segments):
+        start_index, end_index = _segment_closed_interval(segment)
+        segment_span = max(end_index - start_index, 0)
+        valid_start_index = start_index + int(segment_span * 0.75)
+        if index + 1 < len(segments):
+            _, valid_end_index = _segment_closed_interval(segments[index + 1])
+        else:
+            valid_end_index = last_bar_index
+
+        is_exhausted = False
+        for signal in momentum_signals:
+            if signal.direction != segment.direction:
+                continue
+            signal_index = signal.point.index
+            if valid_start_index <= signal_index <= valid_end_index:
+                is_exhausted = True
+                break
+        flags.append(is_exhausted)
+
+    return flags
+
+
 def analyze(
     bars,
     max_included: int = 10,
@@ -50,6 +83,7 @@ def analyze(
         advance_momentum_exhaustion(me, bars, current_segs, bar.index)
 
     final_segs = seg.historical + ([seg.active] if seg.active else [])
+    segment_exhaustion_flags = _build_segment_exhaustion_flags(final_segs, me.signals, bars)
 
     final_higher = all_higher_segments(higher, min_distance)
 
@@ -62,8 +96,9 @@ def analyze(
         "segments": [
             {"direction": s.direction,
              "start": {"index": s.start.index, "time": s.start.time, "price": s.start.price},
-             "end": {"index": s.end.index, "time": s.end.time, "price": s.end.price}}
-            for s in final_segs
+             "end": {"index": s.end.index, "time": s.end.time, "price": s.end.price},
+             "is_momentum_exhaustion_segment": segment_exhaustion_flags[index]}
+            for index, s in enumerate(final_segs)
         ],
         "higher_segments": [
             {"direction": s.direction,

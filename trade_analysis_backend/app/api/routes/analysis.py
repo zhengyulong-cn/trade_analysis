@@ -45,6 +45,7 @@ def get_analysis(
                 direction=s["direction"],
                 start=_SegmentPointOut(**s["start"]),
                 end=_SegmentPointOut(**s["end"]),
+                is_momentum_exhaustion_segment=s.get("is_momentum_exhaustion_segment", False),
             )
             for s in result["segments"]
         ],

@@ -18,6 +18,7 @@ class _SegmentOut(SQLModel):
     direction: str  # 'up' | 'down'
     start: _SegmentPointOut
     end: _SegmentPointOut
+    is_momentum_exhaustion_segment: bool = False
 
 
 class _HigherSegmentOut(SQLModel):
