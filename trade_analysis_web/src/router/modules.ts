@@ -18,33 +18,40 @@ export const RouterModules: RouteRecordRaw[] = [
     name: "Futures",
     meta: {
       icon: "Menu",
-      title: "期货数据管理",
+      title: "期货市场工具",
     },
     children: [
-      {
-        path: "/futures/contract_manager",
-        component: () => import("@/views/futures/future_contracts_manager/FutureContractManager.vue"),
-        meta: {
-          icon: "",
-          title: "期货合约管理",
-        },
-      },
-      {
-        path: "/futures/data_manager",
-        component: () => import("@/views/futures/future_data_manager/FutureDataManager.vue"),
-        meta: {
-          icon: "",
-          title: "期货K线管理",
-        },
-      },
       {
         path: "/futures/open_opportunity_analysis",
         component: () => import("@/views/futures/open_opportunity_analysis/OpenOpportunityAnalysis.vue"),
         meta: {
-          icon: "",
           title: "开仓机会分析",
         },
       },
+      {
+        path: "/futures/data_manager",
+        meta: {
+          title: "数据管理",
+        },
+        children: [
+          {
+            path: "/futures/contracts",
+            component: () => import("@/views/futures/future_contracts_manager/FutureContractManager.vue"),
+            meta: {
+              icon: "",
+              title: "期货合约管理",
+            },
+          },
+          {
+            path: "/futures/klines",
+            component: () => import("@/views/futures/future_klines_manager/FutureKlinesManager.vue"),
+            meta: {
+              icon: "",
+              title: "期货K线管理",
+            },
+          },
+        ]
+      }
     ],
   },
 ]
