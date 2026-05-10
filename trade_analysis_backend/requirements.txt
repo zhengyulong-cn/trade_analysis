@@ -6,3 +6,4 @@ cryptography
 tqsdk
 pandas
 redis
+python-multipart

@@ -1,6 +1,9 @@
+from pathlib import Path
+
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
+from fastapi.staticfiles import StaticFiles
 
 from app.api.router import api_router
 from app.core.config import settings
@@ -37,6 +40,9 @@ async def lifespan(_: FastAPI):
 
 
 def create_application() -> FastAPI:
+    storage_root = Path(settings.storage_root)
+    storage_root.mkdir(parents=True, exist_ok=True)
+
     application = FastAPI(
         title=settings.app_name,
         version=settings.app_version,
@@ -45,6 +51,11 @@ def create_application() -> FastAPI:
     application.add_middleware(RequestLoggingMiddleware)
     register_exception_handlers(application)
     application.include_router(api_router, prefix=settings.api_prefix)
+    application.mount(
+        "/storage",
+        StaticFiles(directory=storage_root, check_dir=True),
+        name="storage",
+    )
     return application
 
 

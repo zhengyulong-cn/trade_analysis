@@ -1,5 +1,6 @@
 import os
 from dataclasses import dataclass
+from pathlib import Path
 
 
 @dataclass(frozen=True)
@@ -38,6 +39,10 @@ class Settings:
     realtime_quote_subscription_refresh_seconds: float = float(
         os.getenv("REALTIME_QUOTE_SUBSCRIPTION_REFRESH_SECONDS", "60")
     )
+    storage_root: str = os.getenv(
+        "STORAGE_ROOT",
+        str(Path(__file__).resolve().parents[2] / "storage"),
+    )
 
     @property
     def database_url(self) -> str:
@@ -61,6 +66,10 @@ class Settings:
         return (
             f"redis://{credentials}{self.redis_host}:{self.redis_port}/{self.redis_db}"
         )
+
+    @property
+    def trade_record_storage_dir(self) -> str:
+        return str(Path(self.storage_root) / "trade_records")
 
 
 settings = Settings()

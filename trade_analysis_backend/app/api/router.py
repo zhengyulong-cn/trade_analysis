@@ -6,6 +6,7 @@ from app.api.routes.analysis import router as analysis_router
 from app.api.routes.health import router as health_router
 from app.api.routes.klines import router as kline_router
 from app.api.routes.realtime_bars import router as realtime_bar_router
+from app.api.routes.trade_records import router as trade_record_router
 
 api_router = APIRouter()
 api_router.include_router(health_router, tags=["health"])
@@ -16,6 +17,11 @@ api_router.include_router(
 )
 api_router.include_router(contract_router, prefix="/contracts", tags=["contracts"])
 api_router.include_router(kline_router, prefix="/klines", tags=["klines"])
+api_router.include_router(
+    trade_record_router,
+    prefix="/trade-records",
+    tags=["trade-records"],
+)
 api_router.include_router(
     realtime_bar_router,
     prefix="/realtime-bars",
