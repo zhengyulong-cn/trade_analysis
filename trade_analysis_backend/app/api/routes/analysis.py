@@ -9,7 +9,7 @@ from app.schemas.analysis import AnalysisOut, _FractalOut, _HigherSegmentOut, _M
 router = APIRouter()
 
 
-@router.get("", response_model=AnalysisOut)
+@router.get("/chart", response_model=AnalysisOut)
 def get_analysis(
     symbol: str,
     interval: int,

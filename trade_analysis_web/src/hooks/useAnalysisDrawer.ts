@@ -1,6 +1,19 @@
 import axios from '@/api/axios'
-import type { FractalPoint, FractalListResponse } from '@/api/modules/analysis'
 import type { TradingViewWidget } from '@/components/charts/tradingViewTypes'
+
+export interface FractalPoint {
+  index: number
+  time: number
+  price: number
+  type: 'top' | 'bottom'
+}
+
+export interface FractalListResponse {
+  symbol: string
+  interval: number
+  count: number
+  fractals: FractalPoint[]
+}
 
 export interface SegmentData {
   direction: 'up' | 'down'
@@ -43,7 +56,7 @@ export function useAnalysisDrawer() {
   let drawGeneration = 0
 
   const fetchAnalysis = async (symbol: string, interval: number, endTime?: string) => {
-    const data = await axios.get<AnalysisResponse>('/analysis', {
+    const data = await axios.get<AnalysisResponse>('/analysis/chart', {
       symbol,
       interval,
       end_time: endTime,

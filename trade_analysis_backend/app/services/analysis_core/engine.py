@@ -17,7 +17,7 @@ from .trading_range import advance_trading_range, create_trading_range_state
 def analyze(
     bars,
     max_included: int = 10,
-    min_distance: int = 3,
+    min_distance: int = 4,
 ) -> dict:
     """增量分析全部 K 线。"""
     fx = create_fenxing_state()
