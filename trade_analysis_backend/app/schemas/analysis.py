@@ -49,3 +49,39 @@ class AnalysisOut(SQLModel):
     higher_segments: list[_HigherSegmentOut]
     trading_ranges: list[_TradingRangeOut]
     momentum_exhaustions: list[_MomentumExhaustionOut]
+
+
+class OpportunityAnalysisItemOut(SQLModel):
+    symbol: str
+    exchange: str
+    name: str
+    analysis_status: str
+    analysis_message: str | None = None
+    latest_price: float | None = None
+    latest_time: int | None = None
+    latest_30f_time: int | None = None
+    current_30f_segment_type: str | None = None
+    current_30f_segment_direction: str | None = None
+    current_4h_segment_direction: str | None = None
+    current_5f_segment_direction: str | None = None
+    latest_30f_momentum_exhaustion_direction: str | None = None
+    latest_30f_momentum_exhaustion_time: int | None = None
+    latest_30f_momentum_exhaustion_price: float | None = None
+    latest_5f_momentum_exhaustion_direction: str | None = None
+    latest_5f_momentum_exhaustion_time: int | None = None
+    latest_5f_momentum_exhaustion_price: float | None = None
+    open_side: str | None = None
+    in_open_zone: bool
+    zone_source: str | None = None
+    zone_low: float | None = None
+    zone_high: float | None = None
+    trading_range_top: float | None = None
+    trading_range_bottom: float | None = None
+    current_30f_segment_start_time: int | None = None
+    current_30f_segment_end_time: int | None = None
+    current_5f_zone_segment_start_time: int | None = None
+    current_5f_zone_segment_end_time: int | None = None
+
+
+class OpportunityAnalysisListOut(SQLModel):
+    items: list[OpportunityAnalysisItemOut]

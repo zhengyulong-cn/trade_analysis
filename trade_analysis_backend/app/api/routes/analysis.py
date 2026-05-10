@@ -3,8 +3,18 @@ from typing import Annotated
 
 from fastapi import APIRouter, Query
 
-from app.api.dependencies import AnalysisServiceDep
-from app.schemas.analysis import AnalysisOut, _FractalOut, _HigherSegmentOut, _MomentumExhaustionOut, _SegmentOut, _SegmentPointOut, _TradingRangeOut
+from app.api.dependencies import AnalysisServiceDep, OpportunityAnalysisServiceDep
+from app.schemas.analysis import (
+    AnalysisOut,
+    OpportunityAnalysisItemOut,
+    OpportunityAnalysisListOut,
+    _FractalOut,
+    _HigherSegmentOut,
+    _MomentumExhaustionOut,
+    _SegmentOut,
+    _SegmentPointOut,
+    _TradingRangeOut,
+)
 
 router = APIRouter()
 
@@ -64,4 +74,23 @@ def get_analysis(
             )
             for s in result["momentum_exhaustions"]
         ],
+    )
+
+
+@router.get("/opportunity/item", response_model=OpportunityAnalysisItemOut)
+def get_opportunity_item(
+    symbol: str,
+    service: OpportunityAnalysisServiceDep,
+) -> OpportunityAnalysisItemOut:
+    result = service.analyze_item(symbol)
+    return OpportunityAnalysisItemOut(**result.__dict__)
+
+
+@router.get("/opportunity/all", response_model=OpportunityAnalysisListOut)
+def get_opportunity_all(
+    service: OpportunityAnalysisServiceDep,
+) -> OpportunityAnalysisListOut:
+    results = service.analyze_all()
+    return OpportunityAnalysisListOut(
+        items=[OpportunityAnalysisItemOut(**item.__dict__) for item in results]
     )

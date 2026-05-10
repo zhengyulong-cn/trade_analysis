@@ -130,6 +130,42 @@ export interface FutureRealtimeBarResult {
   bar: FutureRealtimeBar | null
 }
 
+export interface FutureOpportunityAnalysisItem {
+  symbol: string
+  exchange: string
+  name: string
+  analysis_status: string
+  analysis_message: string | null
+  latest_price: number | null
+  latest_time: number | null
+  latest_30f_time: number | null
+  current_30f_segment_type: string | null
+  current_30f_segment_direction: string | null
+  current_4h_segment_direction: string | null
+  current_5f_segment_direction: string | null
+  latest_30f_momentum_exhaustion_direction: string | null
+  latest_30f_momentum_exhaustion_time: number | null
+  latest_30f_momentum_exhaustion_price: number | null
+  latest_5f_momentum_exhaustion_direction: string | null
+  latest_5f_momentum_exhaustion_time: number | null
+  latest_5f_momentum_exhaustion_price: number | null
+  open_side: string | null
+  in_open_zone: boolean
+  zone_source: string | null
+  zone_low: number | null
+  zone_high: number | null
+  trading_range_top: number | null
+  trading_range_bottom: number | null
+  current_30f_segment_start_time: number | null
+  current_30f_segment_end_time: number | null
+  current_5f_zone_segment_start_time: number | null
+  current_5f_zone_segment_end_time: number | null
+}
+
+export interface FutureOpportunityAnalysisListResult {
+  items: FutureOpportunityAnalysisItem[]
+}
+
 const mapFutureKlineToChartData = (item: FutureKlineItem): FutureChartKLineItem | null => {
   const timestamp = toChartTimestampSeconds(item.date_time)
   if (timestamp === null) {
@@ -247,5 +283,17 @@ export const saveFutureChartPersistenceApi = (params: FutureChartPersistenceSave
 export const getFutureRealtimeBarApi = (params: { symbol: string; interval: number }) => {
   return axios.get<FutureRealtimeBarResult>("/realtime-bars/current", params) as unknown as Promise<
     FutureRealtimeBarResult
+  >
+}
+
+export const getFutureOpportunityAnalysisItemApi = (params: { symbol: string }) => {
+  return axios.get<FutureOpportunityAnalysisItem>("/analysis/opportunity/item", params) as unknown as Promise<
+    FutureOpportunityAnalysisItem
+  >
+}
+
+export const getFutureOpportunityAnalysisAllApi = () => {
+  return axios.get<FutureOpportunityAnalysisListResult>("/analysis/opportunity/all") as unknown as Promise<
+    FutureOpportunityAnalysisListResult
   >
 }

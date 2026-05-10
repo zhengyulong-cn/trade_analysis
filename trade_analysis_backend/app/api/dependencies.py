@@ -14,6 +14,7 @@ from app.services.market_data import (
     create_kline_provider,
     create_quote_provider,
 )
+from app.services.opportunity_analysis_service import OpportunityAnalysisService
 from app.services.realtime_bar_service import RealtimeBarService
 from app.services.analysis_service import AnalysisService
 from app.services.redis_client import redis_client_manager
@@ -84,3 +85,20 @@ def get_analysis_service(kline_service: KlineServiceDep) -> AnalysisService:
 
 
 AnalysisServiceDep = Annotated[AnalysisService, Depends(get_analysis_service)]
+
+
+def get_opportunity_analysis_service(
+    contract_service: ContractServiceDep,
+    kline_service: KlineServiceDep,
+    analysis_service: AnalysisServiceDep,
+) -> OpportunityAnalysisService:
+    return OpportunityAnalysisService(
+        contract_service=contract_service,
+        kline_service=kline_service,
+        analysis_service=analysis_service,
+    )
+
+
+OpportunityAnalysisServiceDep = Annotated[
+    OpportunityAnalysisService, Depends(get_opportunity_analysis_service)
+]
