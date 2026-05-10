@@ -1,3 +1,4 @@
+import math
 from dataclasses import dataclass
 
 from fastapi import HTTPException
@@ -7,7 +8,6 @@ from app.models.contract import Contract
 from app.services.analysis_service import AnalysisService
 from app.services.contract_service import ContractService
 from app.services.kline_service import KlineService
-import math
 
 
 @dataclass
@@ -15,7 +15,6 @@ class OpportunityAnalysisSummary:
     symbol: str
     exchange: str
     name: str
-    analysis_status: str
     analysis_message: str | None
     latest_price: float | None
     latest_time: int | None
@@ -30,8 +29,15 @@ class OpportunityAnalysisSummary:
     latest_5f_momentum_exhaustion_direction: str | None
     latest_5f_momentum_exhaustion_time: int | None
     latest_5f_momentum_exhaustion_price: float | None
+    current_30f_momentum_check_direction: str | None
+    current_30f_momentum_exhausted: bool | None
+    current_5f_momentum_check_direction: str | None
+    current_5f_momentum_exhausted: bool | None
+    current_5f_wait_direction: str | None
     open_side: str | None
     in_open_zone: bool
+    has_opportunity: bool
+    opportunity_action: str | None
     zone_source: str | None
     zone_low: float | None
     zone_high: float | None
@@ -59,10 +65,7 @@ class OpportunityAnalysisService:
         return self._analyze_contract(contract)
 
     def analyze_all(self) -> list[OpportunityAnalysisSummary]:
-        results: list[OpportunityAnalysisSummary] = []
-        for contract in self._contract_service.list_contracts():
-            results.append(self._analyze_contract(contract))
-        return results
+        return [self._analyze_contract(contract) for contract in self._contract_service.list_contracts()]
 
     def _analyze_contract(self, contract: Contract) -> OpportunityAnalysisSummary:
         try:
@@ -72,10 +75,10 @@ class OpportunityAnalysisService:
                 limit=1,
             )
         except HTTPException as exc:
-            return self._build_unavailable_result(contract, "no_data", exc.detail)
+            return self._build_unavailable_result(contract, str(exc.detail))
 
         if not latest_30f_result.kline_data:
-            return self._build_unavailable_result(contract, "no_data", "缺少 30F K 线数据")
+            return self._build_unavailable_result(contract, "缺少 30F K 线数据")
 
         try:
             analysis_5f = self._analysis_service.analyze(
@@ -89,9 +92,9 @@ class OpportunityAnalysisService:
                 limit=2000,
             )
         except HTTPException as exc:
-            return self._build_unavailable_result(contract, "analysis_error", exc.detail)
+            return self._build_unavailable_result(contract, str(exc.detail))
         except Exception as exc:
-            return self._build_unavailable_result(contract, "analysis_error", str(exc))
+            return self._build_unavailable_result(contract, str(exc))
 
         latest_30f_bar = latest_30f_result.kline_data[-1]
         latest_price = float(latest_30f_bar.close)
@@ -109,8 +112,7 @@ class OpportunityAnalysisService:
                 symbol=contract.symbol,
                 exchange=contract.exchange,
                 name=contract.name,
-                analysis_status="insufficient_data",
-                analysis_message="线段数量不足，暂时无法判定开仓区域",
+                analysis_message="线段数量不足，暂时无法判定开仓机会",
                 latest_price=latest_price,
                 latest_time=latest_time,
                 latest_30f_time=latest_time,
@@ -124,264 +126,241 @@ class OpportunityAnalysisService:
                 latest_5f_momentum_exhaustion_direction=self._momentum_direction(latest_5f_momentum_exhaustion),
                 latest_5f_momentum_exhaustion_time=self._momentum_time(latest_5f_momentum_exhaustion),
                 latest_5f_momentum_exhaustion_price=self._momentum_price(latest_5f_momentum_exhaustion),
+                current_30f_momentum_check_direction=None,
+                current_30f_momentum_exhausted=None,
+                current_5f_momentum_check_direction=None,
+                current_5f_momentum_exhausted=None,
+                current_5f_wait_direction=None,
                 open_side=None,
                 in_open_zone=False,
+                has_opportunity=False,
+                opportunity_action=None,
                 zone_source=None,
                 zone_low=None,
                 zone_high=None,
-                trading_range_top=latest_range["top"] if latest_range else None,
-                trading_range_bottom=latest_range["bottom"] if latest_range else None,
+                trading_range_top=float(latest_range["top"]) if latest_range else None,
+                trading_range_bottom=float(latest_range["bottom"]) if latest_range else None,
                 current_30f_segment_start_time=self._segment_start_time(current_30f_segment),
                 current_30f_segment_end_time=self._segment_end_time(current_30f_segment),
                 current_5f_zone_segment_start_time=None,
                 current_5f_zone_segment_end_time=None,
             )
 
+        summary = self._build_30f_summary(
+            contract=contract,
+            latest_price=latest_price,
+            latest_time=latest_time,
+            analysis_30f=analysis_30f,
+            current_30f_segment=current_30f_segment,
+            current_4h_segment=current_4h_segment,
+            current_5f_segment=current_5f_segment,
+            latest_range=latest_range,
+            latest_30f_momentum_exhaustion=latest_30f_momentum_exhaustion,
+            latest_5f_momentum_exhaustion=latest_5f_momentum_exhaustion,
+        )
+
+        return self._attach_five_minute_opportunity(
+            summary=summary,
+            analysis_5f=analysis_5f,
+            current_5f_segment=current_5f_segment,
+            latest_time=latest_time,
+        )
+
+    def _build_30f_summary(
+        self,
+        contract: Contract,
+        latest_price: float,
+        latest_time: int,
+        analysis_30f: dict,
+        current_30f_segment: dict,
+        current_4h_segment: dict,
+        current_5f_segment: dict | None,
+        latest_range: dict | None,
+        latest_30f_momentum_exhaustion: dict | None,
+        latest_5f_momentum_exhaustion: dict | None,
+    ) -> OpportunityAnalysisSummary:
+        segment_type = self._classify_30f_segment(
+            latest_price=latest_price,
+            all_30f_segments=analysis_30f["segments"],
+            current_30f_segment=current_30f_segment,
+            current_4h_segment=current_4h_segment,
+            latest_range=latest_range,
+        )
+
+        range_open_side = self._resolve_range_open_side(latest_price, latest_range) if segment_type == "range_internal" else None
+        current_30f_exhausted = None
+        current_30f_momentum_check_direction = None
+        current_5f_momentum_check_direction = None
+        current_5f_wait_direction = None
+        open_side: str | None = None
+        in_open_zone = segment_type == "trend_pullback"
+
+        if segment_type == "range_internal":
+            open_side = range_open_side
+            in_open_zone = open_side is not None
+            if open_side is not None:
+                current_5f_wait_direction = "down" if open_side == "long" else "up"
+                current_5f_momentum_check_direction = current_5f_wait_direction
+        elif segment_type == "trend_pullback":
+            open_side = "long" if current_4h_segment["direction"] == "up" else "short"
+            current_5f_wait_direction = "down" if open_side == "long" else "up"
+            current_5f_momentum_check_direction = current_5f_wait_direction
+        else:
+            current_30f_momentum_check_direction = current_30f_segment["direction"]
+            current_30f_exhausted = self._is_direction_segment_exhausted(
+                segments=analysis_30f["segments"],
+                momentum_signals=analysis_30f["momentum_exhaustions"],
+                direction=current_30f_segment["direction"],
+                latest_time=latest_time,
+            )
+            trend_side = "long" if current_30f_segment["direction"] == "up" else "short"
+            open_side = self._opposite_side(trend_side) if current_30f_exhausted else trend_side
+            current_5f_wait_direction = "down" if open_side == "long" else "up"
+            current_5f_momentum_check_direction = (
+                current_5f_wait_direction if current_30f_exhausted else current_30f_segment["direction"]
+            )
+
+        zone_low = None
+        zone_high = None
+        if segment_type == "trend_pullback":
+            zone_low, zone_high = self._segment_price_bounds(current_30f_segment)
+        elif segment_type == "range_internal" and latest_range is not None:
+            zone_low, zone_high = self._resolve_range_zone_bounds(latest_price, latest_range)
+
+        return OpportunityAnalysisSummary(
+            symbol=contract.symbol,
+            exchange=contract.exchange,
+            name=contract.name,
+            analysis_message=None,
+            latest_price=latest_price,
+            latest_time=latest_time,
+            latest_30f_time=latest_time,
+            current_30f_segment_type=segment_type,
+            current_30f_segment_direction=current_30f_segment["direction"],
+            current_4h_segment_direction=current_4h_segment["direction"],
+            current_5f_segment_direction=current_5f_segment["direction"] if current_5f_segment else None,
+            latest_30f_momentum_exhaustion_direction=self._momentum_direction(latest_30f_momentum_exhaustion),
+            latest_30f_momentum_exhaustion_time=self._momentum_time(latest_30f_momentum_exhaustion),
+            latest_30f_momentum_exhaustion_price=self._momentum_price(latest_30f_momentum_exhaustion),
+            latest_5f_momentum_exhaustion_direction=self._momentum_direction(latest_5f_momentum_exhaustion),
+            latest_5f_momentum_exhaustion_time=self._momentum_time(latest_5f_momentum_exhaustion),
+            latest_5f_momentum_exhaustion_price=self._momentum_price(latest_5f_momentum_exhaustion),
+            current_30f_momentum_check_direction=current_30f_momentum_check_direction,
+            current_30f_momentum_exhausted=current_30f_exhausted,
+            current_5f_momentum_check_direction=current_5f_momentum_check_direction,
+            current_5f_momentum_exhausted=None,
+            current_5f_wait_direction=current_5f_wait_direction,
+            open_side=open_side,
+            in_open_zone=in_open_zone,
+            has_opportunity=False,
+            opportunity_action=None,
+            zone_source=self._resolve_zone_source(segment_type),
+            zone_low=zone_low,
+            zone_high=zone_high,
+            trading_range_top=float(latest_range["top"]) if latest_range else None,
+            trading_range_bottom=float(latest_range["bottom"]) if latest_range else None,
+            current_30f_segment_start_time=self._segment_start_time(current_30f_segment),
+            current_30f_segment_end_time=self._segment_end_time(current_30f_segment),
+            current_5f_zone_segment_start_time=None,
+            current_5f_zone_segment_end_time=None,
+        )
+
+    def _attach_five_minute_opportunity(
+        self,
+        summary: OpportunityAnalysisSummary,
+        analysis_5f: dict,
+        current_5f_segment: dict | None,
+        latest_time: int,
+    ) -> OpportunityAnalysisSummary:
+        if summary.open_side is None or summary.current_5f_momentum_check_direction is None:
+            return summary
+
+        summary.current_5f_momentum_exhausted = self._is_direction_segment_exhausted(
+            segments=analysis_5f["segments"],
+            momentum_signals=analysis_5f["momentum_exhaustions"],
+            direction=summary.current_5f_momentum_check_direction,
+            latest_time=latest_time,
+        )
+
+        if (
+            current_5f_segment is not None
+            and summary.current_5f_wait_direction is not None
+            and current_5f_segment["direction"] == summary.current_5f_wait_direction
+            and summary.current_5f_momentum_exhausted
+        ):
+            summary.has_opportunity = True
+            summary.opportunity_action = (
+                "open_long_wait_5f_down_end" if summary.open_side == "long" else "open_short_wait_5f_up_end"
+            )
+
+        return summary
+
+    def _classify_30f_segment(
+        self,
+        latest_price: float,
+        all_30f_segments: list[dict],
+        current_30f_segment: dict,
+        current_4h_segment: dict,
+        latest_range: dict | None,
+    ) -> str:
         if (
             latest_range is not None
             and self._price_in_range(latest_price, latest_range)
             and self._is_current_segment_near_trading_range(
                 current_segment=current_30f_segment,
-                all_segments=analysis_30f["segments"],
+                all_segments=all_30f_segments,
                 trading_range=latest_range,
             )
         ):
-            return self._build_range_internal_result(
-                contract=contract,
-                latest_price=latest_price,
-                latest_time=latest_time,
-                latest_range=latest_range,
-                current_30f_segment=current_30f_segment,
-                current_4h_segment=current_4h_segment,
-                current_5f_segment=current_5f_segment,
-                latest_30f_momentum_exhaustion=latest_30f_momentum_exhaustion,
-                latest_5f_momentum_exhaustion=latest_5f_momentum_exhaustion,
-            )
-
+            return "range_internal"
         if current_30f_segment["direction"] == current_4h_segment["direction"]:
-            return self._build_trend_push_result(
-                contract=contract,
-                latest_price=latest_price,
-                latest_time=latest_time,
-                analysis_5f=analysis_5f,
-                latest_range=latest_range,
-                current_30f_segment=current_30f_segment,
-                current_4h_segment=current_4h_segment,
-                current_5f_segment=current_5f_segment,
-                latest_30f_momentum_exhaustion=latest_30f_momentum_exhaustion,
-                latest_5f_momentum_exhaustion=latest_5f_momentum_exhaustion,
-            )
+            return "trend_push"
+        return "trend_pullback"
 
-        return self._build_trend_pullback_result(
-            contract=contract,
-            latest_price=latest_price,
-            latest_time=latest_time,
-            latest_range=latest_range,
-            current_30f_segment=current_30f_segment,
-            current_4h_segment=current_4h_segment,
-            current_5f_segment=current_5f_segment,
-            latest_30f_momentum_exhaustion=latest_30f_momentum_exhaustion,
-            latest_5f_momentum_exhaustion=latest_5f_momentum_exhaustion,
-        )
-
-    def _build_range_internal_result(
-        self,
-        contract: Contract,
-        latest_price: float,
-        latest_time: int,
-        latest_range: dict,
-        current_30f_segment: dict,
-        current_4h_segment: dict,
-        current_5f_segment: dict | None,
-        latest_30f_momentum_exhaustion: dict | None,
-        latest_5f_momentum_exhaustion: dict | None,
-    ) -> OpportunityAnalysisSummary:
+    def _resolve_range_open_side(self, latest_price: float, latest_range: dict | None) -> str | None:
+        if latest_range is None:
+            return None
         top = float(latest_range["top"])
         bottom = float(latest_range["bottom"])
         range_size = top - bottom
+        if range_size <= 0:
+            return None
         lower_threshold = bottom + math.ceil(range_size / 3)
         upper_threshold = top - math.ceil(range_size / 3)
+        if latest_price <= lower_threshold:
+            return "long"
+        if latest_price >= upper_threshold:
+            return "short"
+        return None
 
-        open_side: str | None = None
-        in_open_zone = False
-        zone_low: float | None = None
-        zone_high: float | None = None
-        if range_size > 0 and latest_price <= lower_threshold:
-            open_side = "long"
-            in_open_zone = True
-            zone_low = bottom
-            zone_high = lower_threshold
-        elif range_size > 0 and latest_price >= upper_threshold:
-            open_side = "short"
-            in_open_zone = True
-            zone_low = upper_threshold
-            zone_high = top
+    def _resolve_range_zone_bounds(self, latest_price: float, latest_range: dict) -> tuple[float | None, float | None]:
+        top = float(latest_range["top"])
+        bottom = float(latest_range["bottom"])
+        range_size = top - bottom
+        if range_size <= 0:
+            return None, None
+        lower_threshold = bottom + math.ceil(range_size / 3)
+        upper_threshold = top - math.ceil(range_size / 3)
+        if latest_price <= lower_threshold:
+            return bottom, lower_threshold
+        if latest_price >= upper_threshold:
+            return upper_threshold, top
+        return None, None
 
+    def _resolve_zone_source(self, segment_type: str) -> str | None:
+        if segment_type == "range_internal":
+            return "30f_trading_range_third"
+        if segment_type == "trend_pullback":
+            return "30f_pullback_segment"
+        if segment_type == "trend_push":
+            return "30f_push_segment"
+        return None
+
+    def _build_unavailable_result(self, contract: Contract, message: str) -> OpportunityAnalysisSummary:
         return OpportunityAnalysisSummary(
             symbol=contract.symbol,
             exchange=contract.exchange,
             name=contract.name,
-            analysis_status="ok",
-            analysis_message=None,
-            latest_price=latest_price,
-            latest_time=latest_time,
-            latest_30f_time=latest_time,
-            current_30f_segment_type="range_internal",
-            current_30f_segment_direction=current_30f_segment["direction"],
-            current_4h_segment_direction=current_4h_segment["direction"],
-            current_5f_segment_direction=current_5f_segment["direction"] if current_5f_segment else None,
-            latest_30f_momentum_exhaustion_direction=self._momentum_direction(latest_30f_momentum_exhaustion),
-            latest_30f_momentum_exhaustion_time=self._momentum_time(latest_30f_momentum_exhaustion),
-            latest_30f_momentum_exhaustion_price=self._momentum_price(latest_30f_momentum_exhaustion),
-            latest_5f_momentum_exhaustion_direction=self._momentum_direction(latest_5f_momentum_exhaustion),
-            latest_5f_momentum_exhaustion_time=self._momentum_time(latest_5f_momentum_exhaustion),
-            latest_5f_momentum_exhaustion_price=self._momentum_price(latest_5f_momentum_exhaustion),
-            open_side=open_side,
-            in_open_zone=in_open_zone,
-            zone_source="30f_trading_range_third",
-            zone_low=zone_low,
-            zone_high=zone_high,
-            trading_range_top=top,
-            trading_range_bottom=bottom,
-            current_30f_segment_start_time=self._segment_start_time(current_30f_segment),
-            current_30f_segment_end_time=self._segment_end_time(current_30f_segment),
-            current_5f_zone_segment_start_time=None,
-            current_5f_zone_segment_end_time=None,
-        )
-
-    def _build_trend_pullback_result(
-        self,
-        contract: Contract,
-        latest_price: float,
-        latest_time: int,
-        latest_range: dict | None,
-        current_30f_segment: dict,
-        current_4h_segment: dict,
-        current_5f_segment: dict | None,
-        latest_30f_momentum_exhaustion: dict | None,
-        latest_5f_momentum_exhaustion: dict | None,
-    ) -> OpportunityAnalysisSummary:
-        open_side = "long" if current_4h_segment["direction"] == "up" else "short"
-        zone_low, zone_high = self._segment_price_bounds(current_30f_segment)
-
-        return OpportunityAnalysisSummary(
-            symbol=contract.symbol,
-            exchange=contract.exchange,
-            name=contract.name,
-            analysis_status="ok",
-            analysis_message=None,
-            latest_price=latest_price,
-            latest_time=latest_time,
-            latest_30f_time=latest_time,
-            current_30f_segment_type="trend_pullback",
-            current_30f_segment_direction=current_30f_segment["direction"],
-            current_4h_segment_direction=current_4h_segment["direction"],
-            current_5f_segment_direction=current_5f_segment["direction"] if current_5f_segment else None,
-            latest_30f_momentum_exhaustion_direction=self._momentum_direction(latest_30f_momentum_exhaustion),
-            latest_30f_momentum_exhaustion_time=self._momentum_time(latest_30f_momentum_exhaustion),
-            latest_30f_momentum_exhaustion_price=self._momentum_price(latest_30f_momentum_exhaustion),
-            latest_5f_momentum_exhaustion_direction=self._momentum_direction(latest_5f_momentum_exhaustion),
-            latest_5f_momentum_exhaustion_time=self._momentum_time(latest_5f_momentum_exhaustion),
-            latest_5f_momentum_exhaustion_price=self._momentum_price(latest_5f_momentum_exhaustion),
-            open_side=open_side,
-            in_open_zone=True,
-            zone_source="30f_pullback_segment",
-            zone_low=zone_low,
-            zone_high=zone_high,
-            trading_range_top=float(latest_range["top"]) if latest_range else None,
-            trading_range_bottom=float(latest_range["bottom"]) if latest_range else None,
-            current_30f_segment_start_time=self._segment_start_time(current_30f_segment),
-            current_30f_segment_end_time=self._segment_end_time(current_30f_segment),
-            current_5f_zone_segment_start_time=None,
-            current_5f_zone_segment_end_time=None,
-        )
-
-    def _build_trend_push_result(
-        self,
-        contract: Contract,
-        latest_price: float,
-        latest_time: int,
-        analysis_5f: dict,
-        latest_range: dict | None,
-        current_30f_segment: dict,
-        current_4h_segment: dict,
-        current_5f_segment: dict | None,
-        latest_30f_momentum_exhaustion: dict | None,
-        latest_5f_momentum_exhaustion: dict | None,
-    ) -> OpportunityAnalysisSummary:
-        counter_direction = self._opposite_direction(current_30f_segment["direction"])
-        push_start_time = self._segment_start_time(current_30f_segment)
-        counter_segments = [
-            segment
-            for segment in analysis_5f["segments"]
-            if segment["direction"] == counter_direction
-            and self._segment_overlaps(segment, push_start_time, latest_time)
-        ]
-
-        current_counter_segment = None
-        if (
-            current_5f_segment is not None
-            and current_5f_segment["direction"] == counter_direction
-            and self._segment_overlaps(current_5f_segment, push_start_time, latest_time)
-        ):
-            current_counter_segment = current_5f_segment
-        elif counter_segments:
-            current_counter_segment = counter_segments[-1]
-
-        in_open_zone = current_5f_segment is not None and current_counter_segment is current_5f_segment
-        zone_low: float | None = None
-        zone_high: float | None = None
-        zone_start_time: int | None = None
-        zone_end_time: int | None = None
-        if current_counter_segment is not None:
-            zone_low, zone_high = self._segment_price_bounds(current_counter_segment)
-            zone_start_time = self._segment_start_time(current_counter_segment)
-            zone_end_time = self._segment_end_time(current_counter_segment)
-
-        open_side = "long" if current_30f_segment["direction"] == "up" else "short"
-        return OpportunityAnalysisSummary(
-            symbol=contract.symbol,
-            exchange=contract.exchange,
-            name=contract.name,
-            analysis_status="ok",
-            analysis_message=None,
-            latest_price=latest_price,
-            latest_time=latest_time,
-            latest_30f_time=latest_time,
-            current_30f_segment_type="trend_push",
-            current_30f_segment_direction=current_30f_segment["direction"],
-            current_4h_segment_direction=current_4h_segment["direction"],
-            current_5f_segment_direction=current_5f_segment["direction"] if current_5f_segment else None,
-            latest_30f_momentum_exhaustion_direction=self._momentum_direction(latest_30f_momentum_exhaustion),
-            latest_30f_momentum_exhaustion_time=self._momentum_time(latest_30f_momentum_exhaustion),
-            latest_30f_momentum_exhaustion_price=self._momentum_price(latest_30f_momentum_exhaustion),
-            latest_5f_momentum_exhaustion_direction=self._momentum_direction(latest_5f_momentum_exhaustion),
-            latest_5f_momentum_exhaustion_time=self._momentum_time(latest_5f_momentum_exhaustion),
-            latest_5f_momentum_exhaustion_price=self._momentum_price(latest_5f_momentum_exhaustion),
-            open_side=open_side,
-            in_open_zone=in_open_zone,
-            zone_source="5f_counter_segment_in_30f_push",
-            zone_low=zone_low,
-            zone_high=zone_high,
-            trading_range_top=float(latest_range["top"]) if latest_range else None,
-            trading_range_bottom=float(latest_range["bottom"]) if latest_range else None,
-            current_30f_segment_start_time=self._segment_start_time(current_30f_segment),
-            current_30f_segment_end_time=self._segment_end_time(current_30f_segment),
-            current_5f_zone_segment_start_time=zone_start_time,
-            current_5f_zone_segment_end_time=zone_end_time,
-        )
-
-    def _build_unavailable_result(
-        self,
-        contract: Contract,
-        status: str,
-        message: str,
-    ) -> OpportunityAnalysisSummary:
-        return OpportunityAnalysisSummary(
-            symbol=contract.symbol,
-            exchange=contract.exchange,
-            name=contract.name,
-            analysis_status=status,
             analysis_message=message,
             latest_price=None,
             latest_time=None,
@@ -396,8 +375,15 @@ class OpportunityAnalysisService:
             latest_5f_momentum_exhaustion_direction=None,
             latest_5f_momentum_exhaustion_time=None,
             latest_5f_momentum_exhaustion_price=None,
+            current_30f_momentum_check_direction=None,
+            current_30f_momentum_exhausted=None,
+            current_5f_momentum_check_direction=None,
+            current_5f_momentum_exhausted=None,
+            current_5f_wait_direction=None,
             open_side=None,
             in_open_zone=False,
+            has_opportunity=False,
+            opportunity_action=None,
             zone_source=None,
             zone_low=None,
             zone_high=None,
@@ -443,6 +429,9 @@ class OpportunityAnalysisService:
     def _opposite_direction(self, direction: str) -> str:
         return "down" if direction == "up" else "up"
 
+    def _opposite_side(self, side: str) -> str:
+        return "short" if side == "long" else "long"
+
     def _momentum_direction(self, momentum_signal: dict | None) -> str | None:
         if momentum_signal is None:
             return None
@@ -464,15 +453,63 @@ class OpportunityAnalysisService:
             return None
         return float(point["price"])
 
+    def _is_direction_segment_exhausted(
+        self,
+        segments: list[dict],
+        momentum_signals: list[dict],
+        direction: str,
+        latest_time: int,
+    ) -> bool:
+        target_segment = self._latest_segment_by_direction(segments, direction, latest_time)
+        if target_segment is None:
+            return False
+        matched_signal = self._latest_momentum_by_direction(momentum_signals, direction, latest_time)
+        if matched_signal is None:
+            return False
+        signal_time = self._momentum_time(matched_signal)
+        segment_start_time = self._segment_start_time(target_segment)
+        if signal_time is None or segment_start_time is None:
+            return False
+        return signal_time >= segment_start_time
+
+    def _latest_segment_by_direction(
+        self,
+        segments: list[dict],
+        direction: str,
+        latest_time: int,
+    ) -> dict | None:
+        matched_segment: dict | None = None
+        for segment in segments:
+            if segment.get("direction") != direction:
+                continue
+            end_time = self._segment_end_time(segment)
+            if end_time is None or end_time > latest_time:
+                continue
+            matched_segment = segment
+        return matched_segment
+
+    def _latest_momentum_by_direction(
+        self,
+        momentum_signals: list[dict],
+        direction: str,
+        latest_time: int,
+    ) -> dict | None:
+        matched_signal: dict | None = None
+        for signal in momentum_signals:
+            if signal.get("direction") != direction:
+                continue
+            signal_time = self._momentum_time(signal)
+            if signal_time is None or signal_time > latest_time:
+                continue
+            matched_signal = signal
+        return matched_signal
+
     def _is_current_segment_near_trading_range(
         self,
         current_segment: dict,
         all_segments: list[dict],
         trading_range: dict,
     ) -> bool:
-        """
-        间隔线段数 >= 2，就不再按区间内部段处理，而是继续走趋势推动/趋势回调逻辑
-        """
         current_index = self._find_segment_index(all_segments, current_segment)
         range_segment_index = self._find_latest_range_related_segment_index(all_segments, trading_range)
         if current_index is None or range_segment_index is None:

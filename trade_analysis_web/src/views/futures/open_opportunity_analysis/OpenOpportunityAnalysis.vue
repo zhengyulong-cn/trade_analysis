@@ -9,7 +9,7 @@ import { computed, onMounted, ref } from 'vue'
 
 const TEXT = {
   pageTitle: '开仓机会分析',
-  pageSubtitle: '聚焦最新 K 线所处的开仓区域状态，支持按合约与 30F 线段类型筛选。',
+  pageSubtitle: '按流程图展示 30F 结构、30F/5F 动能衰竭判断以及最终机会结论。',
   refresh: '刷新分析结果',
   symbolFilter: '合约筛选',
   segmentTypeFilter: '30F线段类型',
@@ -17,22 +17,22 @@ const TEXT = {
   allSegmentTypes: '全部类型',
   totalContracts: '合约总数',
   openZoneContracts: '处于开仓区',
-  longContracts: '多单机会',
-  shortContracts: '空单机会',
+  opportunityContracts: '机会合约数',
+  noOpportunityContracts: '无机会合约数',
   tableEmpty: '暂无开仓机会分析结果',
   contract: '合约',
   latestPrice: '最新价',
-  latestTime: '最新30F时间',
-  segmentType: '30F线段类型',
-  direction30f: '30F方向',
   direction4h: '4H方向',
-  direction5f: '5F方向',
-  momentum30f: '30F动能衰竭',
-  momentum5f: '5F动能衰竭',
-  openSide: '开仓方向',
-  openZoneStatus: '当前开仓区',
-  zonePrice: '开仓区域',
+  direction30f: '30F方向',
+  segmentType: '30F线段类型',
+  direction5f: '5F当前方向',
+  momentum30f: '30F动能判断',
+  momentum5f: '5F动能判断',
+  openSide: '操作视角',
+  openZoneStatus: '开仓区域',
+  zonePrice: '开仓区价格',
   tradingRange: '30F交易区间',
+  opportunity: '机会判断',
   unknown: '-',
   noZone: '否',
   inZone: '是',
@@ -96,10 +96,10 @@ const formatDirection = (value?: string | null) => {
 
 const formatOpenSide = (value?: string | null) => {
   if (value === 'long') {
-    return '多'
+    return '做多'
   }
   if (value === 'short') {
-    return '空'
+    return '做空'
   }
   return TEXT.unknown
 }
@@ -125,24 +125,40 @@ const formatPriceRange = (low?: number | null, high?: number | null) => {
   return `${formatNumber(low)} ~ ${formatNumber(high)}`
 }
 
-const formatMomentumExhaustion = (
-  direction?: string | null,
-  time?: number | null,
-  price?: number | null,
+const formatMomentumState = (
+  checkDirection?: string | null,
+  exhausted?: boolean | null,
+  latestDirection?: string | null,
+  latestTime?: number | null,
 ) => {
-  if (!direction || !time) {
+  if (!checkDirection || exhausted === null || exhausted === undefined) {
     return TEXT.unknown
   }
 
-  const directionText = direction === 'up' ? '上涨衰竭' : direction === 'down' ? '下跌衰竭' : TEXT.unknown
-  const priceText = price === null || price === undefined ? TEXT.unknown : formatNumber(price)
-  return `${directionText} @ ${formatUnixTime(time)} · ${priceText}`
+  const checkText = checkDirection === 'up' ? '检查上涨段' : '检查下跌段'
+  const stateText = exhausted ? '已衰竭' : '未衰竭'
+  if (!latestDirection || !latestTime) {
+    return `${checkText} · ${stateText}`
+  }
+
+  const latestText = latestDirection === 'up' ? '最近上涨衰竭' : '最近下跌衰竭'
+  return `${checkText} · ${stateText} · ${latestText} ${formatUnixTime(latestTime)}`
+}
+
+const formatOpportunityAction = (row: FutureOpportunityAnalysisItem) => {
+  if (!row.has_opportunity || !row.opportunity_action) {
+    return '不操作'
+  }
+  if (row.opportunity_action === 'open_long_wait_5f_down_end') {
+    return '开多机会：等待5F下跌段结束'
+  }
+  if (row.opportunity_action === 'open_short_wait_5f_up_end') {
+    return '开空机会：等待5F上涨段结束'
+  }
+  return '不操作'
 }
 
 const statusTagType = (row: FutureOpportunityAnalysisItem) => {
-  if (row.analysis_status !== 'ok') {
-    return 'info'
-  }
   return row.in_open_zone ? 'danger' : 'success'
 }
 
@@ -170,12 +186,8 @@ const symbolOptions = computed(() => {
 
 const totalContracts = computed(() => filteredRows.value.length)
 const openZoneContracts = computed(() => filteredRows.value.filter((row) => row.in_open_zone).length)
-const longContracts = computed(() => {
-  return filteredRows.value.filter((row) => row.analysis_status === 'ok' && row.open_side === 'long').length
-})
-const shortContracts = computed(() => {
-  return filteredRows.value.filter((row) => row.analysis_status === 'ok' && row.open_side === 'short').length
-})
+const opportunityContracts = computed(() => filteredRows.value.filter((row) => row.has_opportunity).length)
+const noOpportunityContracts = computed(() => filteredRows.value.filter((row) => !row.has_opportunity).length)
 
 const loadData = async () => {
   loading.value = true
@@ -183,11 +195,11 @@ const loadData = async () => {
   try {
     const result = await getFutureOpportunityAnalysisAllApi()
     rows.value = [...result.items].sort((first, second) => {
+      if (first.has_opportunity !== second.has_opportunity) {
+        return first.has_opportunity ? -1 : 1
+      }
       if (first.in_open_zone !== second.in_open_zone) {
         return first.in_open_zone ? -1 : 1
-      }
-      if (first.analysis_status !== second.analysis_status) {
-        return first.analysis_status === 'ok' ? -1 : 1
       }
       return first.symbol.localeCompare(second.symbol, 'zh-CN')
     })
@@ -226,12 +238,12 @@ onMounted(() => {
         <strong class="summary-value summary-value--danger">{{ openZoneContracts }}</strong>
       </div>
       <div class="summary-card">
-        <span class="summary-label">{{ TEXT.longContracts }}</span>
-        <strong class="summary-value summary-value--up">{{ longContracts }}</strong>
+        <span class="summary-label">{{ TEXT.opportunityContracts }}</span>
+        <strong class="summary-value summary-value--up">{{ opportunityContracts }}</strong>
       </div>
       <div class="summary-card">
-        <span class="summary-label">{{ TEXT.shortContracts }}</span>
-        <strong class="summary-value summary-value--down">{{ shortContracts }}</strong>
+        <span class="summary-label">{{ TEXT.noOpportunityContracts }}</span>
+        <strong class="summary-value summary-value--down">{{ noOpportunityContracts }}</strong>
       </div>
     </section>
 
@@ -299,12 +311,6 @@ onMounted(() => {
             </span>
           </template>
         </el-table-column>
-        
-        <!-- <el-table-column prop="latest_30f_time" :label="TEXT.latestTime" min-width="170">
-          <template #default="{ row }">
-            {{ formatUnixTime(row.latest_30f_time) }}
-          </template>
-        </el-table-column> -->
 
         <el-table-column prop="current_30f_segment_type" :label="TEXT.segmentType" min-width="140">
           <template #default="{ row }">
@@ -312,7 +318,7 @@ onMounted(() => {
           </template>
         </el-table-column>
 
-        <el-table-column prop="current_5f_segment_direction" :label="TEXT.direction5f" width="100">
+        <el-table-column prop="current_5f_segment_direction" :label="TEXT.direction5f" width="110">
           <template #default="{ row }">
             <span :class="row.current_5f_segment_direction === 'up' ? 'text-up' : 'text-down'">
               {{ formatDirection(row.current_5f_segment_direction) }}
@@ -320,25 +326,27 @@ onMounted(() => {
           </template>
         </el-table-column>
 
-        <el-table-column :label="TEXT.momentum30f" min-width="220">
+        <el-table-column :label="TEXT.momentum30f" min-width="240">
           <template #default="{ row }">
             {{
-              formatMomentumExhaustion(
+              formatMomentumState(
+                row.current_30f_momentum_check_direction,
+                row.current_30f_momentum_exhausted,
                 row.latest_30f_momentum_exhaustion_direction,
                 row.latest_30f_momentum_exhaustion_time,
-                row.latest_30f_momentum_exhaustion_price,
               )
             }}
           </template>
         </el-table-column>
 
-        <el-table-column :label="TEXT.momentum5f" min-width="220">
+        <el-table-column :label="TEXT.momentum5f" min-width="240">
           <template #default="{ row }">
             {{
-              formatMomentumExhaustion(
+              formatMomentumState(
+                row.current_5f_momentum_check_direction,
+                row.current_5f_momentum_exhausted,
                 row.latest_5f_momentum_exhaustion_direction,
                 row.latest_5f_momentum_exhaustion_time,
-                row.latest_5f_momentum_exhaustion_price,
               )
             }}
           </template>
@@ -346,24 +354,16 @@ onMounted(() => {
 
         <el-table-column prop="open_side" :label="TEXT.openSide" width="100">
           <template #default="{ row }">
-            <span
-              :class="row.open_side === 'long' ? 'text-up' : row.open_side === 'short' ? 'text-down' : ''"
-            >
+            <span :class="row.open_side === 'long' ? 'text-up' : row.open_side === 'short' ? 'text-down' : ''">
               {{ formatOpenSide(row.open_side) }}
             </span>
           </template>
         </el-table-column>
 
-        <el-table-column prop="in_open_zone" :label="TEXT.openZoneStatus" width="120">
+        <el-table-column prop="in_open_zone" :label="TEXT.openZoneStatus" width="100">
           <template #default="{ row }">
             <el-tag :type="statusTagType(row)">
-              {{
-                row.analysis_status === 'ok'
-                  ? row.in_open_zone
-                    ? TEXT.inZone
-                    : TEXT.noZone
-                  : row.analysis_status
-              }}
+              {{ row.in_open_zone ? TEXT.inZone : TEXT.noZone }}
             </el-tag>
           </template>
         </el-table-column>
@@ -377,6 +377,12 @@ onMounted(() => {
         <el-table-column :label="TEXT.tradingRange" min-width="160">
           <template #default="{ row }">
             {{ formatPriceRange(row.trading_range_bottom, row.trading_range_top) }}
+          </template>
+        </el-table-column>
+
+        <el-table-column :label="TEXT.opportunity" min-width="220">
+          <template #default="{ row }">
+            {{ formatOpportunityAction(row) }}
           </template>
         </el-table-column>
       </el-table>

@@ -55,7 +55,6 @@ class OpportunityAnalysisItemOut(SQLModel):
     symbol: str
     exchange: str
     name: str
-    analysis_status: str
     analysis_message: str | None = None
     latest_price: float | None = None
     latest_time: int | None = None
@@ -70,8 +69,15 @@ class OpportunityAnalysisItemOut(SQLModel):
     latest_5f_momentum_exhaustion_direction: str | None = None
     latest_5f_momentum_exhaustion_time: int | None = None
     latest_5f_momentum_exhaustion_price: float | None = None
+    current_30f_momentum_check_direction: str | None = None
+    current_30f_momentum_exhausted: bool | None = None
+    current_5f_momentum_check_direction: str | None = None
+    current_5f_momentum_exhausted: bool | None = None
+    current_5f_wait_direction: str | None = None
     open_side: str | None = None
     in_open_zone: bool
+    has_opportunity: bool
+    opportunity_action: str | None = None
     zone_source: str | None = None
     zone_low: float | None = None
     zone_high: float | None = None
