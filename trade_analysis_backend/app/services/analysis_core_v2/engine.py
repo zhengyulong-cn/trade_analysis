@@ -9,9 +9,9 @@ from .momentum_exhaustion import (
     create_momentum_exhaustion_state,
 )
 from .segment import advance_segment, all_segments, create_segment_state
+from .segment_momentum_binding import build_segment_exhaustion_flags
 from .trading_range import advance_trading_range, create_trading_range_state
 from .types import AnalysisBar
-
 
 def analyze(
     bars: list[AnalysisBar],
@@ -37,7 +37,13 @@ def analyze(
         advance_trading_range(trading_range_state, bars, current_segments, current_higher_dir)
         advance_momentum_exhaustion(momentum_exhaustion_state, bars, current_segments, bar.index)
 
+    final_segments = all_segments(segment_state)
     final_higher_segments = all_higher_segments(higher_level_state, min_distance)
+    segment_exhaustion_flags = build_segment_exhaustion_flags(
+        final_segments,
+        momentum_exhaustion_state.signals,
+        bars,
+    )
 
     return {
         "bar_count": len(bars),
@@ -55,8 +61,9 @@ def analyze(
                     "time": segment.end.time,
                     "price": segment.end.price,
                 },
+                "is_momentum_exhaustion_segment": segment_exhaustion_flags[index],
             }
-            for segment in all_segments(segment_state)
+            for index, segment in enumerate(final_segments)
         ],
         "higher_segments": [
             {

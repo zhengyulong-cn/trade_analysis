@@ -11,6 +11,7 @@ from .momentum_exhaustion import (
     create_momentum_exhaustion_state,
 )
 from .segment import advance_segment, all_segments, create_segment_state
+from .segment_momentum_binding import build_segment_exhaustion_flags
 from .trading_range import advance_trading_range, create_trading_range_state
 from .types import (
     AnalysisBar,
@@ -38,6 +39,7 @@ __all__ = [
     "analyze",
     "all_higher_segments",
     "all_segments",
+    "build_segment_exhaustion_flags",
     "calc_ema",
     "calc_macd",
     "create_higher_level_state",
