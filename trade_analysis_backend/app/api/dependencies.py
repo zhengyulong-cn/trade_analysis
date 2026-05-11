@@ -16,7 +16,8 @@ from app.services.market_data import (
 )
 from app.services.opportunity_analysis_service import OpportunityAnalysisService
 from app.services.realtime_bar_service import RealtimeBarService
-from app.services.analysis_service import AnalysisService
+# from app.services.analysis_service import AnalysisService
+from app.services.analysis_service_v2 import AnalysisServiceV2
 from app.services.redis_client import redis_client_manager
 from app.services.trade_record_service import TradeRecordService
 from app.services.trade_record_storage import TradeRecordStorageService
@@ -101,11 +102,11 @@ TradeRecordServiceDep = Annotated[
 ]
 
 
-def get_analysis_service(kline_service: KlineServiceDep) -> AnalysisService:
-    return AnalysisService(kline_service=kline_service)
+def get_analysis_service(kline_service: KlineServiceDep) -> AnalysisServiceV2:
+    return AnalysisServiceV2(kline_service=kline_service)
 
 
-AnalysisServiceDep = Annotated[AnalysisService, Depends(get_analysis_service)]
+AnalysisServiceDep = Annotated[AnalysisServiceV2, Depends(get_analysis_service)]
 
 
 def get_opportunity_analysis_service(
