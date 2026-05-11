@@ -138,25 +138,22 @@ export interface FutureOpportunityAnalysisItem {
   latest_price: number | null
   latest_time: number | null
   latest_30f_time: number | null
-  current_30f_segment_type: string | null
-  current_30f_segment_direction: string | null
   current_4h_segment_direction: string | null
+  current_30f_segment_direction: string | null
+  current_30f_segment_type: string | null
   current_5f_segment_direction: string | null
+  trading_range_top: number | null
+  trading_range_bottom: number | null
+  is_in_30f_trading_range: boolean
+  trading_range_position: string | null
   current_30f_momentum_check_direction: string | null
   current_30f_momentum_exhausted: boolean | null
   current_5f_momentum_check_direction: string | null
   current_5f_momentum_exhausted: boolean | null
-  current_5f_wait_direction: string | null
   open_side: string | null
   has_opportunity: boolean
   opportunity_action: string | null
-  zone_source: string | null
-  trading_range_top: number | null
-  trading_range_bottom: number | null
-  current_30f_segment_start_time: number | null
-  current_30f_segment_end_time: number | null
-  current_5f_zone_segment_start_time: number | null
-  current_5f_zone_segment_end_time: number | null
+  opportunity_mode: string | null
 }
 
 export interface FutureOpportunityAnalysisListResult {

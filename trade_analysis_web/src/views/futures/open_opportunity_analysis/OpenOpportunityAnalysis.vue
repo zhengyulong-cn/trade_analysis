@@ -8,7 +8,7 @@ import { computed, onMounted, ref } from 'vue'
 
 const TEXT = {
   pageTitle: '开仓机会分析',
-  pageSubtitle: '基于 30F/5F 线段及线段上的动能衰竭标记，判断当前开仓机会。',
+  pageSubtitle: '按 4H / 30F / 5F 结构、交易区间和动能状态汇总当前机会。',
   refresh: '刷新分析结果',
   symbolFilter: '合约筛选',
   segmentTypeFilter: '30F线段类型',
@@ -16,7 +16,6 @@ const TEXT = {
   allSegmentTypes: '全部类型',
   totalContracts: '合约总数',
   opportunityContracts: '机会合约数',
-  noOpportunityContracts: '无机会合约数',
   longContracts: '做多视角',
   shortContracts: '做空视角',
   tableEmpty: '暂无开仓机会分析结果',
@@ -25,7 +24,8 @@ const TEXT = {
   direction4h: '4H方向',
   direction30f: '30F方向',
   segmentType: '30F线段类型',
-  direction5f: '5F当前方向',
+  direction5f: '5F方向',
+  mode: '模式',
   momentum30f: '30F动能判断',
   momentum5f: '5F动能判断',
   openSide: '操作视角',
@@ -57,7 +57,6 @@ const extractErrorMessage = (error: unknown, fallback: string) => {
       return response.data.msg
     }
   }
-
   return fallback
 }
 
@@ -65,7 +64,6 @@ const formatNumber = (value?: number | null) => {
   if (value === null || value === undefined || Number.isNaN(Number(value))) {
     return TEXT.unknown
   }
-
   return Number(value).toLocaleString('zh-CN', {
     minimumFractionDigits: 0,
     maximumFractionDigits: 4,
@@ -105,12 +103,66 @@ const formatSegmentType = (value?: string | null) => {
   return TEXT.unknown
 }
 
+const formatRangePosition = (value?: string | null) => {
+  if (value === 'upper_third') {
+    return '上1/3'
+  }
+  if (value === 'lower_third') {
+    return '下1/3'
+  }
+  if (value === 'middle_third') {
+    return '中1/3'
+  }
+  return TEXT.unknown
+}
+
 const formatPriceRange = (low?: number | null, high?: number | null) => {
   if (low === null || low === undefined || high === null || high === undefined) {
     return TEXT.unknown
   }
-
   return `${formatNumber(low)} ~ ${formatNumber(high)}`
+}
+
+const formatMode = (value?: string | null) => {
+  if (value === 'mode_1') {
+    return '模式一'
+  }
+  if (value === 'mode_2') {
+    return '模式二'
+  }
+  if (value === 'mode_3') {
+    return '模式三'
+  }
+  if (value === 'mode_4') {
+    return '模式四'
+  }
+  return TEXT.unknown
+}
+
+const modeTagType = (value?: string | null) => {
+  if (value === 'mode_1') {
+    return 'danger'
+  }
+  if (value === 'mode_2') {
+    return 'success'
+  }
+  if (value === 'mode_3') {
+    return 'warning'
+  }
+  if (value === 'mode_4') {
+    return 'info'
+  }
+  return ''
+}
+
+const formatTradingRangeState = (row: FutureOpportunityAnalysisItem) => {
+  const rangeText = formatPriceRange(row.trading_range_bottom, row.trading_range_top)
+  if (rangeText === TEXT.unknown) {
+    return TEXT.unknown
+  }
+  const enteredText = row.is_in_30f_trading_range ? '已进入' : '未进入'
+  const positionText = row.is_in_30f_trading_range ? ` / ${formatRangePosition(row.trading_range_position)}` : ''
+  return `${rangeText} / ${enteredText}${positionText}`
 }
 
 const formatMomentumState = (checkDirection?: string | null, exhausted?: boolean | null) => {
@@ -119,7 +171,7 @@ const formatMomentumState = (checkDirection?: string | null, exhausted?: boolean
   }
   const checkText = checkDirection === 'up' ? '检查上涨段' : '检查下跌段'
   const stateText = exhausted ? '已衰竭' : '未衰竭'
-  return `${checkText} · ${stateText}`
+  return `${checkText} / ${stateText}`
 }
 
 const formatOpportunityAction = (row: FutureOpportunityAnalysisItem) => {
@@ -131,6 +183,18 @@ const formatOpportunityAction = (row: FutureOpportunityAnalysisItem) => {
   }
   if (row.opportunity_action === 'open_short_wait_5f_up_end') {
     return '开空机会：等待5F上涨段结束'
+  }
+  if (row.opportunity_action === 'open_long_follow_5f_up') {
+    return '开多机会：顺5F上涨段参与'
+  }
+  if (row.opportunity_action === 'open_short_follow_5f_down') {
+    return '开空机会：顺5F下跌段参与'
+  }
+  if (row.opportunity_action === 'open_long_reverse_5f_down_structure') {
+    return '开多机会：逆5F下跌结构操作'
+  }
+  if (row.opportunity_action === 'open_short_reverse_5f_up_structure') {
+    return '开空机会：逆5F上涨结构操作'
   }
   return '不操作'
 }
@@ -151,7 +215,7 @@ const symbolOptions = computed(() => {
   return [
     { label: TEXT.allSymbols, value: '' },
     ...rows.value.map((row) => ({
-      label: `${row.symbol} · ${row.name}`,
+      label: `${row.symbol} / ${row.name}`,
       value: row.symbol,
     })),
   ]
@@ -159,13 +223,11 @@ const symbolOptions = computed(() => {
 
 const totalContracts = computed(() => filteredRows.value.length)
 const opportunityContracts = computed(() => filteredRows.value.filter((row) => row.has_opportunity).length)
-const noOpportunityContracts = computed(() => filteredRows.value.filter((row) => !row.has_opportunity).length)
 const longContracts = computed(() => filteredRows.value.filter((row) => row.open_side === 'long').length)
 const shortContracts = computed(() => filteredRows.value.filter((row) => row.open_side === 'short').length)
 
 const loadData = async () => {
   loading.value = true
-
   try {
     const result = await getFutureOpportunityAnalysisAllApi()
     rows.value = [...result.items].sort((first, second) => {
@@ -289,7 +351,7 @@ onMounted(() => {
           </template>
         </el-table-column>
 
-        <el-table-column prop="current_5f_segment_direction" :label="TEXT.direction5f" width="110">
+        <el-table-column prop="current_5f_segment_direction" :label="TEXT.direction5f" width="100">
           <template #default="{ row }">
             <span :class="row.current_5f_segment_direction === 'up' ? 'text-up' : 'text-down'">
               {{ formatDirection(row.current_5f_segment_direction) }}
@@ -297,13 +359,28 @@ onMounted(() => {
           </template>
         </el-table-column>
 
-        <el-table-column :label="TEXT.momentum30f" min-width="200">
+        <el-table-column prop="opportunity_mode" :label="TEXT.mode" width="110">
+          <template #default="{ row }">
+            <el-tag v-if="row.opportunity_mode" :type="modeTagType(row.opportunity_mode)">
+              {{ formatMode(row.opportunity_mode) }}
+            </el-tag>
+            <span v-else>{{ TEXT.unknown }}</span>
+          </template>
+        </el-table-column>
+
+        <el-table-column :label="TEXT.tradingRange" min-width="210">
+          <template #default="{ row }">
+            {{ formatTradingRangeState(row) }}
+          </template>
+        </el-table-column>
+
+        <el-table-column :label="TEXT.momentum30f" min-width="190">
           <template #default="{ row }">
             {{ formatMomentumState(row.current_30f_momentum_check_direction, row.current_30f_momentum_exhausted) }}
           </template>
         </el-table-column>
 
-        <el-table-column :label="TEXT.momentum5f" min-width="200">
+        <el-table-column :label="TEXT.momentum5f" min-width="190">
           <template #default="{ row }">
             {{ formatMomentumState(row.current_5f_momentum_check_direction, row.current_5f_momentum_exhausted) }}
           </template>
@@ -314,12 +391,6 @@ onMounted(() => {
             <span :class="row.open_side === 'long' ? 'text-up' : row.open_side === 'short' ? 'text-down' : ''">
               {{ formatOpenSide(row.open_side) }}
             </span>
-          </template>
-        </el-table-column>
-
-        <el-table-column :label="TEXT.tradingRange" min-width="160">
-          <template #default="{ row }">
-            {{ formatPriceRange(row.trading_range_bottom, row.trading_range_top) }}
           </template>
         </el-table-column>
 
