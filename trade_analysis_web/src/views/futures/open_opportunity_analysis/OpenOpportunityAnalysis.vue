@@ -3,6 +3,18 @@ import {
   getFutureOpportunityAnalysisAllApi,
   type FutureOpportunityAnalysisItem,
 } from '@/api/modules'
+import {
+  formatOpportunityAction,
+  formatOpportunityDirection,
+  formatOpportunityMode,
+  formatOpportunityMomentumState,
+  formatOpportunityNumber,
+  formatOpportunityOpenSide,
+  formatOpportunitySegmentType,
+  formatOpportunityTradingRangeState,
+  opportunityModeTagType,
+  OPPORTUNITY_UNKNOWN_TEXT,
+} from '@/utils/opportunity'
 import { ElMessage } from 'element-plus'
 import { computed, onMounted, ref } from 'vue'
 
@@ -31,7 +43,7 @@ const TEXT = {
   openSide: '操作视角',
   tradingRange: '30F交易区间',
   opportunity: '机会判断',
-  unknown: '-',
+  unknown: OPPORTUNITY_UNKNOWN_TEXT,
   loadError: '获取开仓机会分析失败',
 } as const
 
@@ -58,145 +70,6 @@ const extractErrorMessage = (error: unknown, fallback: string) => {
     }
   }
   return fallback
-}
-
-const formatNumber = (value?: number | null) => {
-  if (value === null || value === undefined || Number.isNaN(Number(value))) {
-    return TEXT.unknown
-  }
-  return Number(value).toLocaleString('zh-CN', {
-    minimumFractionDigits: 0,
-    maximumFractionDigits: 4,
-  })
-}
-
-const formatDirection = (value?: string | null) => {
-  if (value === 'up') {
-    return '上涨'
-  }
-  if (value === 'down') {
-    return '下跌'
-  }
-  return TEXT.unknown
-}
-
-const formatOpenSide = (value?: string | null) => {
-  if (value === 'long') {
-    return '做多'
-  }
-  if (value === 'short') {
-    return '做空'
-  }
-  return TEXT.unknown
-}
-
-const formatSegmentType = (value?: string | null) => {
-  if (value === 'trend_push') {
-    return '趋势推动段'
-  }
-  if (value === 'trend_pullback') {
-    return '趋势回调段'
-  }
-  if (value === 'range_internal') {
-    return '区间内部段'
-  }
-  return TEXT.unknown
-}
-
-const formatRangePosition = (value?: string | null) => {
-  if (value === 'upper_third') {
-    return '上1/3'
-  }
-  if (value === 'lower_third') {
-    return '下1/3'
-  }
-  if (value === 'middle_third') {
-    return '中1/3'
-  }
-  return TEXT.unknown
-}
-
-const formatPriceRange = (low?: number | null, high?: number | null) => {
-  if (low === null || low === undefined || high === null || high === undefined) {
-    return TEXT.unknown
-  }
-  return `${formatNumber(low)} ~ ${formatNumber(high)}`
-}
-
-const formatMode = (value?: string | null) => {
-  if (value === 'mode_1') {
-    return '模式一'
-  }
-  if (value === 'mode_2') {
-    return '模式二'
-  }
-  if (value === 'mode_3') {
-    return '模式三'
-  }
-  if (value === 'mode_4') {
-    return '模式四'
-  }
-  return TEXT.unknown
-}
-
-const modeTagType = (value?: string | null) => {
-  if (value === 'mode_1') {
-    return 'danger'
-  }
-  if (value === 'mode_2') {
-    return 'success'
-  }
-  if (value === 'mode_3') {
-    return 'warning'
-  }
-  if (value === 'mode_4') {
-    return 'info'
-  }
-  return ''
-}
-
-const formatTradingRangeState = (row: FutureOpportunityAnalysisItem) => {
-  const rangeText = formatPriceRange(row.trading_range_bottom, row.trading_range_top)
-  if (rangeText === TEXT.unknown) {
-    return TEXT.unknown
-  }
-  const enteredText = row.is_in_30f_trading_range ? '已进入' : '未进入'
-  const positionText = row.is_in_30f_trading_range ? ` / ${formatRangePosition(row.trading_range_position)}` : ''
-  return `${rangeText} / ${enteredText}${positionText}`
-}
-
-const formatMomentumState = (checkDirection?: string | null, exhausted?: boolean | null) => {
-  if (!checkDirection || exhausted === null || exhausted === undefined) {
-    return TEXT.unknown
-  }
-  const checkText = checkDirection === 'up' ? '检查上涨段' : '检查下跌段'
-  const stateText = exhausted ? '已衰竭' : '未衰竭'
-  return `${checkText} / ${stateText}`
-}
-
-const formatOpportunityAction = (row: FutureOpportunityAnalysisItem) => {
-  if (!row.has_opportunity || !row.opportunity_action) {
-    return '不操作'
-  }
-  if (row.opportunity_action === 'open_long_wait_5f_down_end') {
-    return '开多机会：等待5F下跌段结束'
-  }
-  if (row.opportunity_action === 'open_short_wait_5f_up_end') {
-    return '开空机会：等待5F上涨段结束'
-  }
-  if (row.opportunity_action === 'open_long_follow_5f_up') {
-    return '开多机会：顺5F上涨段参与'
-  }
-  if (row.opportunity_action === 'open_short_follow_5f_down') {
-    return '开空机会：顺5F下跌段参与'
-  }
-  if (row.opportunity_action === 'open_long_reverse_5f_down_structure') {
-    return '开多机会：逆5F下跌结构操作'
-  }
-  if (row.opportunity_action === 'open_short_reverse_5f_up_structure') {
-    return '开空机会：逆5F上涨结构操作'
-  }
-  return '不操作'
 }
 
 const filteredRows = computed(() => {
@@ -325,14 +198,14 @@ onMounted(() => {
 
         <el-table-column prop="latest_price" :label="TEXT.latestPrice" min-width="120">
           <template #default="{ row }">
-            {{ formatNumber(row.latest_price) }}
+            {{ formatOpportunityNumber(row.latest_price) }}
           </template>
         </el-table-column>
 
         <el-table-column prop="current_4h_segment_direction" :label="TEXT.direction4h" width="100">
           <template #default="{ row }">
             <span :class="row.current_4h_segment_direction === 'up' ? 'text-up' : 'text-down'">
-              {{ formatDirection(row.current_4h_segment_direction) }}
+              {{ formatOpportunityDirection(row.current_4h_segment_direction) }}
             </span>
           </template>
         </el-table-column>
@@ -340,29 +213,29 @@ onMounted(() => {
         <el-table-column prop="current_30f_segment_direction" :label="TEXT.direction30f" width="100">
           <template #default="{ row }">
             <span :class="row.current_30f_segment_direction === 'up' ? 'text-up' : 'text-down'">
-              {{ formatDirection(row.current_30f_segment_direction) }}
+              {{ formatOpportunityDirection(row.current_30f_segment_direction) }}
             </span>
           </template>
         </el-table-column>
 
         <el-table-column prop="current_30f_segment_type" :label="TEXT.segmentType" min-width="140">
           <template #default="{ row }">
-            {{ formatSegmentType(row.current_30f_segment_type) }}
+            {{ formatOpportunitySegmentType(row.current_30f_segment_type) }}
           </template>
         </el-table-column>
 
         <el-table-column prop="current_5f_segment_direction" :label="TEXT.direction5f" width="100">
           <template #default="{ row }">
             <span :class="row.current_5f_segment_direction === 'up' ? 'text-up' : 'text-down'">
-              {{ formatDirection(row.current_5f_segment_direction) }}
+              {{ formatOpportunityDirection(row.current_5f_segment_direction) }}
             </span>
           </template>
         </el-table-column>
 
         <el-table-column prop="opportunity_mode" :label="TEXT.mode" width="110">
           <template #default="{ row }">
-            <el-tag v-if="row.opportunity_mode" :type="modeTagType(row.opportunity_mode)">
-              {{ formatMode(row.opportunity_mode) }}
+            <el-tag v-if="row.opportunity_mode" :type="opportunityModeTagType(row.opportunity_mode)">
+              {{ formatOpportunityMode(row.opportunity_mode) }}
             </el-tag>
             <span v-else>{{ TEXT.unknown }}</span>
           </template>
@@ -370,26 +243,26 @@ onMounted(() => {
 
         <el-table-column :label="TEXT.tradingRange" min-width="210">
           <template #default="{ row }">
-            {{ formatTradingRangeState(row) }}
+            {{ formatOpportunityTradingRangeState(row) }}
           </template>
         </el-table-column>
 
         <el-table-column :label="TEXT.momentum30f" min-width="190">
           <template #default="{ row }">
-            {{ formatMomentumState(row.current_30f_momentum_check_direction, row.current_30f_momentum_exhausted) }}
+            {{ formatOpportunityMomentumState(row.current_30f_momentum_check_direction, row.current_30f_momentum_exhausted) }}
           </template>
         </el-table-column>
 
         <el-table-column :label="TEXT.momentum5f" min-width="190">
           <template #default="{ row }">
-            {{ formatMomentumState(row.current_5f_momentum_check_direction, row.current_5f_momentum_exhausted) }}
+            {{ formatOpportunityMomentumState(row.current_5f_momentum_check_direction, row.current_5f_momentum_exhausted) }}
           </template>
         </el-table-column>
 
         <el-table-column prop="open_side" :label="TEXT.openSide" width="100">
           <template #default="{ row }">
             <span :class="row.open_side === 'long' ? 'text-up' : row.open_side === 'short' ? 'text-down' : ''">
-              {{ formatOpenSide(row.open_side) }}
+              {{ formatOpportunityOpenSide(row.open_side) }}
             </span>
           </template>
         </el-table-column>
