@@ -31,7 +31,8 @@ const TEXT = {
   pageTitle: '期货K线管理',
   pageSubtitle: '左侧展示合约-周期汇总，右侧展示对应 K 线明细。',
   refreshOverview: '刷新合约汇总数据',
-  batchUpdate: '批量更新',
+  batchUpdateRecent: '批量更新2日数据',
+  batchUpdateFull: '全量更新5000条数据',
   overviewTitle: '合约汇总数据',
   detailTitle: 'K 线明细',
   detailPlaceholder: '点击左侧汇总表某行查看明细',
@@ -88,6 +89,7 @@ const DEFAULT_DETAIL_PAGE_SIZE = 50
 const STORAGE_INTERVAL_SECONDS = 300
 const STORAGE_INTERVAL_NAME = '5F'
 const SYNC_KLINE_LIMIT = 5000
+const RECENT_SYNC_KLINE_LIMIT = 200
 
 const overviewRows = ref<OverviewRow[]>([])
 const detailRows = ref<FutureKlineQueryItem[]>([])
@@ -104,7 +106,13 @@ const deletingKeys = ref<string[]>([])
 const bulkUpdateLoading = ref(false)
 const batchDeleteLoading = ref(false)
 const selectedDetailRows = ref<FutureKlineQueryItem[]>([])
+const selectedOverviewRows = ref<OverviewRow[]>([])
 const detailTimeRange = ref<[string, string] | []>([])
+const bulkSyncTotal = ref(0)
+const bulkSyncCompleted = ref(0)
+const bulkSyncInserted = ref(0)
+const bulkSyncUpdated = ref(0)
+const bulkSyncFailed = ref(0)
 
 const createShortcutRange = (days: number) => {
   return createRecentDateRange(days)
@@ -130,6 +138,19 @@ const shortcuts = [
 ]
 
 const hasDetailSelection = computed(() => Boolean(selectedSymbol.value && selectedInterval.value))
+const hasOverviewSelection = computed(() => selectedOverviewRows.value.length > 0)
+const bulkSyncProgress = computed(() => {
+  if (!bulkSyncTotal.value) {
+    return 0
+  }
+  return Math.min(100, Math.round((bulkSyncCompleted.value / bulkSyncTotal.value) * 100))
+})
+const bulkSyncStatusText = computed(() => {
+  if (!bulkUpdateLoading.value || !bulkSyncTotal.value) {
+    return ''
+  }
+  return `批量更新进度：${bulkSyncCompleted.value}/${bulkSyncTotal.value}，新增 ${bulkSyncInserted.value} 条，覆盖 ${bulkSyncUpdated.value} 条，失败 ${bulkSyncFailed.value} 项`
+})
 
 const selectedOverviewRow = computed(() => {
   return overviewRows.value.find((row) => row.rowKey === selectedOverviewKey.value) ?? null
@@ -356,6 +377,10 @@ const handleDetailSelectionChange = (rows: FutureKlineQueryItem[]) => {
   selectedDetailRows.value = rows
 }
 
+const handleOverviewSelectionChange = (rows: OverviewRow[]) => {
+  selectedOverviewRows.value = rows
+}
+
 const handleSync = async (row: OverviewRow) => {
   const rowKey = row.rowKey
   updatingKeys.value = [...updatingKeys.value, rowKey]
@@ -384,13 +409,18 @@ const handleSync = async (row: OverviewRow) => {
   }
 }
 
-const handleBulkSync = async () => {
-  const rows = [...overviewRows.value]
+const handleBulkSync = async (limit: number) => {
+  const rows = [...selectedOverviewRows.value]
   if (!rows.length) {
     return
   }
 
   bulkUpdateLoading.value = true
+  bulkSyncTotal.value = rows.length
+  bulkSyncCompleted.value = 0
+  bulkSyncInserted.value = 0
+  bulkSyncUpdated.value = 0
+  bulkSyncFailed.value = 0
   updatingKeys.value = Array.from(new Set([...updatingKeys.value, ...rows.map((row) => row.rowKey)]))
 
   let inserted = 0
@@ -403,12 +433,17 @@ const handleBulkSync = async () => {
         const result = await syncFutureKlinesApi({
           symbol: row.symbol,
           interval: row.interval,
-          limit: SYNC_KLINE_LIMIT,
+          limit,
         })
         inserted += result.inserted
         updated += result.updated
+        bulkSyncInserted.value = inserted
+        bulkSyncUpdated.value = updated
       } catch {
         failed += 1
+        bulkSyncFailed.value = failed
+      } finally {
+        bulkSyncCompleted.value += 1
       }
     }
 
@@ -555,10 +590,18 @@ onMounted(async () => {
         <el-button
           type="primary"
           :loading="bulkUpdateLoading"
-          :disabled="overviewLoading || !overviewRows.length"
-          @click="handleBulkSync"
+          :disabled="overviewLoading || !hasOverviewSelection"
+          @click="handleBulkSync(RECENT_SYNC_KLINE_LIMIT)"
         >
-          {{ TEXT.batchUpdate }}
+          {{ TEXT.batchUpdateRecent }}
+        </el-button>
+        <el-button
+          type="warning"
+          :loading="bulkUpdateLoading"
+          :disabled="overviewLoading || !hasOverviewSelection"
+          @click="handleBulkSync(SYNC_KLINE_LIMIT)"
+        >
+          {{ TEXT.batchUpdateFull }}
         </el-button>
       </div>
     </header>
@@ -572,6 +615,11 @@ onMounted(async () => {
           </div>
         </div>
 
+        <div v-if="bulkUpdateLoading" class="bulk-progress">
+          <div class="bulk-progress__text">{{ bulkSyncStatusText }}</div>
+          <el-progress :percentage="bulkSyncProgress" :stroke-width="14" />
+        </div>
+
         <el-table
           v-loading="overviewLoading"
           :data="overviewRows"
@@ -581,8 +629,10 @@ onMounted(async () => {
           :row-class-name="overviewRowClassName"
           :empty-text="TEXT.emptyOverview"
           @row-click="handleOverviewRowClick"
+          @selection-change="handleOverviewSelectionChange"
           max-height="38rem"
         >
+          <el-table-column type="selection" width="48" />
           <el-table-column :label="TEXT.contract" min-width="120">
             <template #default="{ row }">
               <div class="contract-cell">
@@ -802,8 +852,14 @@ onMounted(async () => {
   gap: 12px;
 }
 
-.page-actions {
-  gap: 12px;
+.bulk-progress {
+  margin-bottom: 16px;
+}
+
+.bulk-progress__text {
+  margin-bottom: 8px;
+  font-size: 13px;
+  color: #606266;
 }
 
 .tool-label {

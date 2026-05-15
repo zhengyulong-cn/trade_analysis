@@ -1,5 +1,6 @@
-from fastapi import APIRouter, status
 import re
+
+from fastapi import APIRouter, status
 
 from app.api.dependencies import ContractServiceDep, QuoteProviderDep
 from app.schemas.contract import (
@@ -13,21 +14,27 @@ from app.schemas.contract import (
 
 router = APIRouter()
 
-# 排除的合约，成交量太小不适合分析操作
-EXCLUDED_MAIN_CONTRACT_PRODUCTS = {"JR","PM","RI","WH","ZC", "bb", "wr", "RS", "rr", "fb", "lg", "op", "CY", "pd", "pt", "PL", "ad", "cs", "T", "TF", "TS", "TL"}
+# 排除的品种前缀。这里统一转成大写，避免黑名单大小写不一致导致过滤失效。
+EXCLUDED_MAIN_CONTRACT_PRODUCTS = {
+    item.upper()
+    for item in {
+        "JR", "PM", "RI", "WH", "ZC",
+        "bb", "wr", "RS", "rr", "bc", "fb", "lg", "op",
+        "CY", "pd", "pt", "PL", "ad", "cs",
+        "T", "TF", "TS", "TL",
+    }
+}
 
 def _extract_product_prefix(symbol: str) -> str:
-    match = re.match(r"([A-Za-z]+)", symbol)
+    normalized_symbol = symbol.strip()
+    match = re.match(r"([A-Za-z]+)", normalized_symbol)
     if not match:
-        return symbol.upper()
+        return normalized_symbol.upper()
     return match.group(1).upper()
 
-
 def _is_allowed_main_contract(symbol: str) -> bool:
-    # 先按品种前缀做黑名单过滤。
-    # RR: 粳米
-    # ZC: 动力煤
     return _extract_product_prefix(symbol) not in EXCLUDED_MAIN_CONTRACT_PRODUCTS
+
 
 @router.get("", response_model=list[ContractRead])
 def list_contracts(service: ContractServiceDep) -> list[ContractRead]:

@@ -15,7 +15,7 @@ import {
   opportunityModeTagType,
   OPPORTUNITY_UNKNOWN_TEXT,
 } from '@/utils/opportunity'
-import { computed, ref, watch } from 'vue'
+import { ref, watch } from 'vue'
 
 interface ContractOption {
   label: string
@@ -43,11 +43,6 @@ const emit = defineEmits<{
 const activeNames = ref<string[]>(['contracts', 'opportunity'])
 const opportunityLoading = ref(false)
 const opportunityItem = ref<FutureOpportunityAnalysisItem | null>(null)
-
-const selectedContractLabel = computed(() => {
-  const matched = props.contractOptions.find((item) => item.value === props.selectedContract)
-  return matched?.description || matched?.label || props.selectedContract || OPPORTUNITY_UNKNOWN_TEXT
-})
 
 const loadOpportunity = async (symbol: string) => {
   if (!symbol) {
@@ -91,7 +86,8 @@ const handleContractSelect = (contractValue: string) => {
             :class="{ 'is-active': contract.value === selectedContract }"
             @click="handleContractSelect(contract.value)"
           >
-            <div class="contract-code">{{ contract.value }}</div>
+            <div class="contract-code">{{ contract.label }}</div>
+            <div>{{ contract.value }}</div>
           </button>
         </div>
       </el-collapse-item>
@@ -229,15 +225,15 @@ const handleContractSelect = (contractValue: string) => {
 .contract-item {
   width: 100%;
   border: none;
-  border-radius: 8px;
+  border-radius: 0.5rem;
   background: transparent;
-  padding: 8px 10px;
+  padding: 0px .5rem;
   text-align: left;
   color: #0f172a;
   cursor: pointer;
   display: flex;
-  flex-direction:  row;
-  align-items: center;
+  flex-direction:  column;
+  align-items: flex-start;
   gap: 2px;
   transition: background-color 0.15s ease;
 }

@@ -42,7 +42,7 @@ const chartData = ref<FutureKlineData>(createEmptyChartData())
 const hasContracts = computed(() => contracts.value.length > 0)
 const contractOptions = computed(() => {
   return contracts.value.map((contract) => ({
-    label: `${contract.symbol} 路 ${contract.name}`,
+    label: `${contract.name}`,
     value: contract.symbol,
     description: contract.name,
   }))
