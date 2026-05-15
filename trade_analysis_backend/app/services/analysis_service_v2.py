@@ -1,6 +1,10 @@
 import math
 from datetime import datetime
-from app.core.kline_intervals import is_supported_kline_interval
+from app.core.kline_intervals import (
+    FIVE_MINUTES_SECONDS,
+    THIRTY_MINUTES_SECONDS,
+    is_supported_kline_interval,
+)
 from app.services.analysis_core_v2 import analyze, AnalysisBar, calc_ema, calc_macd
 
 
@@ -10,6 +14,17 @@ def datetime_to_unix(dt: datetime) -> int:
 class AnalysisServiceV2:
     def __init__(self, kline_service):
         self._kline_service = kline_service
+
+    def _resolve_engine_params(self, interval_seconds: int) -> tuple[int, int]:
+        """
+        不同周期使用不同的线段构建参数：
+        1. 5F 继续使用 engine 默认值。
+        2. 30F 使用更收紧的包含与最小间隔参数。
+        3. 其他周期暂时也保持 engine 默认值。
+        """
+        if interval_seconds == THIRTY_MINUTES_SECONDS:
+            return 8, 3
+        return 10, 4
 
     def build_analysis_bars(self, items) -> list[AnalysisBar]:
         bars: list[AnalysisBar] = []
@@ -50,6 +65,8 @@ class AnalysisServiceV2:
         limit: int = 2000,
         start_time: datetime | None = None,
         end_time: datetime | None = None,
+        max_included: int | None = None,
+        min_distance: int | None = None,
     ) -> dict:
         # 对于不支持分析的周期，抛出异常
         if not is_supported_kline_interval(interval_seconds):
@@ -75,4 +92,9 @@ class AnalysisServiceV2:
         self.attach_ema(bars, 20, "ema20")
         self.attach_ema(bars, 120, "ema120")
         self.attach_macd(bars)
-        return analyze(bars)
+        resolved_max_included, resolved_min_distance = self._resolve_engine_params(interval_seconds)
+        return analyze(
+            bars,
+            max_included=resolved_max_included,
+            min_distance=resolved_min_distance,
+        )

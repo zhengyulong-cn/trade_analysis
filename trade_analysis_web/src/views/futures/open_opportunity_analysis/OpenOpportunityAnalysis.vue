@@ -18,6 +18,8 @@ import {
 import { ElMessage } from 'element-plus'
 import { computed, onMounted, ref } from 'vue'
 
+const STORAGE_KEY = 'futures-open-opportunity-analysis-cache'
+
 const TEXT = {
   pageTitle: '开仓机会分析',
   pageSubtitle: '按 4H / 30F / 5F 结构、交易区间和动能状态汇总当前机会。',
@@ -56,8 +58,16 @@ const SEGMENT_TYPE_OPTIONS = [
 
 const rows = ref<FutureOpportunityAnalysisItem[]>([])
 const loading = ref(false)
-const selectedSymbol = ref('')
+const selectedSymbols = ref<string[]>([])
 const selectedSegmentType = ref('')
+const only30fExhausted = ref(false)
+const only5fExhausted = ref(false)
+const lastUpdatedAt = ref<number | null>(null)
+
+interface OpportunityAnalysisCache {
+  lastUpdatedAt: number
+  analysisData: FutureOpportunityAnalysisItem[]
+}
 
 const extractErrorMessage = (error: unknown, fallback: string) => {
   if (typeof error === 'object' && error !== null) {
@@ -74,10 +84,16 @@ const extractErrorMessage = (error: unknown, fallback: string) => {
 
 const filteredRows = computed(() => {
   return rows.value.filter((row) => {
-    if (selectedSymbol.value && row.symbol !== selectedSymbol.value) {
+    if (selectedSymbols.value.length > 0 && !selectedSymbols.value.includes(row.symbol)) {
       return false
     }
     if (selectedSegmentType.value && row.current_30f_segment_type !== selectedSegmentType.value) {
+      return false
+    }
+    if (only30fExhausted.value && !row.current_30f_momentum_exhausted) {
+      return false
+    }
+    if (only5fExhausted.value && !row.current_5f_momentum_exhausted) {
       return false
     }
     return true
@@ -85,30 +101,68 @@ const filteredRows = computed(() => {
 })
 
 const symbolOptions = computed(() => {
-  return [
-    { label: TEXT.allSymbols, value: '' },
-    ...rows.value.map((row) => ({
+  return rows.value.map((row) => ({
       label: `${row.symbol} / ${row.name}`,
       value: row.symbol,
-    })),
-  ]
+    }))
 })
 
 const totalContracts = computed(() => filteredRows.value.length)
 const opportunityContracts = computed(() => filteredRows.value.filter((row) => row.has_opportunity).length)
 const longContracts = computed(() => filteredRows.value.filter((row) => row.open_side === 'long').length)
 const shortContracts = computed(() => filteredRows.value.filter((row) => row.open_side === 'short').length)
+const lastUpdatedAtText = computed(() => {
+  if (!lastUpdatedAt.value) {
+    return TEXT.unknown
+  }
+  return new Date(lastUpdatedAt.value).toLocaleString('zh-CN', {
+    hour12: false,
+  })
+})
+
+const sortRows = (items: FutureOpportunityAnalysisItem[]) => {
+  return [...items].sort((first, second) => {
+    if (first.has_opportunity !== second.has_opportunity) {
+      return first.has_opportunity ? -1 : 1
+    }
+    return first.symbol.localeCompare(second.symbol, 'zh-CN')
+  })
+}
+
+const loadCache = () => {
+  try {
+    const raw = localStorage.getItem(STORAGE_KEY)
+    if (!raw) {
+      return
+    }
+    const parsed = JSON.parse(raw) as Partial<OpportunityAnalysisCache>
+    if (!Array.isArray(parsed.analysisData) || typeof parsed.lastUpdatedAt !== 'number') {
+      return
+    }
+    rows.value = sortRows(parsed.analysisData as FutureOpportunityAnalysisItem[])
+    lastUpdatedAt.value = parsed.lastUpdatedAt
+  } catch {
+    localStorage.removeItem(STORAGE_KEY)
+  }
+}
+
+const saveCache = (items: FutureOpportunityAnalysisItem[], updatedAt: number) => {
+  const payload: OpportunityAnalysisCache = {
+    lastUpdatedAt: updatedAt,
+    analysisData: items,
+  }
+  localStorage.setItem(STORAGE_KEY, JSON.stringify(payload))
+}
 
 const loadData = async () => {
   loading.value = true
   try {
     const result = await getFutureOpportunityAnalysisAllApi()
-    rows.value = [...result.items].sort((first, second) => {
-      if (first.has_opportunity !== second.has_opportunity) {
-        return first.has_opportunity ? -1 : 1
-      }
-      return first.symbol.localeCompare(second.symbol, 'zh-CN')
-    })
+    const sortedRows = sortRows(result.items)
+    const updatedAt = Date.now()
+    rows.value = sortedRows
+    lastUpdatedAt.value = updatedAt
+    saveCache(sortedRows, updatedAt)
   } catch (error) {
     rows.value = []
     ElMessage.error(extractErrorMessage(error, TEXT.loadError))
@@ -118,7 +172,7 @@ const loadData = async () => {
 }
 
 onMounted(() => {
-  void loadData()
+  loadCache()
 })
 </script>
 
@@ -129,9 +183,12 @@ onMounted(() => {
         <h2 class="title">{{ TEXT.pageTitle }}</h2>
         <p class="subtitle">{{ TEXT.pageSubtitle }}</p>
       </div>
-      <el-button type="primary" :loading="loading" @click="loadData">
-        {{ TEXT.refresh }}
-      </el-button>
+      <div class="header-actions">
+        <span class="last-updated">最后更新：{{ lastUpdatedAtText }}</span>
+        <el-button type="primary" :loading="loading" @click="loadData">
+          {{ TEXT.refresh }}
+        </el-button>
+      </div>
     </header>
 
     <section class="summary-grid">
@@ -157,10 +214,10 @@ onMounted(() => {
       <div class="filter-bar">
         <div class="filter-item">
           <span class="filter-label">{{ TEXT.symbolFilter }}</span>
-          <el-select v-model="selectedSymbol" filterable clearable class="filter-select">
+          <el-select v-model="selectedSymbols" multiple filterable collapse-tags collapse-tags-tooltip clearable class="filter-select">
             <el-option
               v-for="option in symbolOptions"
-              :key="option.value || 'all-symbols'"
+              :key="option.value"
               :label="option.label"
               :value="option.value"
             />
@@ -177,6 +234,14 @@ onMounted(() => {
               :value="option.value"
             />
           </el-select>
+        </div>
+
+        <div class="filter-item filter-item--checkbox">
+          <el-checkbox v-model="only30fExhausted">30F已衰竭</el-checkbox>
+        </div>
+
+        <div class="filter-item filter-item--checkbox">
+          <el-checkbox v-model="only5fExhausted">5F已衰竭</el-checkbox>
         </div>
       </div>
 
@@ -296,6 +361,12 @@ onMounted(() => {
   display: flex;
 }
 
+.header-actions {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
 .page-header {
   align-items: center;
   justify-content: space-between;
@@ -318,13 +389,18 @@ onMounted(() => {
 
 .subtitle {
   margin: 6px 0 0;
-  font-size: 13px;
+  font-size: .75rem;
+}
+
+.last-updated {
+  font-size: .75rem;
+  color: #909399;
 }
 
 .summary-grid {
   display: grid;
   grid-template-columns: repeat(4, minmax(0, 1fr));
-  gap: 16px;
+  gap: 1rem;
 }
 
 .summary-card,
@@ -335,17 +411,21 @@ onMounted(() => {
 }
 
 .summary-card {
-  padding: 16px;
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  justify-content: flex-start;
+  column-gap: 1rem;
+  padding: 1rem;
 }
 
 .summary-label {
   display: block;
-  font-size: 13px;
+  font-size: .75rem;
 }
 
 .summary-value {
   display: block;
-  margin-top: 10px;
   font-size: 28px;
   line-height: 1;
   color: #303133;
@@ -381,6 +461,10 @@ onMounted(() => {
   gap: 10px;
 }
 
+.filter-item--checkbox {
+  min-height: 32px;
+}
+
 .filter-label {
   font-size: 13px;
   white-space: nowrap;
@@ -413,6 +497,11 @@ onMounted(() => {
   .page-header {
     flex-direction: column;
     align-items: flex-start;
+  }
+
+  .header-actions {
+    width: 100%;
+    justify-content: space-between;
   }
 
   .summary-grid {
