@@ -23,9 +23,32 @@ class ContractUpdate(SQLModel):
     is_favorite: int | None = None
 
 
+class MainContractCandidateRead(SQLModel):
+    symbol: str
+    exchange: str
+    provider_symbol: str
+    name: str
+
+
+class MainContractSyncItem(SQLModel):
+    symbol: str
+    exchange: str
+    name: str
+
+
+class MainContractSyncPayload(SQLModel):
+    items: list[MainContractSyncItem]
+
+
 class ContractRead(ContractBase):
     model_config = ConfigDict(from_attributes=True)
 
     contract_id: int
     create_at: datetime
     updated_at: datetime
+
+
+class MainContractSyncResult(SQLModel):
+    created: int
+    updated: int
+    items: list[ContractRead]

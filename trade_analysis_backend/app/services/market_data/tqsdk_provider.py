@@ -7,6 +7,7 @@ import pandas as pd
 from app.core.config import settings
 from app.services.market_data.base import (
     KlineFetchResult,
+    MainContractCandidate,
     MarketDataProviderName,
     MarketKlineBar,
     MarketQuote,
@@ -95,6 +96,33 @@ class TqSdkMarketDataProvider:
                 )
             return QuoteFetchResult(provider=self.provider, quotes=quotes)
 
+    def list_main_contracts(self, has_night: bool = True) -> list[MainContractCandidate]:
+        with tqsdk_client_manager.session() as api:
+            provider_symbols = list(api.query_cont_quotes(has_night=has_night))
+            if not provider_symbols:
+                return []
+
+            quote_list = api.get_quote_list(provider_symbols)
+            deadline = time.time() + settings.tqsdk_wait_timeout_seconds
+            api.wait_update(deadline=deadline)
+
+            items: list[MainContractCandidate] = []
+            for provider_symbol, quote in zip(provider_symbols, quote_list):
+                exchange, symbol = self._split_provider_symbol(provider_symbol)
+                items.append(
+                    MainContractCandidate(
+                        symbol=symbol,
+                        exchange=exchange,
+                        provider_symbol=provider_symbol,
+                        name=str(
+                            getattr(quote, "instrument_name", None)
+                            or getattr(quote, "ins_name", None)
+                            or symbol
+                        ),
+                    )
+                )
+            return items
+
     def _fetch_kline_dataframe(
         self,
         provider_symbol: str,
@@ -176,6 +204,12 @@ class TqSdkMarketDataProvider:
         if "." in symbol:
             return symbol
         return f"{exchange.upper()}.{symbol}"
+
+    def _split_provider_symbol(self, provider_symbol: str) -> tuple[str, str]:
+        if "." not in provider_symbol:
+            return "", provider_symbol
+        exchange, symbol = provider_symbol.split(".", 1)
+        return exchange.upper(), symbol
 
     def _to_decimal(self, value: object) -> Decimal:
         if value is None or pd.isna(value):

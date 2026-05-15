@@ -22,6 +22,27 @@ export interface FutureContractUpdateParams extends Partial<FutureContractCreate
   contract_id: number
 }
 
+export interface FutureMainContractCandidate {
+  symbol: string
+  exchange: string
+  provider_symbol: string
+  name: string
+}
+
+export interface FutureMainContractSyncParams {
+  items: Array<{
+    symbol: string
+    exchange: string
+    name: string
+  }>
+}
+
+export interface FutureMainContractSyncResult {
+  created: number
+  updated: number
+  items: FutureContract[]
+}
+
 export interface FutureKlineItem {
   kline_id: number
   contract_id: number
@@ -231,6 +252,18 @@ export const createFutureContract = (params: FutureContractCreateParams) => {
 
 export const updateFutureContract = (params: FutureContractUpdateParams) => {
   return axios.post<FutureContract>("/contracts/update", params) as unknown as Promise<FutureContract>
+}
+
+export const getFutureMainContracts = (params?: { has_night?: boolean }) => {
+  return axios.get<FutureMainContractCandidate[]>("/contracts/main-contracts", params) as unknown as Promise<
+    FutureMainContractCandidate[]
+  >
+}
+
+export const syncFutureMainContracts = (params: FutureMainContractSyncParams) => {
+  return axios.post<FutureMainContractSyncResult>("/contracts/main-contracts/sync", params) as unknown as Promise<
+    FutureMainContractSyncResult
+  >
 }
 
 export const getFutureKlinePageApi = (params: {
