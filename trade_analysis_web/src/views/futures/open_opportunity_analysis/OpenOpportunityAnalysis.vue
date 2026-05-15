@@ -249,13 +249,17 @@ onMounted(() => {
 
         <el-table-column :label="TEXT.momentum30f" min-width="190">
           <template #default="{ row }">
-            {{ formatOpportunityMomentumState(row.current_30f_momentum_check_direction, row.current_30f_momentum_exhausted) }}
+            <span :class="{ 'momentum-exhausted': row.current_30f_momentum_exhausted }">
+              {{ formatOpportunityMomentumState(row.current_30f_momentum_check_direction, row.current_30f_momentum_exhausted) }}
+            </span>
           </template>
         </el-table-column>
 
         <el-table-column :label="TEXT.momentum5f" min-width="190">
           <template #default="{ row }">
-            {{ formatOpportunityMomentumState(row.current_5f_momentum_check_direction, row.current_5f_momentum_exhausted) }}
+            <span :class="{ 'momentum-exhausted': row.current_5f_momentum_exhausted }">
+              {{ formatOpportunityMomentumState(row.current_5f_momentum_check_direction, row.current_5f_momentum_exhausted) }}
+            </span>
           </template>
         </el-table-column>
 
@@ -355,6 +359,11 @@ onMounted(() => {
 .summary-value--down,
 .text-down {
   color: #2d8a57;
+}
+
+.momentum-exhausted {
+  color: #dc2626;
+  font-weight: 700;
 }
 
 .panel {

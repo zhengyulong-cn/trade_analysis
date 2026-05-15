@@ -131,17 +131,17 @@ export const formatOpportunityAction = (row: FutureOpportunityAnalysisItem) => {
   if (row.opportunity_action === 'open_short_wait_5f_up_end') {
     return '开空机会：等待5F上涨段结束'
   }
-  if (row.opportunity_action === 'open_long_follow_5f_up') {
-    return '开多机会：顺5F上涨段参与'
+  if (row.opportunity_action === 'open_long_wait_5f_down_exhaustion') {
+    return '开多机会：等待5F下跌动能衰竭'
   }
-  if (row.opportunity_action === 'open_short_follow_5f_down') {
-    return '开空机会：顺5F下跌段参与'
+  if (row.opportunity_action === 'open_short_wait_5f_up_exhaustion') {
+    return '开空机会：等待5F上涨动能衰竭'
   }
-  if (row.opportunity_action === 'open_long_reverse_5f_down_structure') {
-    return '开多机会：逆5F下跌结构操作'
+  if (row.opportunity_action === 'open_long_wait_5f_up_exhaustion_sync_30f') {
+    return '开多机会：等待5F上涨动能衰竭，且与30F同向'
   }
-  if (row.opportunity_action === 'open_short_reverse_5f_up_structure') {
-    return '开空机会：逆5F上涨结构操作'
+  if (row.opportunity_action === 'open_short_wait_5f_down_exhaustion_sync_30f') {
+    return '开空机会：等待5F下跌动能衰竭，且与30F同向'
   }
   return '没机会'
 }

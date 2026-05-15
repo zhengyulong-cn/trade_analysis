@@ -14,7 +14,7 @@ from app.services.market_data import (
     create_kline_provider,
     create_quote_provider,
 )
-from app.services.opportunity_analysis_service import OpportunityAnalysisService
+from app.services.opportunity_analysis_service_v2 import OpportunityAnalysisServiceV2
 from app.services.realtime_bar_service import RealtimeBarService
 # from app.services.analysis_service import AnalysisService
 from app.services.analysis_service_v2 import AnalysisServiceV2
@@ -113,8 +113,8 @@ def get_opportunity_analysis_service(
     contract_service: ContractServiceDep,
     kline_service: KlineServiceDep,
     analysis_service: AnalysisServiceDep,
-) -> OpportunityAnalysisService:
-    return OpportunityAnalysisService(
+) -> OpportunityAnalysisServiceV2:
+    return OpportunityAnalysisServiceV2(
         contract_service=contract_service,
         kline_service=kline_service,
         analysis_service=analysis_service,
@@ -122,5 +122,5 @@ def get_opportunity_analysis_service(
 
 
 OpportunityAnalysisServiceDep = Annotated[
-    OpportunityAnalysisService, Depends(get_opportunity_analysis_service)
+    OpportunityAnalysisServiceV2, Depends(get_opportunity_analysis_service)
 ]
