@@ -81,123 +81,116 @@ const handleToggleFavorite = (contractValue: string) => {
 
 <template>
   <div class="contract-panel">
-    <el-collapse v-model="activeNames">
-      <el-collapse-item title="合约列表" name="contracts">
-        <div class="contract-list">
+    <div class="contract-list">
+      <button
+        v-for="contract in contractOptions"
+        :key="contract.value"
+        type="button"
+        class="contract-item"
+        :class="{ 'is-active': contract.value === selectedContract }"
+        @click="handleContractSelect(contract.value)"
+      >
+        <div class="contract-item__header">
+          <div class="contract-code">{{ contract.label }}</div>
           <button
-            v-for="contract in contractOptions"
-            :key="contract.value"
             type="button"
-            class="contract-item"
-            :class="{ 'is-active': contract.value === selectedContract }"
-            @click="handleContractSelect(contract.value)"
+            class="favorite-button"
+            :class="{ 'favorite-button--active': contract.isFavorite }"
+            @click.stop="handleToggleFavorite(contract.value)"
           >
-            <div class="contract-item__header">
-              <div class="contract-code">{{ contract.label }}</div>
-              <button
-                type="button"
-                class="favorite-button"
-                :class="{ 'favorite-button--active': contract.isFavorite }"
-                @click.stop="handleToggleFavorite(contract.value)"
-              >
-                <el-icon>
-                  <StarFilled v-if="contract.isFavorite" />
-                  <Star v-else />
-                </el-icon>
-              </button>
-            </div>
-            <div>{{ contract.value }}</div>
+            <el-icon>
+              <StarFilled v-if="contract.isFavorite" />
+              <Star v-else />
+            </el-icon>
           </button>
         </div>
-      </el-collapse-item>
+        <div>{{ contract.value }}</div>
+      </button>
+    </div>
+    <div v-loading="opportunityLoading" class="opportunity-box">
+      <template v-if="opportunityItem">
+        <div class="opportunity-grid">
+          <div class="info-item info-item--full info-item--momentum">
+            <span class="info-label">机会判断</span>
+            <span class="info-value info-value--primary">{{ formatOpportunityAction(opportunityItem) }}</span>
+          </div>
 
-      <el-collapse-item title="合约情况" name="opportunity">
-        <div v-loading="opportunityLoading" class="opportunity-box">
-          <template v-if="opportunityItem">
-            <div class="opportunity-grid">
-              <div class="info-item info-item--full info-item--momentum">
-                <span class="info-label">机会判断</span>
-                <span class="info-value info-value--primary">{{ formatOpportunityAction(opportunityItem) }}</span>
-              </div>
+          <div class="info-item">
+            <span class="info-label">最新价</span>
+            <span class="info-value">{{ formatOpportunityNumber(opportunityItem.latest_price) }}</span>
+          </div>
 
-              <div class="info-item">
-                <span class="info-label">最新价</span>
-                <span class="info-value">{{ formatOpportunityNumber(opportunityItem.latest_price) }}</span>
-              </div>
+          <div class="info-item">
+            <span class="info-label">模式</span>
+            <span class="info-value">
+              <el-tag v-if="opportunityItem.opportunity_mode" :type="opportunityModeTagType(opportunityItem.opportunity_mode)">
+                {{ formatOpportunityMode(opportunityItem.opportunity_mode) }}
+              </el-tag>
+              <span v-else>{{ OPPORTUNITY_UNKNOWN_TEXT }}</span>
+            </span>
+          </div>
 
-              <div class="info-item">
-                <span class="info-label">模式</span>
-                <span class="info-value">
-                  <el-tag v-if="opportunityItem.opportunity_mode" :type="opportunityModeTagType(opportunityItem.opportunity_mode)">
-                    {{ formatOpportunityMode(opportunityItem.opportunity_mode) }}
-                  </el-tag>
-                  <span v-else>{{ OPPORTUNITY_UNKNOWN_TEXT }}</span>
-                </span>
-              </div>
+          <div class="info-item">
+            <span class="info-label">4H方向</span>
+            <span class="info-value">{{ formatOpportunityDirection(opportunityItem.current_4h_segment_direction) }}</span>
+          </div>
 
-              <div class="info-item">
-                <span class="info-label">4H方向</span>
-                <span class="info-value">{{ formatOpportunityDirection(opportunityItem.current_4h_segment_direction) }}</span>
-              </div>
+          <div class="info-item">
+            <span class="info-label">30F方向</span>
+            <span class="info-value">{{ formatOpportunityDirection(opportunityItem.current_30f_segment_direction) }}</span>
+          </div>
 
-              <div class="info-item">
-                <span class="info-label">30F方向</span>
-                <span class="info-value">{{ formatOpportunityDirection(opportunityItem.current_30f_segment_direction) }}</span>
-              </div>
+          <div class="info-item">
+            <span class="info-label">30F类型</span>
+            <span class="info-value">{{ formatOpportunitySegmentType(opportunityItem.current_30f_segment_type) }}</span>
+          </div>
 
-              <div class="info-item">
-                <span class="info-label">30F类型</span>
-                <span class="info-value">{{ formatOpportunitySegmentType(opportunityItem.current_30f_segment_type) }}</span>
-              </div>
+          <div class="info-item">
+            <span class="info-label">操作视角</span>
+            <span class="info-value">{{ formatOpportunityOpenSide(opportunityItem.open_side) }}</span>
+          </div>
 
-              <div class="info-item">
-                <span class="info-label">操作视角</span>
-                <span class="info-value">{{ formatOpportunityOpenSide(opportunityItem.open_side) }}</span>
-              </div>
+          <div class="info-item info-item--full info-item--momentum">
+            <span class="info-label">30F交易区间</span>
+            <span class="info-value">{{ formatOpportunityTradingRangeState(opportunityItem) }}</span>
+          </div>
 
-              <div class="info-item info-item--full info-item--momentum">
-                <span class="info-label">30F交易区间</span>
-                <span class="info-value">{{ formatOpportunityTradingRangeState(opportunityItem) }}</span>
-              </div>
+          <div class="info-item info-item--full">
+            <span class="info-label">30F动能</span>
+            <span
+              class="info-value"
+              :class="{ 'info-value--exhausted': opportunityItem.current_30f_momentum_exhausted }"
+            >
+              {{
+                formatOpportunityMomentumState(
+                  opportunityItem.current_30f_momentum_check_direction,
+                  opportunityItem.current_30f_momentum_exhausted,
+                )
+              }}
+            </span>
+          </div>
 
-              <div class="info-item info-item--full">
-                <span class="info-label">30F动能</span>
-                <span
-                  class="info-value"
-                  :class="{ 'info-value--exhausted': opportunityItem.current_30f_momentum_exhausted }"
-                >
-                  {{
-                    formatOpportunityMomentumState(
-                      opportunityItem.current_30f_momentum_check_direction,
-                      opportunityItem.current_30f_momentum_exhausted,
-                    )
-                  }}
-                </span>
-              </div>
-
-              <div class="info-item info-item--full">
-                <span class="info-label">5F动能</span>
-                <span
-                  class="info-value"
-                  :class="{ 'info-value--exhausted': opportunityItem.current_5f_momentum_exhausted }"
-                >
-                  {{
-                    formatOpportunityMomentumState(
-                      opportunityItem.current_5f_momentum_check_direction,
-                      opportunityItem.current_5f_momentum_exhausted,
-                    )
-                  }}
-                </span>
-              </div>
-            </div>
-          </template>
-
-          <div v-else class="placeholder-content">
-            暂无合约分析结果
+          <div class="info-item info-item--full">
+            <span class="info-label">5F动能</span>
+            <span
+              class="info-value"
+              :class="{ 'info-value--exhausted': opportunityItem.current_5f_momentum_exhausted }"
+            >
+              {{
+                formatOpportunityMomentumState(
+                  opportunityItem.current_5f_momentum_check_direction,
+                  opportunityItem.current_5f_momentum_exhausted,
+                )
+              }}
+            </span>
           </div>
         </div>
-      </el-collapse-item>
-    </el-collapse>
+      </template>
+
+      <div v-else class="placeholder-content">
+        暂无合约分析结果
+      </div>
+    </div>
   </div>
 </template>
 
@@ -307,7 +300,8 @@ const handleToggleFavorite = (contractValue: string) => {
 }
 
 .opportunity-box {
-  height: 12rem;
+  max-height: 18rem;
+  margin-top: .5rem;
   overflow: auto;
 }
 
