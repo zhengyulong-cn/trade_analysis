@@ -3,6 +3,7 @@ import KLineSection from '@/components/charts/KLineSection.vue'
 import {
   getFutureContractList,
   getFutureDataApi,
+  updateFutureContract,
   type FutureContract,
   type FutureKlineData,
 } from '@/api/modules'
@@ -114,6 +115,26 @@ const loadContracts = async () => {
   }
 }
 
+const handleToggleFavorite = async (symbol: string) => {
+  const contract = contracts.value.find((item) => item.symbol === symbol)
+  if (!contract) {
+    return
+  }
+
+  try {
+    const updatedContract = await updateFutureContract({
+      contract_id: contract.contract_id,
+      is_favorite: contract.is_favorite === 1 ? 0 : 1,
+    })
+    contracts.value = contracts.value.map((item) => {
+      return item.contract_id === updatedContract.contract_id ? updatedContract : item
+    })
+    ElMessage.success(updatedContract.is_favorite === 1 ? '已加入收藏' : '已取消收藏')
+  } catch {
+    ElMessage.error('切换合约收藏状态失败')
+  }
+}
+
 const loadKLineData = async () => {
   if (!selectedSymbol.value) {
     chartData.value = createEmptyChartData()
@@ -175,6 +196,7 @@ onMounted(() => {
       :unavailable-description="UNAVAILABLE_DESCRIPTION"
       @update:selected-contract="selectedSymbol = $event"
       @update:selected-period="selectedPeriod = Number($event)"
+      @toggle-favorite="handleToggleFavorite"
     />
   </div>
 </template>

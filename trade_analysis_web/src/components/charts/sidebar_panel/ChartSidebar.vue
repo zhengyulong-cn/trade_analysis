@@ -23,6 +23,7 @@ const props = withDefaults(
 
 const emit = defineEmits<{
   'update:selectedContract': [value: string]
+  'toggleFavorite': [value: string]
 }>()
 
 const activeSidePanel = ref<'contracts' | 'news' | null>(null)
@@ -40,6 +41,10 @@ const handleContractSelect = (contractValue: string) => {
     emit('update:selectedContract', contractValue)
   }
 }
+
+const handleToggleFavorite = (contractValue: string) => {
+  emit('toggleFavorite', contractValue)
+}
 </script>
 
 <template>
@@ -51,6 +56,7 @@ const handleContractSelect = (contractValue: string) => {
         :selected-contract="selectedContract"
         @close="toggleSidePanel('contracts')"
         @select="handleContractSelect"
+        @toggle-favorite="handleToggleFavorite"
       />
 
       <div v-else-if="isNewsPanelOpen" class="news-panel">
