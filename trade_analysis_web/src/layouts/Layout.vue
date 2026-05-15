@@ -1,11 +1,5 @@
 <script setup lang="ts">
 import Menu from '@/layouts/components/Menu.vue';
-import { useDark, useToggle } from '@vueuse/core';
-const isDark = useDark();
-const toggleDark = useToggle(isDark)
-const changeTheme = () => {
-  toggleDark();
-}
 </script>
 
 <template>

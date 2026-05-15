@@ -42,7 +42,6 @@ const emit = defineEmits<{
   toggleFavorite: [value: string]
 }>()
 
-const activeNames = ref<string[]>(['contracts', 'opportunity'])
 const opportunityLoading = ref(false)
 const opportunityItem = ref<FutureOpportunityAnalysisItem | null>(null)
 
