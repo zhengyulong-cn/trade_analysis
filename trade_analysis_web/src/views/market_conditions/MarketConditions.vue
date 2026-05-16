@@ -1,14 +1,11 @@
 <script lang="ts" setup>
 import KLineSection from '@/components/charts/KLineSection.vue'
-import {
-  getFutureContractList,
-  getFutureDataApi,
-  type FutureContract,
-  type FutureKlineData,
-} from '@/api/modules'
+import { getFutureDataApi, updateFutureContract, type FutureKlineData } from '@/api/modules'
+import { useContractsStore } from '@/stores/contracts'
 import { ElMessage } from 'element-plus'
 import type { ChartOptions, DeepPartial } from 'lightweight-charts'
-import { computed, onMounted, ref, watch } from 'vue'
+import { storeToRefs } from 'pinia'
+import { computed, ref, watch } from 'vue'
 
 const DEFAULT_PERIOD = 60 * 5
 const CONTRACT_PLACEHOLDER = '请选择合约'
@@ -32,40 +29,45 @@ const createEmptyChartData = (): FutureKlineData => ({
   kLineList: [],
 })
 
-const contracts = ref<FutureContract[]>([])
+const contractsStore = useContractsStore()
+const { contracts, loading: contractsLoading, loadError } = storeToRefs(contractsStore)
+
 const selectedSymbol = ref('')
 const selectedPeriod = ref(DEFAULT_PERIOD)
-const contractsLoading = ref(false)
 const chartLoading = ref(false)
 const chartData = ref<FutureKlineData>(createEmptyChartData())
 
 const hasContracts = computed(() => contracts.value.length > 0)
 const contractOptions = computed(() => {
   return contracts.value.map((contract) => ({
-    label: `${contract.symbol} 路 ${contract.name}`,
+    label: contract.name,
     value: contract.symbol,
     description: contract.name,
   }))
 })
-const sortedContractOptions = computed(() => {
-  return [...contractOptions.value].sort((first, second) => {
-    const firstContract = contracts.value.find((contract) => contract.symbol === first.value)
-    const secondContract = contracts.value.find((contract) => contract.symbol === second.value)
-    const firstFavorite = firstContract?.is_favorite ?? 0
-    const secondFavorite = secondContract?.is_favorite ?? 0
 
-    if (firstFavorite !== secondFavorite) {
-      return secondFavorite - firstFavorite
-    }
-    return first.value.localeCompare(second.value, 'zh-CN')
-  }).map((option) => {
-    const contract = contracts.value.find((item) => item.symbol === option.value)
-    return {
-      ...option,
-      isFavorite: contract?.is_favorite === 1,
-    }
-  })
+const sortedContractOptions = computed(() => {
+  return [...contractOptions.value]
+    .sort((first, second) => {
+      const firstContract = contracts.value.find((contract) => contract.symbol === first.value)
+      const secondContract = contracts.value.find((contract) => contract.symbol === second.value)
+      const firstFavorite = firstContract?.is_favorite ?? 0
+      const secondFavorite = secondContract?.is_favorite ?? 0
+
+      if (firstFavorite !== secondFavorite) {
+        return secondFavorite - firstFavorite
+      }
+      return first.value.localeCompare(second.value, 'zh-CN')
+    })
+    .map((option) => {
+      const contract = contracts.value.find((item) => item.symbol === option.value)
+      return {
+        ...option,
+        isFavorite: contract?.is_favorite === 1,
+      }
+    })
 })
+
 const chartOptions = computed<DeepPartial<ChartOptions>>(() => ({
   grid: {
     vertLines: { color: '#f0f2f5' },
@@ -86,31 +88,21 @@ const chartOptions = computed<DeepPartial<ChartOptions>>(() => ({
 
 let latestRequestId = 0
 
-const loadContracts = async () => {
-  contractsLoading.value = true
+const handleToggleFavorite = async (symbol: string) => {
+  const contract = contracts.value.find((item) => item.symbol === symbol)
+  if (!contract) {
+    return
+  }
+
   try {
-    const response = await getFutureContractList()
-    contracts.value = response
-
-    if (!response.length) {
-      selectedSymbol.value = ''
-      chartData.value = createEmptyChartData()
-      return
-    }
-
-    const firstContract = response[0]
-    if (!firstContract) {
-      return
-    }
-
-    const currentSymbolExists = response.some((item) => item.symbol === selectedSymbol.value)
-    if (!currentSymbolExists) {
-      selectedSymbol.value = firstContract.symbol
-    }
+    const updatedContract = await updateFutureContract({
+      contract_id: contract.contract_id,
+      is_favorite: contract.is_favorite === 1 ? 0 : 1,
+    })
+    contractsStore.upsertContract(updatedContract)
+    ElMessage.success(updatedContract.is_favorite === 1 ? '已加入收藏' : '已取消收藏')
   } catch {
-    ElMessage.error(CONTRACT_LIST_ERROR)
-  } finally {
-    contractsLoading.value = false
+    ElMessage.error('切换合约收藏状态失败')
   }
 }
 
@@ -152,9 +144,32 @@ watch([selectedSymbol, selectedPeriod], () => {
   void loadKLineData()
 })
 
-onMounted(() => {
-  void loadContracts()
-})
+watch(
+  contracts,
+  (items) => {
+    if (!items.length) {
+      selectedSymbol.value = ''
+      chartData.value = createEmptyChartData()
+      return
+    }
+
+    const currentSymbolExists = items.some((item) => item.symbol === selectedSymbol.value)
+    if (!currentSymbolExists) {
+      selectedSymbol.value = items[0]?.symbol ?? ''
+    }
+  },
+  { immediate: true },
+)
+
+watch(
+  loadError,
+  (message) => {
+    if (message) {
+      ElMessage.error(CONTRACT_LIST_ERROR)
+    }
+  },
+  { immediate: true },
+)
 </script>
 
 <template>
@@ -175,6 +190,7 @@ onMounted(() => {
       :unavailable-description="UNAVAILABLE_DESCRIPTION"
       @update:selected-contract="selectedSymbol = $event"
       @update:selected-period="selectedPeriod = Number($event)"
+      @toggle-favorite="handleToggleFavorite"
     />
   </div>
 </template>

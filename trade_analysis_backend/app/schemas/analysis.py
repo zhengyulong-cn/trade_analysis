@@ -60,25 +60,22 @@ class OpportunityAnalysisItemOut(SQLModel):
     latest_price: float | None = None
     latest_time: int | None = None
     latest_30f_time: int | None = None
-    current_30f_segment_type: str | None = None
-    current_30f_segment_direction: str | None = None
     current_4h_segment_direction: str | None = None
+    current_30f_segment_direction: str | None = None
+    current_30f_segment_type: str | None = None
     current_5f_segment_direction: str | None = None
+    trading_range_top: float | None = None
+    trading_range_bottom: float | None = None
+    is_in_30f_trading_range: bool = False
+    trading_range_position: str | None = None
     current_30f_momentum_check_direction: str | None = None
     current_30f_momentum_exhausted: bool | None = None
     current_5f_momentum_check_direction: str | None = None
     current_5f_momentum_exhausted: bool | None = None
-    current_5f_wait_direction: str | None = None
     open_side: str | None = None
     has_opportunity: bool
     opportunity_action: str | None = None
-    zone_source: str | None = None
-    trading_range_top: float | None = None
-    trading_range_bottom: float | None = None
-    current_30f_segment_start_time: int | None = None
-    current_30f_segment_end_time: int | None = None
-    current_5f_zone_segment_start_time: int | None = None
-    current_5f_zone_segment_end_time: int | None = None
+    opportunity_mode: str | None = None
 
 
 class OpportunityAnalysisListOut(SQLModel):

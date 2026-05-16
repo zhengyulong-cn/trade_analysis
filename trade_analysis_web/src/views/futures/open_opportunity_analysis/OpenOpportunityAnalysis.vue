@@ -1,22 +1,33 @@
 <script lang="ts" setup>
+import { getFutureOpportunityAnalysisAllApi, type FutureOpportunityAnalysisItem } from '@/api/modules'
+import { useContractsStore } from '@/stores/contracts'
 import {
-  getFutureOpportunityAnalysisAllApi,
-  type FutureOpportunityAnalysisItem,
-} from '@/api/modules'
+  formatOpportunityAction,
+  formatOpportunityDirection,
+  formatOpportunityMode,
+  formatOpportunityMomentumState,
+  formatOpportunityNumber,
+  formatOpportunityOpenSide,
+  formatOpportunitySegmentType,
+  formatOpportunityTradingRangeState,
+  opportunityModeTagType,
+  OPPORTUNITY_UNKNOWN_TEXT,
+} from '@/utils/opportunity'
 import { ElMessage } from 'element-plus'
+import { storeToRefs } from 'pinia'
 import { computed, onMounted, ref } from 'vue'
+
+const STORAGE_KEY = 'futures-open-opportunity-analysis-cache'
 
 const TEXT = {
   pageTitle: '开仓机会分析',
-  pageSubtitle: '基于 30F/5F 线段及线段上的动能衰竭标记，判断当前开仓机会。',
+  pageSubtitle: '按 4H / 30F / 5F 结构、交易区间和动能状态汇总当前机会。',
   refresh: '刷新分析结果',
   symbolFilter: '合约筛选',
   segmentTypeFilter: '30F线段类型',
-  allSymbols: '全部合约',
   allSegmentTypes: '全部类型',
   totalContracts: '合约总数',
   opportunityContracts: '机会合约数',
-  noOpportunityContracts: '无机会合约数',
   longContracts: '做多视角',
   shortContracts: '做空视角',
   tableEmpty: '暂无开仓机会分析结果',
@@ -25,13 +36,14 @@ const TEXT = {
   direction4h: '4H方向',
   direction30f: '30F方向',
   segmentType: '30F线段类型',
-  direction5f: '5F当前方向',
+  direction5f: '5F方向',
+  mode: '模式',
   momentum30f: '30F动能判断',
   momentum5f: '5F动能判断',
   openSide: '操作视角',
   tradingRange: '30F交易区间',
   opportunity: '机会判断',
-  unknown: '-',
+  unknown: OPPORTUNITY_UNKNOWN_TEXT,
   loadError: '获取开仓机会分析失败',
 } as const
 
@@ -42,10 +54,28 @@ const SEGMENT_TYPE_OPTIONS = [
   { label: '区间内部段', value: 'range_internal' },
 ]
 
+interface OpportunityAnalysisCache {
+  lastUpdatedAt: number
+  analysisData: FutureOpportunityAnalysisItem[]
+}
+
+const contractsStore = useContractsStore()
+const { contracts } = storeToRefs(contractsStore)
+
 const rows = ref<FutureOpportunityAnalysisItem[]>([])
 const loading = ref(false)
-const selectedSymbol = ref('')
+const selectedSymbols = ref<string[]>([])
 const selectedSegmentType = ref('')
+const only30fExhausted = ref(false)
+const only5fExhausted = ref(false)
+const onlyFavoriteContracts = ref(false)
+const lastUpdatedAt = ref<number | null>(null)
+
+const favoriteSymbols = computed(() => {
+  return new Set(
+    contracts.value.filter((contract) => contract.is_favorite === 1).map((contract) => contract.symbol),
+  )
+})
 
 const extractErrorMessage = (error: unknown, fallback: string) => {
   if (typeof error === 'object' && error !== null) {
@@ -57,90 +87,24 @@ const extractErrorMessage = (error: unknown, fallback: string) => {
       return response.data.msg
     }
   }
-
   return fallback
-}
-
-const formatNumber = (value?: number | null) => {
-  if (value === null || value === undefined || Number.isNaN(Number(value))) {
-    return TEXT.unknown
-  }
-
-  return Number(value).toLocaleString('zh-CN', {
-    minimumFractionDigits: 0,
-    maximumFractionDigits: 4,
-  })
-}
-
-const formatDirection = (value?: string | null) => {
-  if (value === 'up') {
-    return '上涨'
-  }
-  if (value === 'down') {
-    return '下跌'
-  }
-  return TEXT.unknown
-}
-
-const formatOpenSide = (value?: string | null) => {
-  if (value === 'long') {
-    return '做多'
-  }
-  if (value === 'short') {
-    return '做空'
-  }
-  return TEXT.unknown
-}
-
-const formatSegmentType = (value?: string | null) => {
-  if (value === 'trend_push') {
-    return '趋势推动段'
-  }
-  if (value === 'trend_pullback') {
-    return '趋势回调段'
-  }
-  if (value === 'range_internal') {
-    return '区间内部段'
-  }
-  return TEXT.unknown
-}
-
-const formatPriceRange = (low?: number | null, high?: number | null) => {
-  if (low === null || low === undefined || high === null || high === undefined) {
-    return TEXT.unknown
-  }
-
-  return `${formatNumber(low)} ~ ${formatNumber(high)}`
-}
-
-const formatMomentumState = (checkDirection?: string | null, exhausted?: boolean | null) => {
-  if (!checkDirection || exhausted === null || exhausted === undefined) {
-    return TEXT.unknown
-  }
-  const checkText = checkDirection === 'up' ? '检查上涨段' : '检查下跌段'
-  const stateText = exhausted ? '已衰竭' : '未衰竭'
-  return `${checkText} · ${stateText}`
-}
-
-const formatOpportunityAction = (row: FutureOpportunityAnalysisItem) => {
-  if (!row.has_opportunity || !row.opportunity_action) {
-    return '不操作'
-  }
-  if (row.opportunity_action === 'open_long_wait_5f_down_end') {
-    return '开多机会：等待5F下跌段结束'
-  }
-  if (row.opportunity_action === 'open_short_wait_5f_up_end') {
-    return '开空机会：等待5F上涨段结束'
-  }
-  return '不操作'
 }
 
 const filteredRows = computed(() => {
   return rows.value.filter((row) => {
-    if (selectedSymbol.value && row.symbol !== selectedSymbol.value) {
+    if (selectedSymbols.value.length > 0 && !selectedSymbols.value.includes(row.symbol)) {
       return false
     }
     if (selectedSegmentType.value && row.current_30f_segment_type !== selectedSegmentType.value) {
+      return false
+    }
+    if (only30fExhausted.value && !row.current_30f_momentum_exhausted) {
+      return false
+    }
+    if (only5fExhausted.value && !row.current_5f_momentum_exhausted) {
+      return false
+    }
+    if (onlyFavoriteContracts.value && !favoriteSymbols.value.has(row.symbol)) {
       return false
     }
     return true
@@ -148,32 +112,68 @@ const filteredRows = computed(() => {
 })
 
 const symbolOptions = computed(() => {
-  return [
-    { label: TEXT.allSymbols, value: '' },
-    ...rows.value.map((row) => ({
-      label: `${row.symbol} · ${row.name}`,
-      value: row.symbol,
-    })),
-  ]
+  return rows.value.map((row) => ({
+    label: `${row.symbol} / ${row.name}`,
+    value: row.symbol,
+  }))
 })
 
 const totalContracts = computed(() => filteredRows.value.length)
 const opportunityContracts = computed(() => filteredRows.value.filter((row) => row.has_opportunity).length)
-const noOpportunityContracts = computed(() => filteredRows.value.filter((row) => !row.has_opportunity).length)
 const longContracts = computed(() => filteredRows.value.filter((row) => row.open_side === 'long').length)
 const shortContracts = computed(() => filteredRows.value.filter((row) => row.open_side === 'short').length)
+const lastUpdatedAtText = computed(() => {
+  if (!lastUpdatedAt.value) {
+    return TEXT.unknown
+  }
+  return new Date(lastUpdatedAt.value).toLocaleString('zh-CN', {
+    hour12: false,
+  })
+})
+
+const sortRows = (items: FutureOpportunityAnalysisItem[]) => {
+  return [...items].sort((first, second) => {
+    if (first.has_opportunity !== second.has_opportunity) {
+      return first.has_opportunity ? -1 : 1
+    }
+    return first.symbol.localeCompare(second.symbol, 'zh-CN')
+  })
+}
+
+const loadCache = () => {
+  try {
+    const raw = localStorage.getItem(STORAGE_KEY)
+    if (!raw) {
+      return
+    }
+    const parsed = JSON.parse(raw) as Partial<OpportunityAnalysisCache>
+    if (!Array.isArray(parsed.analysisData) || typeof parsed.lastUpdatedAt !== 'number') {
+      return
+    }
+    rows.value = sortRows(parsed.analysisData as FutureOpportunityAnalysisItem[])
+    lastUpdatedAt.value = parsed.lastUpdatedAt
+  } catch {
+    localStorage.removeItem(STORAGE_KEY)
+  }
+}
+
+const saveCache = (items: FutureOpportunityAnalysisItem[], updatedAt: number) => {
+  const payload: OpportunityAnalysisCache = {
+    lastUpdatedAt: updatedAt,
+    analysisData: items,
+  }
+  localStorage.setItem(STORAGE_KEY, JSON.stringify(payload))
+}
 
 const loadData = async () => {
   loading.value = true
-
   try {
     const result = await getFutureOpportunityAnalysisAllApi()
-    rows.value = [...result.items].sort((first, second) => {
-      if (first.has_opportunity !== second.has_opportunity) {
-        return first.has_opportunity ? -1 : 1
-      }
-      return first.symbol.localeCompare(second.symbol, 'zh-CN')
-    })
+    const sortedRows = sortRows(result.items)
+    const updatedAt = Date.now()
+    rows.value = sortedRows
+    lastUpdatedAt.value = updatedAt
+    saveCache(sortedRows, updatedAt)
   } catch (error) {
     rows.value = []
     ElMessage.error(extractErrorMessage(error, TEXT.loadError))
@@ -183,7 +183,7 @@ const loadData = async () => {
 }
 
 onMounted(() => {
-  void loadData()
+  loadCache()
 })
 </script>
 
@@ -194,9 +194,12 @@ onMounted(() => {
         <h2 class="title">{{ TEXT.pageTitle }}</h2>
         <p class="subtitle">{{ TEXT.pageSubtitle }}</p>
       </div>
-      <el-button type="primary" :loading="loading" @click="loadData">
-        {{ TEXT.refresh }}
-      </el-button>
+      <div class="header-actions">
+        <span class="last-updated">最后更新：{{ lastUpdatedAtText }}</span>
+        <el-button type="primary" :loading="loading" @click="loadData">
+          {{ TEXT.refresh }}
+        </el-button>
+      </div>
     </header>
 
     <section class="summary-grid">
@@ -220,12 +223,23 @@ onMounted(() => {
 
     <section class="panel">
       <div class="filter-bar">
+        <div class="filter-item filter-item--checkbox">
+          <el-checkbox v-model="onlyFavoriteContracts">仅看收藏合约</el-checkbox>
+        </div>
         <div class="filter-item">
           <span class="filter-label">{{ TEXT.symbolFilter }}</span>
-          <el-select v-model="selectedSymbol" filterable clearable class="filter-select">
+          <el-select
+            v-model="selectedSymbols"
+            multiple
+            filterable
+            collapse-tags
+            collapse-tags-tooltip
+            clearable
+            class="filter-select"
+          >
             <el-option
               v-for="option in symbolOptions"
-              :key="option.value || 'all-symbols'"
+              :key="option.value"
               :label="option.label"
               :value="option.value"
             />
@@ -242,6 +256,14 @@ onMounted(() => {
               :value="option.value"
             />
           </el-select>
+        </div>
+
+        <div class="filter-item filter-item--checkbox">
+          <el-checkbox v-model="only30fExhausted">仅看30F已衰竭</el-checkbox>
+        </div>
+
+        <div class="filter-item filter-item--checkbox">
+          <el-checkbox v-model="only5fExhausted">仅看5F已衰竭</el-checkbox>
         </div>
       </div>
 
@@ -263,14 +285,14 @@ onMounted(() => {
 
         <el-table-column prop="latest_price" :label="TEXT.latestPrice" min-width="120">
           <template #default="{ row }">
-            {{ formatNumber(row.latest_price) }}
+            {{ formatOpportunityNumber(row.latest_price) }}
           </template>
         </el-table-column>
 
         <el-table-column prop="current_4h_segment_direction" :label="TEXT.direction4h" width="100">
           <template #default="{ row }">
             <span :class="row.current_4h_segment_direction === 'up' ? 'text-up' : 'text-down'">
-              {{ formatDirection(row.current_4h_segment_direction) }}
+              {{ formatOpportunityDirection(row.current_4h_segment_direction) }}
             </span>
           </template>
         </el-table-column>
@@ -278,48 +300,61 @@ onMounted(() => {
         <el-table-column prop="current_30f_segment_direction" :label="TEXT.direction30f" width="100">
           <template #default="{ row }">
             <span :class="row.current_30f_segment_direction === 'up' ? 'text-up' : 'text-down'">
-              {{ formatDirection(row.current_30f_segment_direction) }}
+              {{ formatOpportunityDirection(row.current_30f_segment_direction) }}
             </span>
           </template>
         </el-table-column>
 
         <el-table-column prop="current_30f_segment_type" :label="TEXT.segmentType" min-width="140">
           <template #default="{ row }">
-            {{ formatSegmentType(row.current_30f_segment_type) }}
+            {{ formatOpportunitySegmentType(row.current_30f_segment_type) }}
           </template>
         </el-table-column>
 
-        <el-table-column prop="current_5f_segment_direction" :label="TEXT.direction5f" width="110">
+        <el-table-column prop="current_5f_segment_direction" :label="TEXT.direction5f" width="100">
           <template #default="{ row }">
             <span :class="row.current_5f_segment_direction === 'up' ? 'text-up' : 'text-down'">
-              {{ formatDirection(row.current_5f_segment_direction) }}
+              {{ formatOpportunityDirection(row.current_5f_segment_direction) }}
             </span>
           </template>
         </el-table-column>
 
-        <el-table-column :label="TEXT.momentum30f" min-width="200">
+        <el-table-column prop="opportunity_mode" :label="TEXT.mode" width="110">
           <template #default="{ row }">
-            {{ formatMomentumState(row.current_30f_momentum_check_direction, row.current_30f_momentum_exhausted) }}
+            <el-tag v-if="row.opportunity_mode" :type="opportunityModeTagType(row.opportunity_mode)">
+              {{ formatOpportunityMode(row.opportunity_mode) }}
+            </el-tag>
+            <span v-else>{{ TEXT.unknown }}</span>
           </template>
         </el-table-column>
 
-        <el-table-column :label="TEXT.momentum5f" min-width="200">
+        <el-table-column :label="TEXT.tradingRange" min-width="210">
           <template #default="{ row }">
-            {{ formatMomentumState(row.current_5f_momentum_check_direction, row.current_5f_momentum_exhausted) }}
+            {{ formatOpportunityTradingRangeState(row) }}
+          </template>
+        </el-table-column>
+
+        <el-table-column :label="TEXT.momentum30f" min-width="190">
+          <template #default="{ row }">
+            <span :class="{ 'momentum-exhausted': row.current_30f_momentum_exhausted }">
+              {{ formatOpportunityMomentumState(row.current_30f_momentum_check_direction, row.current_30f_momentum_exhausted) }}
+            </span>
+          </template>
+        </el-table-column>
+
+        <el-table-column :label="TEXT.momentum5f" min-width="190">
+          <template #default="{ row }">
+            <span :class="{ 'momentum-exhausted': row.current_5f_momentum_exhausted }">
+              {{ formatOpportunityMomentumState(row.current_5f_momentum_check_direction, row.current_5f_momentum_exhausted) }}
+            </span>
           </template>
         </el-table-column>
 
         <el-table-column prop="open_side" :label="TEXT.openSide" width="100">
           <template #default="{ row }">
             <span :class="row.open_side === 'long' ? 'text-up' : row.open_side === 'short' ? 'text-down' : ''">
-              {{ formatOpenSide(row.open_side) }}
+              {{ formatOpportunityOpenSide(row.open_side) }}
             </span>
-          </template>
-        </el-table-column>
-
-        <el-table-column :label="TEXT.tradingRange" min-width="160">
-          <template #default="{ row }">
-            {{ formatPriceRange(row.trading_range_bottom, row.trading_range_top) }}
           </template>
         </el-table-column>
 
@@ -348,6 +383,12 @@ onMounted(() => {
   display: flex;
 }
 
+.header-actions {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
 .page-header {
   align-items: center;
   justify-content: space-between;
@@ -370,7 +411,12 @@ onMounted(() => {
 
 .subtitle {
   margin: 6px 0 0;
-  font-size: 13px;
+  font-size: 12px;
+}
+
+.last-updated {
+  font-size: 12px;
+  color: #909399;
 }
 
 .summary-grid {
@@ -387,17 +433,21 @@ onMounted(() => {
 }
 
 .summary-card {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  justify-content: flex-start;
+  column-gap: 16px;
   padding: 16px;
 }
 
 .summary-label {
   display: block;
-  font-size: 13px;
+  font-size: 12px;
 }
 
 .summary-value {
   display: block;
-  margin-top: 10px;
   font-size: 28px;
   line-height: 1;
   color: #303133;
@@ -413,6 +463,11 @@ onMounted(() => {
   color: #2d8a57;
 }
 
+.momentum-exhausted {
+  color: #dc2626;
+  font-weight: 700;
+}
+
 .panel {
   padding: 16px;
 }
@@ -426,6 +481,10 @@ onMounted(() => {
 .filter-item {
   align-items: center;
   gap: 10px;
+}
+
+.filter-item--checkbox {
+  min-height: 32px;
 }
 
 .filter-label {
@@ -460,6 +519,11 @@ onMounted(() => {
   .page-header {
     flex-direction: column;
     align-items: flex-start;
+  }
+
+  .header-actions {
+    width: 100%;
+    justify-content: space-between;
   }
 
   .summary-grid {

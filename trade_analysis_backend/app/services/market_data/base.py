@@ -56,6 +56,14 @@ class QuoteFetchResult:
     quotes: list[MarketQuote]
 
 
+@dataclass(frozen=True)
+class MainContractCandidate:
+    symbol: str
+    exchange: str
+    provider_symbol: str
+    name: str
+
+
 class KlineProvider(Protocol):
     # Concrete providers adapt external SDKs into the application's kline contract.
     provider: MarketDataProviderName
@@ -74,4 +82,7 @@ class QuoteProvider(Protocol):
     provider: MarketDataProviderName
 
     def get_quotes(self, symbols: list[tuple[str, str]]) -> QuoteFetchResult:
+        ...
+
+    def list_main_contracts(self, has_night: bool = True) -> list[MainContractCandidate]:
         ...

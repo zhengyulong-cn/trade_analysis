@@ -3,6 +3,7 @@ sqlmodel
 uvicorn
 PyMySQL
 cryptography
+akshare
 tqsdk
 pandas
 redis

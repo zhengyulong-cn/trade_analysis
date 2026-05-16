@@ -1,10 +1,13 @@
 <script lang="ts" setup>
 import {
   createFutureContract,
+  getFutureMainContracts,
   getFutureContractList,
+  syncFutureMainContracts,
   updateFutureContract,
   type FutureContract,
   type FutureContractCreateParams,
+  type FutureMainContractCandidate,
 } from '@/api/modules'
 import { Star, StarFilled } from '@element-plus/icons-vue'
 import { formatDateTime as formatDateTimeByDayjs } from '@/utils/date'
@@ -30,10 +33,15 @@ const exchangeOptions = [
 const contracts = ref<FutureContract[]>([])
 const loading = ref(false)
 const submitting = ref(false)
+const syncingMainContracts = ref(false)
+const mainContractsLoading = ref(false)
 const favoriteTogglingIds = ref<number[]>([])
 const dialogVisible = ref(false)
 const dialogMode = ref<'create' | 'edit'>('create')
 const formRef = ref<FormInstance>()
+const mainContractsDialogVisible = ref(false)
+const mainContracts = ref<FutureMainContractCandidate[]>([])
+const selectedMainContracts = ref<FutureMainContractCandidate[]>([])
 
 const form = reactive<ContractForm>({
   symbol: '',
@@ -48,6 +56,7 @@ const rules = reactive<FormRules<ContractForm>>({
 })
 
 const dialogTitle = computed(() => (dialogMode.value === 'create' ? '新增合约' : '修改合约'))
+const hasSelectedMainContracts = computed(() => selectedMainContracts.value.length > 0)
 
 const sortContractsBySymbol = (items: FutureContract[]) => {
   return [...items].sort((first, second) => {
@@ -79,6 +88,26 @@ const openCreateDialog = () => {
   dialogMode.value = 'create'
   resetForm()
   dialogVisible.value = true
+}
+
+const loadMainContracts = async () => {
+  mainContractsLoading.value = true
+  try {
+    const response = await getFutureMainContracts({ has_night: true })
+    mainContracts.value = [...response].sort((first, second) =>
+      first.provider_symbol.localeCompare(second.provider_symbol, 'zh-CN'),
+    )
+  } catch {
+    ElMessage.error('获取主力合约列表失败')
+  } finally {
+    mainContractsLoading.value = false
+  }
+}
+
+const openMainContractsDialog = async () => {
+  selectedMainContracts.value = []
+  mainContractsDialogVisible.value = true
+  await loadMainContracts()
 }
 
 const openEditDialog = (row: FutureContract) => {
@@ -158,6 +187,34 @@ const handleFavoriteToggle = async (row: FutureContract) => {
   }
 }
 
+const handleMainContractSelectionChange = (selection: FutureMainContractCandidate[]) => {
+  selectedMainContracts.value = selection
+}
+
+const handleSyncMainContracts = async () => {
+  if (!selectedMainContracts.value.length) {
+    return
+  }
+
+  syncingMainContracts.value = true
+  try {
+    const result = await syncFutureMainContracts({
+      items: selectedMainContracts.value.map((item) => ({
+        symbol: item.symbol,
+        exchange: item.exchange,
+        name: item.name,
+      })),
+    })
+    mainContractsDialogVisible.value = false
+    await loadContracts()
+    ElMessage.success(`同步成功：新增 ${result.created} 个，更新 ${result.updated} 个`)
+  } catch {
+    ElMessage.error('同步主力合约失败')
+  } finally {
+    syncingMainContracts.value = false
+  }
+}
+
 onMounted(() => {
   void loadContracts()
 })
@@ -170,7 +227,10 @@ onMounted(() => {
         <h2 class="title">期货合约管理</h2>
         <p class="subtitle">维护期货合约基础信息</p>
       </div>
-      <el-button type="primary" @click="openCreateDialog">新增合约</el-button>
+      <div class="toolbar-actions">
+        <el-button @click="openMainContractsDialog">同步主力合约</el-button>
+        <el-button type="primary" @click="openCreateDialog">新增合约</el-button>
+      </div>
     </div>
 
     <el-table
@@ -245,6 +305,39 @@ onMounted(() => {
         <el-button type="primary" :loading="submitting" @click="submitForm">确认</el-button>
       </template>
     </el-dialog>
+
+    <el-dialog
+      v-model="mainContractsDialogVisible"
+      title="同步主力合约"
+      width="48rem"
+    >
+      <el-table
+        v-loading="mainContractsLoading"
+        :data="mainContracts"
+        border
+        row-key="provider_symbol"
+        max-height="460"
+        empty-text="暂无主力合约"
+        @selection-change="handleMainContractSelectionChange"
+      >
+        <el-table-column type="selection" width="50" />
+        <el-table-column prop="provider_symbol" label="主力合约代码" min-width="180" />
+        <el-table-column prop="exchange" label="交易所" width="120" />
+        <el-table-column prop="symbol" label="合约代码" min-width="140" />
+        <el-table-column prop="name" label="合约名称" min-width="180" />
+      </el-table>
+      <template #footer>
+        <el-button @click="mainContractsDialogVisible = false">取消</el-button>
+        <el-button
+          type="primary"
+          :disabled="!hasSelectedMainContracts"
+          :loading="syncingMainContracts"
+          @click="handleSyncMainContracts"
+        >
+          同步合约信息
+        </el-button>
+      </template>
+    </el-dialog>
   </div>
 </template>
 
@@ -258,6 +351,13 @@ onMounted(() => {
   align-items: center;
   justify-content: space-between;
   margin-bottom: 16px;
+  gap: 16px;
+}
+
+.toolbar-actions {
+  display: flex;
+  align-items: center;
+  gap: 12px;
 }
 
 .title {
@@ -314,5 +414,17 @@ onMounted(() => {
 
 .favorite-button--active {
   color: #e6a23c;
+}
+
+@media (max-width: 768px) {
+  .toolbar {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+
+  .toolbar-actions {
+    width: 100%;
+    justify-content: flex-end;
+  }
 }
 </style>

@@ -1,6 +1,7 @@
 from app.services.market_data.base import (
     KlineFetchResult,
     KlineProvider,
+    MainContractCandidate,
     MarketDataError,
     MarketDataProviderName,
     MarketKlineBar,
@@ -16,6 +17,7 @@ from app.services.market_data.tqsdk_provider import TqSdkMarketDataProvider
 __all__ = [
     "KlineFetchResult",
     "KlineProvider",
+    "MainContractCandidate",
     "MarketDataError",
     "MarketDataProviderName",
     "MarketKlineBar",
