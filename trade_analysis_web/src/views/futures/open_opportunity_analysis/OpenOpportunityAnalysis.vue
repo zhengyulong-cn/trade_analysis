@@ -1,8 +1,6 @@
 <script lang="ts" setup>
-import {
-  getFutureOpportunityAnalysisAllApi,
-  type FutureOpportunityAnalysisItem,
-} from '@/api/modules'
+import { getFutureOpportunityAnalysisAllApi, type FutureOpportunityAnalysisItem } from '@/api/modules'
+import { useContractsStore } from '@/stores/contracts'
 import {
   formatOpportunityAction,
   formatOpportunityDirection,
@@ -16,6 +14,7 @@ import {
   OPPORTUNITY_UNKNOWN_TEXT,
 } from '@/utils/opportunity'
 import { ElMessage } from 'element-plus'
+import { storeToRefs } from 'pinia'
 import { computed, onMounted, ref } from 'vue'
 
 const STORAGE_KEY = 'futures-open-opportunity-analysis-cache'
@@ -26,7 +25,6 @@ const TEXT = {
   refresh: '刷新分析结果',
   symbolFilter: '合约筛选',
   segmentTypeFilter: '30F线段类型',
-  allSymbols: '全部合约',
   allSegmentTypes: '全部类型',
   totalContracts: '合约总数',
   opportunityContracts: '机会合约数',
@@ -56,18 +54,28 @@ const SEGMENT_TYPE_OPTIONS = [
   { label: '区间内部段', value: 'range_internal' },
 ]
 
+interface OpportunityAnalysisCache {
+  lastUpdatedAt: number
+  analysisData: FutureOpportunityAnalysisItem[]
+}
+
+const contractsStore = useContractsStore()
+const { contracts } = storeToRefs(contractsStore)
+
 const rows = ref<FutureOpportunityAnalysisItem[]>([])
 const loading = ref(false)
 const selectedSymbols = ref<string[]>([])
 const selectedSegmentType = ref('')
 const only30fExhausted = ref(false)
 const only5fExhausted = ref(false)
+const onlyFavoriteContracts = ref(false)
 const lastUpdatedAt = ref<number | null>(null)
 
-interface OpportunityAnalysisCache {
-  lastUpdatedAt: number
-  analysisData: FutureOpportunityAnalysisItem[]
-}
+const favoriteSymbols = computed(() => {
+  return new Set(
+    contracts.value.filter((contract) => contract.is_favorite === 1).map((contract) => contract.symbol),
+  )
+})
 
 const extractErrorMessage = (error: unknown, fallback: string) => {
   if (typeof error === 'object' && error !== null) {
@@ -96,15 +104,18 @@ const filteredRows = computed(() => {
     if (only5fExhausted.value && !row.current_5f_momentum_exhausted) {
       return false
     }
+    if (onlyFavoriteContracts.value && !favoriteSymbols.value.has(row.symbol)) {
+      return false
+    }
     return true
   })
 })
 
 const symbolOptions = computed(() => {
   return rows.value.map((row) => ({
-      label: `${row.symbol} / ${row.name}`,
-      value: row.symbol,
-    }))
+    label: `${row.symbol} / ${row.name}`,
+    value: row.symbol,
+  }))
 })
 
 const totalContracts = computed(() => filteredRows.value.length)
@@ -212,9 +223,20 @@ onMounted(() => {
 
     <section class="panel">
       <div class="filter-bar">
+        <div class="filter-item filter-item--checkbox">
+          <el-checkbox v-model="onlyFavoriteContracts">仅看收藏合约</el-checkbox>
+        </div>
         <div class="filter-item">
           <span class="filter-label">{{ TEXT.symbolFilter }}</span>
-          <el-select v-model="selectedSymbols" multiple filterable collapse-tags collapse-tags-tooltip clearable class="filter-select">
+          <el-select
+            v-model="selectedSymbols"
+            multiple
+            filterable
+            collapse-tags
+            collapse-tags-tooltip
+            clearable
+            class="filter-select"
+          >
             <el-option
               v-for="option in symbolOptions"
               :key="option.value"
@@ -237,11 +259,11 @@ onMounted(() => {
         </div>
 
         <div class="filter-item filter-item--checkbox">
-          <el-checkbox v-model="only30fExhausted">30F已衰竭</el-checkbox>
+          <el-checkbox v-model="only30fExhausted">仅看30F已衰竭</el-checkbox>
         </div>
 
         <div class="filter-item filter-item--checkbox">
-          <el-checkbox v-model="only5fExhausted">5F已衰竭</el-checkbox>
+          <el-checkbox v-model="only5fExhausted">仅看5F已衰竭</el-checkbox>
         </div>
       </div>
 
@@ -389,18 +411,18 @@ onMounted(() => {
 
 .subtitle {
   margin: 6px 0 0;
-  font-size: .75rem;
+  font-size: 12px;
 }
 
 .last-updated {
-  font-size: .75rem;
+  font-size: 12px;
   color: #909399;
 }
 
 .summary-grid {
   display: grid;
   grid-template-columns: repeat(4, minmax(0, 1fr));
-  gap: 1rem;
+  gap: 16px;
 }
 
 .summary-card,
@@ -415,13 +437,13 @@ onMounted(() => {
   flex-direction: row;
   align-items: center;
   justify-content: flex-start;
-  column-gap: 1rem;
-  padding: 1rem;
+  column-gap: 16px;
+  padding: 16px;
 }
 
 .summary-label {
   display: block;
-  font-size: .75rem;
+  font-size: 12px;
 }
 
 .summary-value {
