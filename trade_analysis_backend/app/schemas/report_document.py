@@ -1,4 +1,4 @@
-from datetime import datetime
+from datetime import date, datetime
 
 from pydantic import ConfigDict
 from sqlmodel import SQLModel
@@ -14,6 +14,8 @@ class ReportDocumentRead(SQLModel):
     file_size: int
     storage_path: str
     title: str | None = None
+    published_at: date | None = None
+    source: str | None = None
     raw_text: str
     parse_status: str
     create_at: datetime
@@ -29,6 +31,8 @@ class ReportDocumentListItem(SQLModel):
     content_type: str
     file_size: int
     title: str | None = None
+    published_at: date | None = None
+    source: str | None = None
     parse_status: str
     create_at: datetime
     updated_at: datetime

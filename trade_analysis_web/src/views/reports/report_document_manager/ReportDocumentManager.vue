@@ -7,19 +7,36 @@ import {
   type ReportDocument,
   type ReportDocumentListItem,
 } from '@/api/modules'
-import { Delete, RefreshRight, UploadFilled } from '@element-plus/icons-vue'
-import { ElMessage, ElMessageBox, type UploadFile, type UploadProps, type UploadRequestOptions } from 'element-plus'
-import { computed, onMounted, ref } from 'vue'
+import { Delete, Plus, RefreshRight, UploadFilled } from '@element-plus/icons-vue'
+import { ElMessage, ElMessageBox, type FormInstance, type FormRules, type UploadFile, type UploadProps } from 'element-plus'
+import { computed, onMounted, reactive, ref } from 'vue'
 import { formatDateTime } from '@/utils/date'
+
+interface UploadFormState {
+  published_at: string
+  source: string
+}
 
 const loading = ref(false)
 const uploading = ref(false)
 const detailLoading = ref(false)
 const deletingIds = ref<number[]>([])
-const dialogVisible = ref(false)
+const detailDialogVisible = ref(false)
+const uploadDialogVisible = ref(false)
 const documents = ref<ReportDocumentListItem[]>([])
 const currentDocument = ref<ReportDocument | null>(null)
+const uploadFormRef = ref<FormInstance>()
 const uploadFileList = ref<UploadFile[]>([])
+const selectedFile = ref<File | null>(null)
+const uploadForm = reactive<UploadFormState>({
+  published_at: '',
+  source: '',
+})
+
+const uploadRules: FormRules<UploadFormState> = {
+  published_at: [{ required: true, message: '请选择研报发布日期', trigger: 'change' }],
+  source: [{ required: true, message: '请输入研报来源', trigger: 'blur' }],
+}
 
 const documentCountText = computed(() => `共 ${documents.value.length} 份研报`)
 
@@ -44,19 +61,24 @@ const formatFileSize = (size: number) => {
   return `${(size / (1024 * 1024)).toFixed(2)} MB`
 }
 
-const handleUploadReport = async (options: UploadRequestOptions) => {
-  uploading.value = true
-  try {
-    const result = await uploadReportDocumentApi(options.file as File)
-    documents.value = [result, ...documents.value]
-    uploadFileList.value = []
-    ElMessage.success('研报上传并解析成功')
-  } catch (error) {
-    const response = error as { data?: { detail?: string } }
-    ElMessage.error(response.data?.detail || '研报上传失败')
-  } finally {
-    uploading.value = false
-  }
+const formatPublishedAt = (value: string | null) => value || '-'
+
+const resetUploadForm = () => {
+  uploadForm.published_at = ''
+  uploadForm.source = ''
+  uploadFileList.value = []
+  selectedFile.value = null
+  uploadFormRef.value?.clearValidate()
+}
+
+const openUploadDialog = () => {
+  resetUploadForm()
+  uploadDialogVisible.value = true
+}
+
+const closeUploadDialog = () => {
+  uploadDialogVisible.value = false
+  resetUploadForm()
 }
 
 const beforeUpload: UploadProps['beforeUpload'] = (file) => {
@@ -65,17 +87,55 @@ const beforeUpload: UploadProps['beforeUpload'] = (file) => {
     ElMessage.error('当前只支持 PDF 文件')
     return false
   }
-  return true
+  return false
+}
+
+const handleUploadChange: UploadProps['onChange'] = (file, fileList) => {
+  selectedFile.value = (file.raw as File | undefined) || null
+  uploadFileList.value = fileList.slice(-1)
+}
+
+const handleUploadRemove: UploadProps['onRemove'] = () => {
+  selectedFile.value = null
+  uploadFileList.value = []
+}
+
+const submitUpload = async () => {
+  const valid = await uploadFormRef.value?.validate().catch(() => false)
+  if (!valid) {
+    return
+  }
+  if (!selectedFile.value) {
+    ElMessage.warning('请先选择研报 PDF 文件')
+    return
+  }
+
+  uploading.value = true
+  try {
+    const result = await uploadReportDocumentApi({
+      published_at: uploadForm.published_at,
+      source: uploadForm.source.trim(),
+      file: selectedFile.value,
+    })
+    documents.value = [result, ...documents.value]
+    closeUploadDialog()
+    ElMessage.success('研报上传并保存成功')
+  } catch (error) {
+    const response = error as { data?: { detail?: string } }
+    ElMessage.error(response.data?.detail || '研报上传失败')
+  } finally {
+    uploading.value = false
+  }
 }
 
 const handlePreviewText = async (row: ReportDocumentListItem) => {
   detailLoading.value = true
-  dialogVisible.value = true
+  detailDialogVisible.value = true
   currentDocument.value = null
   try {
     currentDocument.value = await getReportDocumentItemApi(row.report_id)
   } catch {
-    dialogVisible.value = false
+    detailDialogVisible.value = false
     ElMessage.error('获取研报正文失败')
   } finally {
     detailLoading.value = false
@@ -100,7 +160,7 @@ const handleDelete = async (row: ReportDocumentListItem) => {
     await deleteReportDocumentApi(row.report_id)
     documents.value = documents.value.filter((item) => item.report_id !== row.report_id)
     if (currentDocument.value?.report_id === row.report_id) {
-      dialogVisible.value = false
+      detailDialogVisible.value = false
       currentDocument.value = null
     }
     ElMessage.success('研报删除成功')
@@ -124,15 +184,7 @@ onMounted(() => {
         <p class="subtitle">上传 PDF 研报，提取正文文本并持久化保存。</p>
       </div>
       <div class="toolbar-actions">
-        <el-upload
-          :show-file-list="false"
-          :http-request="handleUploadReport"
-          :before-upload="beforeUpload"
-          :file-list="uploadFileList"
-          accept=".pdf,application/pdf"
-        >
-          <el-button type="primary" :loading="uploading" :icon="UploadFilled">上传研报</el-button>
-        </el-upload>
+        <el-button type="primary" :icon="Plus" @click="openUploadDialog">上传研报</el-button>
         <el-button :loading="loading" :icon="RefreshRight" @click="loadDocuments">刷新</el-button>
       </div>
     </div>
@@ -150,7 +202,13 @@ onMounted(() => {
     >
       <el-table-column prop="report_id" label="ID" width="90" />
       <el-table-column prop="original_name" label="文件名" min-width="260" />
-      <el-table-column prop="content_type" label="类型" min-width="150" />
+      <el-table-column prop="published_at" label="发布日期" width="130">
+        <template #default="{ row }">
+          {{ formatPublishedAt(row.published_at) }}
+        </template>
+      </el-table-column>
+      <el-table-column prop="source" label="来源" min-width="180" />
+      <el-table-column prop="content_type" label="类型" width="120" />
       <el-table-column label="大小" width="120">
         <template #default="{ row }">
           {{ formatFileSize(row.file_size) }}
@@ -178,12 +236,51 @@ onMounted(() => {
       </el-table-column>
     </el-table>
 
-    <el-dialog v-model="dialogVisible" title="研报正文" width="60rem">
+    <el-dialog v-model="uploadDialogVisible" title="上传研报" width="34rem" @closed="resetUploadForm">
+      <el-form ref="uploadFormRef" :model="uploadForm" :rules="uploadRules" label-width="7rem">
+        <el-form-item label="发布日期" prop="published_at">
+          <el-date-picker
+            v-model="uploadForm.published_at"
+            type="date"
+            value-format="YYYY-MM-DD"
+            format="YYYY-MM-DD"
+            placeholder="请选择发布日期"
+            class="full-width"
+          />
+        </el-form-item>
+        <el-form-item label="研报来源" prop="source">
+          <el-input v-model="uploadForm.source" placeholder="例如：中信期货、交易所官网" maxlength="255" />
+        </el-form-item>
+        <el-form-item label="上传研报">
+          <el-upload
+            :auto-upload="false"
+            :show-file-list="true"
+            :before-upload="beforeUpload"
+            :on-change="handleUploadChange"
+            :on-remove="handleUploadRemove"
+            :file-list="uploadFileList"
+            :limit="1"
+            accept=".pdf,application/pdf"
+          >
+            <el-button :icon="UploadFilled">选择 PDF</el-button>
+          </el-upload>
+          <div class="upload-tip">当前仅支持 PDF，上传后会自动提取正文文本。</div>
+        </el-form-item>
+      </el-form>
+      <template #footer>
+        <el-button @click="closeUploadDialog">取消</el-button>
+        <el-button type="primary" :loading="uploading" @click="submitUpload">确认上传</el-button>
+      </template>
+    </el-dialog>
+
+    <el-dialog v-model="detailDialogVisible" title="研报正文" width="60rem">
       <div v-loading="detailLoading" class="document-detail">
         <template v-if="currentDocument">
           <div class="detail-meta">
             <div><strong>标题：</strong>{{ currentDocument.title || currentDocument.original_name }}</div>
             <div><strong>文件名：</strong>{{ currentDocument.original_name }}</div>
+            <div><strong>发布日期：</strong>{{ formatPublishedAt(currentDocument.published_at) }}</div>
+            <div><strong>来源：</strong>{{ currentDocument.source || '-' }}</div>
             <div><strong>类型：</strong>{{ currentDocument.content_type }}</div>
             <div><strong>上传时间：</strong>{{ formatDateTime(currentDocument.create_at) }}</div>
           </div>
@@ -193,7 +290,7 @@ onMounted(() => {
         </template>
       </div>
       <template #footer>
-        <el-button @click="dialogVisible = false">关闭</el-button>
+        <el-button @click="detailDialogVisible = false">关闭</el-button>
       </template>
     </el-dialog>
   </div>
@@ -257,6 +354,17 @@ onMounted(() => {
   line-height: 1.7;
   font-family: Consolas, 'Courier New', monospace;
   color: #303133;
+}
+
+.full-width {
+  width: 100%;
+}
+
+.upload-tip {
+  margin-top: 8px;
+  color: #909399;
+  font-size: 12px;
+  line-height: 1.5;
 }
 
 @media (max-width: 768px) {

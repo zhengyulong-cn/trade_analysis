@@ -7,6 +7,8 @@ export interface ReportDocumentListItem {
   content_type: string
   file_size: number
   title: string | null
+  published_at: string | null
+  source: string | null
   parse_status: string
   create_at: string
   updated_at: string
@@ -17,6 +19,12 @@ export interface ReportDocument extends ReportDocumentListItem {
   raw_text: string
 }
 
+export interface UploadReportDocumentPayload {
+  published_at: string
+  source: string
+  file: File
+}
+
 export const getReportDocumentListApi = () => {
   return axios.get<ReportDocumentListItem[]>("/report-documents") as unknown as Promise<ReportDocumentListItem[]>
 }
@@ -25,9 +33,11 @@ export const getReportDocumentItemApi = (reportId: number) => {
   return axios.get<ReportDocument>(`/report-documents/item/${reportId}`) as unknown as Promise<ReportDocument>
 }
 
-export const uploadReportDocumentApi = (file: File) => {
+export const uploadReportDocumentApi = (payload: UploadReportDocumentPayload) => {
   const formData = new FormData()
-  formData.append("file", file)
+  formData.append("published_at", payload.published_at)
+  formData.append("source", payload.source)
+  formData.append("file", payload.file)
   return axios.post<ReportDocument>("/report-documents/upload", formData, {
     headers: {
       "Content-Type": "multipart/form-data",

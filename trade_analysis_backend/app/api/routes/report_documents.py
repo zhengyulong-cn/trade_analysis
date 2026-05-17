@@ -1,4 +1,6 @@
-from fastapi import APIRouter, File, UploadFile, status
+from datetime import date
+
+from fastapi import APIRouter, File, Form, UploadFile, status
 
 from app.api.dependencies import ReportDocumentServiceDep, ReportDocumentStorageServiceDep
 from app.models.report_document import ReportDocument
@@ -25,9 +27,13 @@ def get_report_document(report_id: int, service: ReportDocumentServiceDep) -> Re
 async def upload_report_document(
     service: ReportDocumentServiceDep,
     storage_service: ReportDocumentStorageServiceDep,
+    published_at: date | None = Form(default=None),
+    source: str | None = Form(default=None),
     file: UploadFile = File(...),
 ) -> ReportDocumentRead:
     payload = await storage_service.save_and_extract(file)
+    payload["published_at"] = published_at
+    payload["source"] = source.strip() if source and source.strip() else None
     document = ReportDocument(**payload)
     return ReportDocumentRead.model_validate(service.create_document(document))
 

@@ -20,10 +20,51 @@ def create_database_if_not_exists() -> None:
         connection.commit()
     logger.info("Database ensured: %s", settings.mysql_database)
 
+
+def ensure_report_document_columns() -> None:
+    statements = [
+        text(
+            """
+            SELECT COUNT(*)
+            FROM information_schema.COLUMNS
+            WHERE TABLE_SCHEMA = :schema
+              AND TABLE_NAME = 'report_documents'
+              AND COLUMN_NAME = 'published_at'
+            """
+        ),
+        text(
+            """
+            SELECT COUNT(*)
+            FROM information_schema.COLUMNS
+            WHERE TABLE_SCHEMA = :schema
+              AND TABLE_NAME = 'report_documents'
+              AND COLUMN_NAME = 'source'
+            """
+        ),
+    ]
+    with engine.connect() as connection:
+        published_exists = connection.execute(
+            statements[0], {"schema": settings.mysql_database}
+        ).scalar_one()
+        if not published_exists:
+            connection.execute(
+                text("ALTER TABLE report_documents ADD COLUMN published_at DATE NULL")
+            )
+        source_exists = connection.execute(
+            statements[1], {"schema": settings.mysql_database}
+        ).scalar_one()
+        if not source_exists:
+            connection.execute(
+                text("ALTER TABLE report_documents ADD COLUMN source VARCHAR(255) NULL")
+            )
+        connection.commit()
+
+
 def initialize_database() -> None:
     try:
         create_database_if_not_exists()
         metadata.create_all(engine)
+        ensure_report_document_columns()
         logger.info("Database tables initialized")
     except SQLAlchemyError:
         logger.exception("Failed to initialize database")

@@ -1,4 +1,4 @@
-from datetime import datetime, timezone
+from datetime import date, datetime, timezone
 
 from sqlalchemy import Column
 from sqlalchemy.dialects.mysql import LONGTEXT
@@ -19,6 +19,8 @@ class ReportDocument(SQLModel, table=True):
     file_size: int = Field(ge=0, nullable=False)
     storage_path: str = Field(min_length=1, max_length=255, nullable=False)
     title: str | None = Field(default=None, max_length=255)
+    published_at: date | None = Field(default=None, nullable=True)
+    source: str | None = Field(default=None, max_length=255)
     raw_text: str = Field(sa_column=Column(LONGTEXT, nullable=False))
     parse_status: str = Field(default="success", min_length=1, max_length=50, nullable=False)
     create_at: datetime = Field(default_factory=utc_now, nullable=False)
