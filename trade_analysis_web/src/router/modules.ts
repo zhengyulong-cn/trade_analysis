@@ -9,7 +9,7 @@ export const RouterModules: RouteRecordRaw[] = [
     path: "/market_conditions",
     component: () => import("@/views/market_conditions/MarketConditions.vue"),
     meta: {
-      icon: "TrendCharts",
+      icon: "Histogram",
       title: "市场行情",
     },
   },
@@ -17,7 +17,7 @@ export const RouterModules: RouteRecordRaw[] = [
     path: "/futures",
     name: "Futures",
     meta: {
-      icon: "Menu",
+      icon: "TrendCharts",
       title: "期货市场工具",
     },
     children: [
@@ -36,29 +36,30 @@ export const RouterModules: RouteRecordRaw[] = [
           title: "交易记录",
         },
       },
+    ],
+  },
+  {
+    path: "/data_manager",
+    meta: {
+      icon: "Menu",
+      title: "数据管理",
+    },
+    children: [
       {
-        path: "/futures/data_manager",
+        path: "/futures/contracts",
+        component: () => import("@/views/futures/future_contracts_manager/FutureContractManager.vue"),
         meta: {
-          title: "数据管理",
+          icon: "",
+          title: "期货合约管理",
         },
-        children: [
-          {
-            path: "/futures/contracts",
-            component: () => import("@/views/futures/future_contracts_manager/FutureContractManager.vue"),
-            meta: {
-              icon: "",
-              title: "期货合约管理",
-            },
-          },
-          {
-            path: "/futures/klines",
-            component: () => import("@/views/futures/future_klines_manager/FutureKlinesManager.vue"),
-            meta: {
-              icon: "",
-              title: "期货K管理",
-            },
-          },
-        ],
+      },
+      {
+        path: "/futures/klines",
+        component: () => import("@/views/futures/future_klines_manager/FutureKlinesManager.vue"),
+        meta: {
+          icon: "",
+          title: "期货K管理",
+        },
       },
     ],
   },
