@@ -54,11 +54,19 @@ export const RouterModules: RouteRecordRaw[] = [
         },
       },
       {
+        path: "/futures/contract-prompt-profiles",
+        component: () => import("@/views/futures/contract_prompt_profile_manager/ContractPromptProfileManager.vue"),
+        meta: {
+          icon: "",
+          title: "AI画像配置",
+        },
+      },
+      {
         path: "/futures/klines",
         component: () => import("@/views/futures/future_klines_manager/FutureKlinesManager.vue"),
         meta: {
           icon: "",
-          title: "期货K管理",
+          title: "期货K线管理",
         },
       },
     ],
