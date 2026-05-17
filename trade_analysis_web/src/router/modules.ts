@@ -70,6 +70,14 @@ export const RouterModules: RouteRecordRaw[] = [
         },
       },
       {
+        path: "/reports/single-contract-analysis",
+        component: () => import("@/views/reports/single_contract_report_analysis/SingleContractReportAnalysis.vue"),
+        meta: {
+          icon: "",
+          title: "单品种研报分析",
+        },
+      },
+      {
         path: "/futures/klines",
         component: () => import("@/views/futures/future_klines_manager/FutureKlinesManager.vue"),
         meta: {

@@ -20,6 +20,7 @@ from app.services.realtime_bar_service import RealtimeBarService
 from app.services.report_document_service import ReportDocumentService
 from app.services.report_document_storage import ReportDocumentStorageService
 from app.services.deepseek_llm_service import DeepSeekLLMService
+from app.services.single_contract_report_analysis_service import SingleContractReportAnalysisService
 # from app.services.analysis_service import AnalysisService
 from app.services.analysis_service_v2 import AnalysisServiceV2
 from app.services.redis_client import redis_client_manager
@@ -159,4 +160,25 @@ def get_opportunity_analysis_service(
 
 OpportunityAnalysisServiceDep = Annotated[
     OpportunityAnalysisServiceV2, Depends(get_opportunity_analysis_service)
+]
+
+
+def get_single_contract_report_analysis_service(
+    session: SessionDep,
+    contract_service: ContractServiceDep,
+    contract_prompt_profile_service: ContractPromptProfileServiceDep,
+    report_document_service: ReportDocumentServiceDep,
+    deepseek_service: DeepSeekLLMServiceDep,
+) -> SingleContractReportAnalysisService:
+    return SingleContractReportAnalysisService(
+        session=session,
+        contract_service=contract_service,
+        prompt_profile_service=contract_prompt_profile_service,
+        report_document_service=report_document_service,
+        deepseek_service=deepseek_service,
+    )
+
+
+SingleContractReportAnalysisServiceDep = Annotated[
+    SingleContractReportAnalysisService, Depends(get_single_contract_report_analysis_service)
 ]
