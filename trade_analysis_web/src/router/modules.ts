@@ -62,6 +62,14 @@ export const RouterModules: RouteRecordRaw[] = [
         },
       },
       {
+        path: "/reports/documents",
+        component: () => import("@/views/reports/report_document_manager/ReportDocumentManager.vue"),
+        meta: {
+          icon: "",
+          title: "研报管理",
+        },
+      },
+      {
         path: "/futures/klines",
         component: () => import("@/views/futures/future_klines_manager/FutureKlinesManager.vue"),
         meta: {

@@ -72,6 +72,10 @@ class Settings:
         return str(Path(self.storage_root) / "trade_records")
 
     @property
+    def report_document_storage_dir(self) -> str:
+        return str(Path(self.storage_root) / "report_documents")
+
+    @property
     def deepseek_config_path(self) -> str:
         return str(Path(__file__).resolve().parents[2] / "config" / "deepseek_config.json")
 
