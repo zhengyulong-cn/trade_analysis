@@ -8,3 +8,5 @@ tqsdk
 pandas
 redis
 python-multipart
+pypdf
+pypdf

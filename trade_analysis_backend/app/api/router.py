@@ -3,6 +3,7 @@ from fastapi import APIRouter
 from app.api.routes.chart_persistences import router as chart_persistence_router
 from app.api.routes.contracts import router as contract_router
 from app.api.routes.contract_prompt_profiles import router as contract_prompt_profile_router
+from app.api.routes.report_documents import router as report_document_router
 from app.api.routes.analysis import router as analysis_router
 from app.api.routes.health import router as health_router
 from app.api.routes.klines import router as kline_router
@@ -21,6 +22,11 @@ api_router.include_router(
     contract_prompt_profile_router,
     prefix="/contract-prompt-profiles",
     tags=["contract-prompt-profiles"],
+)
+api_router.include_router(
+    report_document_router,
+    prefix="/report-documents",
+    tags=["report-documents"],
 )
 api_router.include_router(kline_router, prefix="/klines", tags=["klines"])
 api_router.include_router(

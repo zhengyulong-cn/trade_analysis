@@ -17,6 +17,8 @@ from app.services.market_data import (
 )
 from app.services.opportunity_analysis_service_v2 import OpportunityAnalysisServiceV2
 from app.services.realtime_bar_service import RealtimeBarService
+from app.services.report_document_service import ReportDocumentService
+from app.services.report_document_storage import ReportDocumentStorageService
 # from app.services.analysis_service import AnalysisService
 from app.services.analysis_service_v2 import AnalysisServiceV2
 from app.services.redis_client import redis_client_manager
@@ -65,8 +67,15 @@ def get_trade_record_storage_service() -> TradeRecordStorageService:
     return TradeRecordStorageService()
 
 
+def get_report_document_storage_service() -> ReportDocumentStorageService:
+    return ReportDocumentStorageService()
+
+
 TradeRecordStorageServiceDep = Annotated[
     TradeRecordStorageService, Depends(get_trade_record_storage_service)
+]
+ReportDocumentStorageServiceDep = Annotated[
+    ReportDocumentStorageService, Depends(get_report_document_storage_service)
 ]
 
 
@@ -96,6 +105,12 @@ def get_realtime_bar_service(
     )
 
 
+def get_report_document_service(
+    session: SessionDep,
+) -> ReportDocumentService:
+    return ReportDocumentService(session)
+
+
 ContractServiceDep = Annotated[ContractService, Depends(get_contract_service)]
 ChartPersistenceServiceDep = Annotated[
     ChartPersistenceService, Depends(get_chart_persistence_service)
@@ -109,6 +124,9 @@ RealtimeBarServiceDep = Annotated[
 ]
 TradeRecordServiceDep = Annotated[
     TradeRecordService, Depends(get_trade_record_service)
+]
+ReportDocumentServiceDep = Annotated[
+    ReportDocumentService, Depends(get_report_document_service)
 ]
 
 
