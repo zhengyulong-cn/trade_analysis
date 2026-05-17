@@ -54,14 +54,6 @@ export const RouterModules: RouteRecordRaw[] = [
         },
       },
       {
-        path: "/futures/klines",
-        component: () => import("@/views/futures/future_klines_manager/FutureKlinesManager.vue"),
-        meta: {
-          icon: "",
-          title: "期货K线管理",
-        },
-      },
-      {
         path: "/futures/contract-prompt-profiles",
         component: () => import("@/views/futures/contract_prompt_profile_manager/ContractPromptProfileManager.vue"),
         meta: {
@@ -70,11 +62,11 @@ export const RouterModules: RouteRecordRaw[] = [
         },
       },
       {
-        path: "/reports/documents",
-        component: () => import("@/views/reports/report_document_manager/ReportDocumentManager.vue"),
+        path: "/futures/klines",
+        component: () => import("@/views/futures/future_klines_manager/FutureKlinesManager.vue"),
         meta: {
           icon: "",
-          title: "研报管理",
+          title: "期货K线管理",
         },
       },
     ],

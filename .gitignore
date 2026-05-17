@@ -42,3 +42,4 @@ __pycache__/
 *.py[cod]
 
 storage
+trade_analysis_backend/config/deepseek_config.json
