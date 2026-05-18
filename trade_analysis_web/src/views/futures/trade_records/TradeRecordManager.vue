@@ -10,6 +10,7 @@ import {
   type FutureContract,
   type TradeRecord,
   type TradeRecordCreateParams,
+  type TradeRecordScreenshot,
   type TradeRecordScreenshotUploadResult,
   type TradeRecordSegmentType,
   type TradeRecordUpdateParams,
@@ -42,24 +43,27 @@ interface TradeRecordForm {
   close_time: string
   close_price: number
   segment_type: TradeRecordSegmentType
+  fee: number
   actual_pnl: number
-  screenshot_path: string | null
-  screenshot_original_name: string | null
-  screenshot_content_type: string | null
-  screenshot_size: number | null
+  screenshots: TradeRecordScreenshot[]
   comment: string
-  remove_screenshot: boolean
 }
 
-const SEGMENT_PUSH = '\u8d8b\u52bf\u63a8\u52a8\u6bb5' as const
-const SEGMENT_PULLBACK = '\u8d8b\u52bf\u56de\u8c03\u6bb5' as const
-const SEGMENT_RANGE = '\u533a\u95f4\u5185\u90e8\u6bb5' as const
+const SEGMENT_PUSH = 'trend_push' as const
+const SEGMENT_PULLBACK = 'trend_pullback' as const
+const SEGMENT_RANGE = 'range_internal' as const
 
-const segmentTypeOptions: Array<{ label: TradeRecordSegmentType; value: TradeRecordSegmentType }> = [
-  { label: SEGMENT_PUSH, value: SEGMENT_PUSH },
-  { label: SEGMENT_PULLBACK, value: SEGMENT_PULLBACK },
-  { label: SEGMENT_RANGE, value: SEGMENT_RANGE },
+const segmentTypeOptions: Array<{ label: string; value: TradeRecordSegmentType }> = [
+  { label: '\u8d8b\u52bf\u63a8\u52a8\u6bb5', value: SEGMENT_PUSH },
+  { label: '\u8d8b\u52bf\u56de\u8c03\u6bb5', value: SEGMENT_PULLBACK },
+  { label: '\u533a\u95f4\u5185\u90e8\u6bb5', value: SEGMENT_RANGE },
 ]
+
+const segmentTypeLabelMap: Record<TradeRecordSegmentType, string> = {
+  trend_push: '\u8d8b\u52bf\u63a8\u52a8\u6bb5',
+  trend_pullback: '\u8d8b\u52bf\u56de\u8c03\u6bb5',
+  range_internal: '\u533a\u95f4\u5185\u90e8\u6bb5',
+}
 
 const loading = ref(false)
 const submitting = ref(false)
@@ -85,23 +89,21 @@ const form = reactive<TradeRecordForm>({
   close_time: '',
   close_price: 0,
   segment_type: SEGMENT_PUSH,
+  fee: 0,
   actual_pnl: 0,
-  screenshot_path: null,
-  screenshot_original_name: null,
-  screenshot_content_type: null,
-  screenshot_size: null,
+  screenshots: [],
   comment: '',
-  remove_screenshot: false,
 })
 
 const rules = reactive<FormRules<TradeRecordForm>>({
-  contract: [{ required: true, message: '\u8bf7\u8f93\u5165\u5408\u7ea6', trigger: 'blur' }],
+  contract: [{ required: true, message: '\u8bf7\u9009\u62e9\u5408\u7ea6', trigger: 'change' }],
   lots: [{ required: true, message: '\u8bf7\u8f93\u5165\u624b\u6570', trigger: 'change' }],
   open_time: [{ required: true, message: '\u8bf7\u9009\u62e9\u5f00\u4ed3\u65f6\u95f4', trigger: 'change' }],
   open_price: [{ required: true, message: '\u8bf7\u8f93\u5165\u5f00\u4ed3\u4ef7\u683c', trigger: 'change' }],
   close_time: [{ required: true, message: '\u8bf7\u9009\u62e9\u5e73\u4ed3\u65f6\u95f4', trigger: 'change' }],
   close_price: [{ required: true, message: '\u8bf7\u8f93\u5165\u5e73\u4ed3\u4ef7\u683c', trigger: 'change' }],
   segment_type: [{ required: true, message: '\u8bf7\u9009\u62e930F\u7ebf\u6bb5\u7c7b\u578b', trigger: 'change' }],
+  fee: [{ required: true, message: '\u8bf7\u8f93\u5165\u624b\u7eed\u8d39', trigger: 'change' }],
   actual_pnl: [{ required: true, message: '\u8bf7\u8f93\u5165\u5b9e\u9645\u76c8\u4e8f', trigger: 'change' }],
 })
 
@@ -118,13 +120,10 @@ const resetForm = () => {
   form.close_time = ''
   form.close_price = 0
   form.segment_type = SEGMENT_PUSH
+  form.fee = 0
   form.actual_pnl = 0
-  form.screenshot_path = null
-  form.screenshot_original_name = null
-  form.screenshot_content_type = null
-  form.screenshot_size = null
+  form.screenshots = []
   form.comment = ''
-  form.remove_screenshot = false
   uploadFileList.value = []
   formRef.value?.clearValidate()
 }
@@ -137,6 +136,19 @@ const buildListParams = () => {
     open_time_end: filters.open_time_range[1] || undefined,
     close_time_start: filters.close_time_range[0] || undefined,
     close_time_end: filters.close_time_range[1] || undefined,
+  }
+}
+
+const toUploadFile = (screenshot: TradeRecordScreenshot): UploadFile => {
+  const resolvedUrl = resolveTradeRecordScreenshotUrl(screenshot.path)
+  return {
+    name: screenshot.original_name,
+    url: resolvedUrl,
+    status: 'success',
+    response: {
+      ...screenshot,
+      url: resolvedUrl,
+    },
   }
 }
 
@@ -175,22 +187,11 @@ const openEditDialog = (record: TradeRecord) => {
   form.close_time = record.close_time
   form.close_price = Number(record.close_price)
   form.segment_type = record.segment_type
+  form.fee = Number(record.fee)
   form.actual_pnl = Number(record.actual_pnl)
-  form.screenshot_path = record.screenshot_path
-  form.screenshot_original_name = record.screenshot_original_name
-  form.screenshot_content_type = record.screenshot_content_type
-  form.screenshot_size = record.screenshot_size
+  form.screenshots = [...record.screenshots]
   form.comment = record.comment ?? ''
-  form.remove_screenshot = false
-  uploadFileList.value = record.screenshot_path
-    ? [
-        {
-          name: record.screenshot_original_name || '\u64cd\u4f5c\u622a\u56fe',
-          url: resolveTradeRecordScreenshotUrl(record.screenshot_path),
-          status: 'success',
-        },
-      ]
-    : []
+  uploadFileList.value = record.screenshots.map(toUploadFile)
   formRef.value?.clearValidate()
   dialogVisible.value = true
 }
@@ -204,11 +205,9 @@ const buildPayload = (): TradeRecordCreateParams => {
     close_time: form.close_time,
     close_price: form.close_price,
     segment_type: form.segment_type,
+    fee: form.fee,
     actual_pnl: form.actual_pnl,
-    screenshot_path: form.screenshot_path,
-    screenshot_original_name: form.screenshot_original_name,
-    screenshot_content_type: form.screenshot_content_type,
-    screenshot_size: form.screenshot_size,
+    screenshots: [...form.screenshots],
     comment: form.comment.trim() || null,
   }
 }
@@ -237,7 +236,6 @@ const submitForm = async () => {
       const updatePayload: TradeRecordUpdateParams = {
         trade_record_id: form.trade_record_id,
         ...payload,
-        remove_screenshot: form.remove_screenshot,
       }
       await updateTradeRecordApi(updatePayload)
       ElMessage.success('\u4fee\u6539\u4ea4\u6613\u8bb0\u5f55\u6210\u529f')
@@ -276,16 +274,22 @@ const handleDelete = async (record: TradeRecord) => {
 }
 
 const applyUploadedScreenshot = (result: TradeRecordScreenshotUploadResult) => {
-  form.screenshot_path = result.path
-  form.screenshot_original_name = result.original_name
-  form.screenshot_content_type = result.content_type
-  form.screenshot_size = result.size
-  form.remove_screenshot = false
+  form.screenshots = [
+    ...form.screenshots,
+    {
+      path: result.path,
+      original_name: result.original_name,
+      content_type: result.content_type,
+      size: result.size,
+    },
+  ]
   uploadFileList.value = [
+    ...uploadFileList.value,
     {
       name: result.original_name,
       url: result.url,
       status: 'success',
+      response: result,
     },
   ]
 }
@@ -318,13 +322,23 @@ const beforeScreenshotUpload: UploadProps['beforeUpload'] = (rawFile) => {
   return true
 }
 
-const handleUploadRemove = () => {
-  uploadFileList.value = []
-  form.screenshot_path = null
-  form.screenshot_original_name = null
-  form.screenshot_content_type = null
-  form.screenshot_size = null
-  form.remove_screenshot = true
+const resolveUploadPath = (uploadFile: UploadFile) => {
+  const response = uploadFile.response as TradeRecordScreenshotUploadResult | TradeRecordScreenshot | undefined
+  if (response?.path) {
+    return response.path
+  }
+
+  if (!uploadFile.url) {
+    return ''
+  }
+
+  return uploadFile.url.replace(/^.*\/storage\//, '')
+}
+
+const handleUploadRemove: UploadProps['onRemove'] = (uploadFile, uploadFiles) => {
+  const removedPath = resolveUploadPath(uploadFile)
+  form.screenshots = form.screenshots.filter((item) => item.path !== removedPath)
+  uploadFileList.value = uploadFiles
 }
 
 const formatCurrency = (value?: number | string | null, fractionDigits = 2) => {
@@ -336,6 +350,14 @@ const formatCurrency = (value?: number | string | null, fractionDigits = 2) => {
     minimumFractionDigits: fractionDigits,
     maximumFractionDigits: fractionDigits,
   })
+}
+
+const getPreviewScreenshotUrls = (screenshots: TradeRecordScreenshot[]) => {
+  return screenshots.map((item) => resolveTradeRecordScreenshotUrl(item.path))
+}
+
+const formatSegmentType = (segmentType: TradeRecordSegmentType) => {
+  return segmentTypeLabelMap[segmentType] ?? segmentType
 }
 
 const handleSearch = async () => {
@@ -367,7 +389,7 @@ onMounted(() => {
     </div>
 
     <div class="filter-card">
-        <el-form :inline="true" class="filter-form">
+      <el-form :inline="true" class="filter-form">
         <el-form-item :label="'\u5408\u7ea6'">
           <el-select
             v-model="filters.contract"
@@ -443,7 +465,12 @@ onMounted(() => {
       <el-table-column prop="close_price" :label="'\u5e73\u4ed3\u4ef7\u683c'" min-width="120" align="right">
         <template #default="{ row }">{{ formatCurrency(row.close_price, 1) }}</template>
       </el-table-column>
-      <el-table-column prop="segment_type" :label="'30F\u7ebf\u6bb5\u7c7b\u578b'" min-width="140" />
+      <el-table-column prop="segment_type" :label="'30F\u7ebf\u6bb5\u7c7b\u578b'" min-width="140">
+        <template #default="{ row }">{{ formatSegmentType(row.segment_type) }}</template>
+      </el-table-column>
+      <el-table-column prop="fee" :label="'\u624b\u7eed\u8d39'" min-width="110" align="right">
+        <template #default="{ row }">{{ formatCurrency(row.fee) }}</template>
+      </el-table-column>
       <el-table-column prop="actual_pnl" :label="'\u5b9e\u9645\u76c8\u4e8f'" min-width="120" align="right">
         <template #default="{ row }">
           <span :class="Number(row.actual_pnl) >= 0 ? 'pnl-positive' : 'pnl-negative'">
@@ -451,16 +478,20 @@ onMounted(() => {
           </span>
         </template>
       </el-table-column>
-      <el-table-column :label="'\u64cd\u4f5c\u622a\u56fe'" min-width="130" align="center">
+      <el-table-column :label="'\u64cd\u4f5c\u622a\u56fe'" min-width="180">
         <template #default="{ row }">
-          <el-image
-            v-if="row.screenshot_path"
-            :src="resolveTradeRecordScreenshotUrl(row.screenshot_path)"
-            :preview-src-list="[resolveTradeRecordScreenshotUrl(row.screenshot_path)]"
-            preview-teleported
-            fit="cover"
-            class="screenshot-thumb"
-          />
+          <div v-if="row.screenshots.length" class="screenshot-list">
+            <el-image
+              v-for="item in row.screenshots.slice(0, 3)"
+              :key="item.path"
+              :src="resolveTradeRecordScreenshotUrl(item.path)"
+              :preview-src-list="getPreviewScreenshotUrls(row.screenshots)"
+              preview-teleported
+              fit="cover"
+              class="screenshot-thumb"
+            />
+            <span v-if="row.screenshots.length > 3" class="screenshot-more">+{{ row.screenshots.length - 3 }}</span>
+          </div>
           <span v-else class="empty-text">-</span>
         </template>
       </el-table-column>
@@ -522,7 +553,11 @@ onMounted(() => {
             <el-input-number v-model="form.close_price" :min="0" :precision="1" :step="0.5" style="width: 100%" />
           </el-form-item>
           <el-form-item :label="'30F\u7ebf\u6bb5\u7c7b\u578b'" prop="segment_type">
-            <el-select v-model="form.segment_type" :placeholder="'\u8bf7\u9009\u62e930F\u7ebf\u6bb5\u7c7b\u578b'" style="width: 100%">
+            <el-select
+              v-model="form.segment_type"
+              :placeholder="'\u8bf7\u9009\u62e930F\u7ebf\u6bb5\u7c7b\u578b'"
+              style="width: 100%"
+            >
               <el-option
                 v-for="option in segmentTypeOptions"
                 :key="option.value"
@@ -530,6 +565,9 @@ onMounted(() => {
                 :value="option.value"
               />
             </el-select>
+          </el-form-item>
+          <el-form-item :label="'\u624b\u7eed\u8d39'" prop="fee">
+            <el-input-number v-model="form.fee" :min="0" :precision="2" :step="0.01" style="width: 100%" />
           </el-form-item>
           <el-form-item :label="'\u5b9e\u9645\u76c8\u4e8f'" prop="actual_pnl">
             <el-input-number v-model="form.actual_pnl" :precision="2" :step="1" style="width: 100%" />
@@ -539,13 +577,13 @@ onMounted(() => {
         <el-form-item :label="'\u64cd\u4f5c\u622a\u56fe'">
           <el-upload
             :file-list="uploadFileList"
-            :limit="1"
             list-type="picture-card"
             accept=".jpg,.jpeg,.png,.webp,.gif"
             :auto-upload="true"
             :before-upload="beforeScreenshotUpload"
             :http-request="handleUploadRequest"
             :on-remove="handleUploadRemove"
+            multiple
           >
             <el-icon><Plus /></el-icon>
           </el-upload>
@@ -618,10 +656,22 @@ onMounted(() => {
   gap: 0 16px;
 }
 
+.screenshot-list {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
 .screenshot-thumb {
   width: 56px;
   height: 56px;
   border-radius: 6px;
+}
+
+.screenshot-more {
+  color: #909399;
+  font-size: 12px;
 }
 
 .empty-text {

@@ -5,7 +5,14 @@ from typing import Literal
 from pydantic import ConfigDict, Field, model_validator
 from sqlmodel import SQLModel
 
-SegmentType = Literal["趋势推动段", "趋势回调段", "区间内部段"]
+SegmentType = Literal["trend_push", "trend_pullback", "range_internal"]
+
+
+class TradeRecordScreenshot(SQLModel):
+    path: str = Field(min_length=1, max_length=255)
+    original_name: str = Field(min_length=1, max_length=255)
+    content_type: str = Field(min_length=1, max_length=100)
+    size: int = Field(ge=0)
 
 
 class TradeRecordBase(SQLModel):
@@ -16,11 +23,9 @@ class TradeRecordBase(SQLModel):
     close_time: datetime
     close_price: Decimal
     segment_type: SegmentType
+    fee: Decimal = 0
     actual_pnl: Decimal
-    screenshot_path: str | None = Field(default=None, max_length=255)
-    screenshot_original_name: str | None = Field(default=None, max_length=255)
-    screenshot_content_type: str | None = Field(default=None, max_length=100)
-    screenshot_size: int | None = Field(default=None, ge=0)
+    screenshots: list[TradeRecordScreenshot] = Field(default_factory=list)
     comment: str | None = Field(default=None, max_length=2000)
 
     @model_validator(mode="after")
@@ -43,13 +48,10 @@ class TradeRecordUpdate(SQLModel):
     close_time: datetime | None = None
     close_price: Decimal | None = None
     segment_type: SegmentType | None = None
+    fee: Decimal | None = None
     actual_pnl: Decimal | None = None
-    screenshot_path: str | None = Field(default=None, max_length=255)
-    screenshot_original_name: str | None = Field(default=None, max_length=255)
-    screenshot_content_type: str | None = Field(default=None, max_length=100)
-    screenshot_size: int | None = Field(default=None, ge=0)
+    screenshots: list[TradeRecordScreenshot] | None = None
     comment: str | None = Field(default=None, max_length=2000)
-    remove_screenshot: bool = False
 
 
 class TradeRecordDeleteRequest(SQLModel):
@@ -73,9 +75,5 @@ class TradeRecordListQuery(SQLModel):
     close_time_end: datetime | None = None
 
 
-class TradeRecordScreenshotUploadResult(SQLModel):
-    path: str
-    original_name: str
-    content_type: str
-    size: int
+class TradeRecordScreenshotUploadResult(TradeRecordScreenshot):
     url: str

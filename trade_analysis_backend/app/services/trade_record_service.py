@@ -52,17 +52,10 @@ class TradeRecordService:
                 detail="No trade record fields to update",
             )
 
-        old_screenshot_path = trade_record.screenshot_path
-        remove_screenshot = bool(update_data.pop("remove_screenshot", False))
+        old_screenshot_paths = self._extract_screenshot_paths(trade_record.screenshots)
 
         for field_name, value in update_data.items():
             setattr(trade_record, field_name, value)
-
-        if remove_screenshot:
-            trade_record.screenshot_path = None
-            trade_record.screenshot_original_name = None
-            trade_record.screenshot_content_type = None
-            trade_record.screenshot_size = None
 
         self._validate_time_range(trade_record.open_time, trade_record.close_time)
 
@@ -71,23 +64,18 @@ class TradeRecordService:
         self.session.commit()
         self.session.refresh(trade_record)
 
-        if remove_screenshot and old_screenshot_path:
-            self.storage_service.delete_relative_path(old_screenshot_path)
-        elif (
-            trade_record.screenshot_path
-            and old_screenshot_path
-            and trade_record.screenshot_path != old_screenshot_path
-        ):
-            self.storage_service.delete_relative_path(old_screenshot_path)
+        current_screenshot_paths = self._extract_screenshot_paths(trade_record.screenshots)
+        for orphan_path in old_screenshot_paths - current_screenshot_paths:
+            self.storage_service.delete_relative_path(orphan_path)
 
         return trade_record
 
     def delete_trade_record(self, trade_record_id: int) -> None:
         trade_record = self.get_trade_record_by_id(trade_record_id)
-        screenshot_path = trade_record.screenshot_path
+        screenshot_paths = self._extract_screenshot_paths(trade_record.screenshots)
         self.session.delete(trade_record)
         self.session.commit()
-        if screenshot_path:
+        for screenshot_path in screenshot_paths:
             self.storage_service.delete_relative_path(screenshot_path)
 
     def get_trade_record_by_id(self, trade_record_id: int) -> TradeRecord:
@@ -105,3 +93,14 @@ class TradeRecordService:
                 status_code=status.HTTP_400_BAD_REQUEST,
                 detail="close_time must be greater than or equal to open_time",
             )
+
+    def _extract_screenshot_paths(self, screenshots: list[dict] | None) -> set[str]:
+        if not screenshots:
+            return set()
+
+        paths = set()
+        for item in screenshots:
+            path = item.get("path") if isinstance(item, dict) else None
+            if path:
+                paths.add(path)
+        return paths

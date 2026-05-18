@@ -1,9 +1,13 @@
 import axios from "@/api/axios";
 
-export type TradeRecordSegmentType =
-  | "\u8d8b\u52bf\u63a8\u52a8\u6bb5"
-  | "\u8d8b\u52bf\u56de\u8c03\u6bb5"
-  | "\u533a\u95f4\u5185\u90e8\u6bb5"
+export type TradeRecordSegmentType = "trend_push" | "trend_pullback" | "range_internal"
+
+export interface TradeRecordScreenshot {
+  path: string
+  original_name: string
+  content_type: string
+  size: number
+}
 
 export interface TradeRecord {
   trade_record_id: number
@@ -14,11 +18,9 @@ export interface TradeRecord {
   close_time: string
   close_price: number | string
   segment_type: TradeRecordSegmentType
+  fee: number | string
   actual_pnl: number | string
-  screenshot_path: string | null
-  screenshot_original_name: string | null
-  screenshot_content_type: string | null
-  screenshot_size: number | null
+  screenshots: TradeRecordScreenshot[]
   comment: string | null
   created_at: string
   updated_at: string
@@ -32,17 +34,14 @@ export interface TradeRecordCreateParams {
   close_time: string
   close_price: number
   segment_type: TradeRecordSegmentType
+  fee: number
   actual_pnl: number
-  screenshot_path?: string | null
-  screenshot_original_name?: string | null
-  screenshot_content_type?: string | null
-  screenshot_size?: number | null
+  screenshots: TradeRecordScreenshot[]
   comment?: string | null
 }
 
 export interface TradeRecordUpdateParams extends Partial<TradeRecordCreateParams> {
   trade_record_id: number
-  remove_screenshot?: boolean
 }
 
 export interface TradeRecordListParams {
@@ -54,11 +53,7 @@ export interface TradeRecordListParams {
   close_time_end?: string
 }
 
-export interface TradeRecordScreenshotUploadResult {
-  path: string
-  original_name: string
-  content_type: string
-  size: number
+export interface TradeRecordScreenshotUploadResult extends TradeRecordScreenshot {
   url: string
 }
 
