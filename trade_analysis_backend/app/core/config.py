@@ -71,5 +71,9 @@ class Settings:
     def trade_record_storage_dir(self) -> str:
         return str(Path(self.storage_root) / "trade_records")
 
+    @property
+    def future_report_storage_dir(self) -> str:
+        return str(Path(self.storage_root) / "future_reports")
+
 
 settings = Settings()

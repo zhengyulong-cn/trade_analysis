@@ -8,6 +8,9 @@ from app.db.session import get_session
 from app.services.chart_persistence_service import ChartPersistenceService
 from app.services.contract_service import ContractService
 from app.services.future_product_service import FutureProductService
+from app.services.future_report_document_service import FutureReportDocumentService
+from app.services.future_report_document_storage import FutureReportDocumentStorageService
+from app.services.future_fundamental_analysis_service import FutureFundamentalAnalysisService
 from app.services.kline_service import KlineService
 from app.services.market_data import (
     KlineProvider,
@@ -55,6 +58,25 @@ def get_future_product_service(session: SessionDep) -> FutureProductService:
     return FutureProductService(session)
 
 
+def get_future_report_document_storage_service() -> FutureReportDocumentStorageService:
+    return FutureReportDocumentStorageService()
+
+
+def get_future_report_document_service(
+    session: SessionDep,
+    storage_service: Annotated[
+        FutureReportDocumentStorageService, Depends(get_future_report_document_storage_service)
+    ],
+) -> FutureReportDocumentService:
+    return FutureReportDocumentService(session=session, storage_service=storage_service)
+
+
+def get_future_fundamental_analysis_service(
+    session: SessionDep,
+) -> FutureFundamentalAnalysisService:
+    return FutureFundamentalAnalysisService(session)
+
+
 def get_chart_persistence_service(session: SessionDep) -> ChartPersistenceService:
     return ChartPersistenceService(session)
 
@@ -96,6 +118,15 @@ def get_realtime_bar_service(
 
 ContractServiceDep = Annotated[ContractService, Depends(get_contract_service)]
 FutureProductServiceDep = Annotated[FutureProductService, Depends(get_future_product_service)]
+FutureReportDocumentStorageServiceDep = Annotated[
+    FutureReportDocumentStorageService, Depends(get_future_report_document_storage_service)
+]
+FutureReportDocumentServiceDep = Annotated[
+    FutureReportDocumentService, Depends(get_future_report_document_service)
+]
+FutureFundamentalAnalysisServiceDep = Annotated[
+    FutureFundamentalAnalysisService, Depends(get_future_fundamental_analysis_service)
+]
 ChartPersistenceServiceDep = Annotated[
     ChartPersistenceService, Depends(get_chart_persistence_service)
 ]

@@ -69,6 +69,14 @@ export const RouterModules: RouteRecordRaw[] = [
           title: "期货K管理",
         },
       },
+      {
+        path: "/reports/fundamental-analysis",
+        component: () => import("@/views/reports/future_fundamental_analysis/FutureFundamentalAnalysis.vue"),
+        meta: {
+          icon: "",
+          title: "基本面分析",
+        },
+      },
     ],
   },
 ]
