@@ -22,11 +22,12 @@ import {
   ElMessageBox,
   type FormInstance,
   type FormRules,
+  type UploadRawFile,
   type UploadFile,
   type UploadProps,
   type UploadRequestOptions,
 } from 'element-plus'
-import { computed, onMounted, reactive, ref } from 'vue'
+import { computed, onBeforeUnmount, onMounted, reactive, ref, watch } from 'vue'
 
 interface TradeRecordFilters {
   contract: string
@@ -55,15 +56,15 @@ const SEGMENT_PULLBACK = 'trend_pullback' as const
 const SEGMENT_RANGE = 'range_internal' as const
 
 const segmentTypeOptions: Array<{ label: string; value: TradeRecordSegmentType }> = [
-  { label: '\u8d8b\u52bf\u63a8\u52a8\u6bb5', value: SEGMENT_PUSH },
-  { label: '\u8d8b\u52bf\u56de\u8c03\u6bb5', value: SEGMENT_PULLBACK },
-  { label: '\u533a\u95f4\u5185\u90e8\u6bb5', value: SEGMENT_RANGE },
+  { label: '趋势推动段', value: SEGMENT_PUSH },
+  { label: '趋势回调段', value: SEGMENT_PULLBACK },
+  { label: '区间内部段', value: SEGMENT_RANGE },
 ]
 
 const segmentTypeLabelMap: Record<TradeRecordSegmentType, string> = {
-  trend_push: '\u8d8b\u52bf\u63a8\u52a8\u6bb5',
-  trend_pullback: '\u8d8b\u52bf\u56de\u8c03\u6bb5',
-  range_internal: '\u533a\u95f4\u5185\u90e8\u6bb5',
+  trend_push: '趋势推动段',
+  trend_pullback: '趋势回调段',
+  range_internal: '区间内部段',
 }
 
 const loading = ref(false)
@@ -98,19 +99,19 @@ const form = reactive<TradeRecordForm>({
 })
 
 const rules = reactive<FormRules<TradeRecordForm>>({
-  contract: [{ required: true, message: '\u8bf7\u9009\u62e9\u5408\u7ea6', trigger: 'change' }],
-  lots: [{ required: true, message: '\u8bf7\u8f93\u5165\u624b\u6570', trigger: 'change' }],
-  open_time: [{ required: true, message: '\u8bf7\u9009\u62e9\u5f00\u4ed3\u65f6\u95f4', trigger: 'change' }],
-  open_price: [{ required: true, message: '\u8bf7\u8f93\u5165\u5f00\u4ed3\u4ef7\u683c', trigger: 'change' }],
-  close_time: [{ required: true, message: '\u8bf7\u9009\u62e9\u5e73\u4ed3\u65f6\u95f4', trigger: 'change' }],
-  close_price: [{ required: true, message: '\u8bf7\u8f93\u5165\u5e73\u4ed3\u4ef7\u683c', trigger: 'change' }],
-  segment_type: [{ required: true, message: '\u8bf7\u9009\u62e930F\u7ebf\u6bb5\u7c7b\u578b', trigger: 'change' }],
-  fee: [{ required: true, message: '\u8bf7\u8f93\u5165\u624b\u7eed\u8d39', trigger: 'change' }],
-  actual_pnl: [{ required: true, message: '\u8bf7\u8f93\u5165\u5b9e\u9645\u76c8\u4e8f', trigger: 'change' }],
+  contract: [{ required: true, message: '请选择合约', trigger: 'change' }],
+  lots: [{ required: true, message: '请输入手数', trigger: 'change' }],
+  open_time: [{ required: true, message: '请选择开仓时间', trigger: 'change' }],
+  open_price: [{ required: true, message: '请输入开仓价格', trigger: 'change' }],
+  close_time: [{ required: true, message: '请选择平仓时间', trigger: 'change' }],
+  close_price: [{ required: true, message: '请输入平仓价格', trigger: 'change' }],
+  segment_type: [{ required: true, message: '请选择30F线段类型', trigger: 'change' }],
+  fee: [{ required: true, message: '请输入手续费', trigger: 'change' }],
+  actual_pnl: [{ required: true, message: '请输入实际盈亏', trigger: 'change' }],
 })
 
 const dialogTitle = computed(() =>
-  dialogMode.value === 'create' ? '\u65b0\u589e\u4ea4\u6613\u8bb0\u5f55' : '\u4fee\u6539\u4ea4\u6613\u8bb0\u5f55',
+  dialogMode.value === 'create' ? '新增交易记录' : '修改交易记录',
 )
 
 const disableFutureDateTime = (date: Date) => {
@@ -163,7 +164,7 @@ const loadTradeRecords = async () => {
   try {
     records.value = await getTradeRecordListApi(buildListParams())
   } catch {
-    ElMessage.error('\u83b7\u53d6\u4ea4\u6613\u8bb0\u5f55\u5931\u8d25')
+    ElMessage.error('获取交易记录失败')
   } finally {
     loading.value = false
   }
@@ -173,7 +174,7 @@ const loadContracts = async () => {
   try {
     contracts.value = await getFutureContractList()
   } catch {
-    ElMessage.error('\u83b7\u53d6\u5408\u7ea6\u5217\u8868\u5931\u8d25')
+    ElMessage.error('获取合约列表失败')
   }
 }
 
@@ -228,7 +229,7 @@ const submitForm = async () => {
     return
   }
   if (new Date(form.close_time).getTime() < new Date(form.open_time).getTime()) {
-    ElMessage.error('\u5e73\u4ed3\u65f6\u95f4\u4e0d\u80fd\u65e9\u4e8e\u5f00\u4ed3\u65f6\u95f4')
+    ElMessage.error('平仓时间不能早于开仓时间')
     return
   }
 
@@ -237,22 +238,22 @@ const submitForm = async () => {
     const payload = buildPayload()
     if (dialogMode.value === 'create') {
       await createTradeRecordApi(payload)
-      ElMessage.success('\u65b0\u589e\u4ea4\u6613\u8bb0\u5f55\u6210\u529f')
+      ElMessage.success('新增交易记录成功')
     } else if (form.trade_record_id) {
       const updatePayload: TradeRecordUpdateParams = {
         trade_record_id: form.trade_record_id,
         ...payload,
       }
       await updateTradeRecordApi(updatePayload)
-      ElMessage.success('\u4fee\u6539\u4ea4\u6613\u8bb0\u5f55\u6210\u529f')
+      ElMessage.success('修改交易记录成功')
     }
     dialogVisible.value = false
     await loadTradeRecords()
   } catch {
     ElMessage.error(
       dialogMode.value === 'create'
-        ? '\u65b0\u589e\u4ea4\u6613\u8bb0\u5f55\u5931\u8d25'
-        : '\u4fee\u6539\u4ea4\u6613\u8bb0\u5f55\u5931\u8d25',
+        ? '新增交易记录失败'
+        : '修改交易记录失败',
     )
   } finally {
     submitting.value = false
@@ -262,20 +263,20 @@ const submitForm = async () => {
 const handleDelete = async (record: TradeRecord) => {
   try {
     await ElMessageBox.confirm(
-      `\u786e\u8ba4\u5220\u9664 ${record.contract} \u7684\u8fd9\u6761\u4ea4\u6613\u8bb0\u5f55\u5417\uff1f`,
-      '\u5220\u9664\u786e\u8ba4',
+      `确认删除 ${record.contract} 的这条交易记录吗？`,
+      '删除确认',
       {
         type: 'warning',
       },
     )
     await deleteTradeRecordApi(record.trade_record_id)
-    ElMessage.success('\u5220\u9664\u4ea4\u6613\u8bb0\u5f55\u6210\u529f')
+    ElMessage.success('删除交易记录成功')
     await loadTradeRecords()
   } catch (error) {
     if (error === 'cancel' || error === 'close') {
       return
     }
-    ElMessage.error('\u5220\u9664\u4ea4\u6613\u8bb0\u5f55\u5931\u8d25')
+    ElMessage.error('删除交易记录失败')
   }
 }
 
@@ -285,12 +286,12 @@ const handleImportTradeRecords = async (options: UploadRequestOptions) => {
     const result = await importTradeRecordsApi(options.file)
     options.onSuccess?.(result)
     ElMessage.success(
-      `\u5bfc\u5165\u5b8c\u6210\uff1a\u65b0\u589e ${result.imported} \u6761\uff0c\u8df3\u8fc7 ${result.skipped} \u6761\uff0c\u5931\u8d25 ${result.failed} \u6761`,
+      `导入完成：新增 ${result.imported} 条，跳过 ${result.skipped} 条，失败 ${result.failed} 条`,
     )
     await loadTradeRecords()
   } catch (error) {
     options.onError?.(error as Error)
-    ElMessage.error('\u4e0a\u4f20\u4ea4\u6613\u8bb0\u5f55\u5931\u8d25')
+    ElMessage.error('上传交易记录失败')
   } finally {
     importing.value = false
   }
@@ -317,32 +318,36 @@ const applyUploadedScreenshot = (result: TradeRecordScreenshotUploadResult) => {
   ]
 }
 
-const handleUploadRequest = async (options: UploadRequestOptions) => {
-  try {
-    const result = await uploadTradeRecordScreenshotApi(options.file)
-    applyUploadedScreenshot(result)
-    options.onSuccess?.(result)
-    ElMessage.success('\u622a\u56fe\u4e0a\u4f20\u6210\u529f')
-  } catch (error) {
-    options.onError?.(error as Error)
-    ElMessage.error('\u622a\u56fe\u4e0a\u4f20\u5931\u8d25')
-  }
-}
-
-const beforeScreenshotUpload: UploadProps['beforeUpload'] = (rawFile) => {
+const validateScreenshotFile = (rawFile: Pick<UploadRawFile, 'type' | 'size'>) => {
   const isImage = ['image/jpeg', 'image/png', 'image/webp', 'image/gif'].includes(rawFile.type)
   if (!isImage) {
-    ElMessage.error('\u4ec5\u652f\u6301 JPG\u3001PNG\u3001WEBP\u3001GIF \u56fe\u7247')
+    ElMessage.error('仅支持 JPG、PNG、WEBP、GIF 图片')
     return false
   }
 
   const isLt10Mb = rawFile.size / 1024 / 1024 < 10
   if (!isLt10Mb) {
-    ElMessage.error('\u56fe\u7247\u5927\u5c0f\u4e0d\u80fd\u8d85\u8fc7 10MB')
+    ElMessage.error('图片大小不能超过 10MB')
     return false
   }
 
   return true
+}
+
+const handleUploadRequest = async (options: UploadRequestOptions) => {
+  try {
+    const result = await uploadTradeRecordScreenshotApi(options.file)
+    applyUploadedScreenshot(result)
+    options.onSuccess?.(result)
+    ElMessage.success('截图上传成功')
+  } catch (error) {
+    options.onError?.(error as Error)
+    ElMessage.error('截图上传失败')
+  }
+}
+
+const beforeScreenshotUpload: UploadProps['beforeUpload'] = (rawFile) => {
+  return validateScreenshotFile(rawFile)
 }
 
 const resolveUploadPath = (uploadFile: UploadFile) => {
@@ -362,6 +367,38 @@ const handleUploadRemove: UploadProps['onRemove'] = (uploadFile, uploadFiles) =>
   const removedPath = resolveUploadPath(uploadFile)
   form.screenshots = form.screenshots.filter((item) => item.path !== removedPath)
   uploadFileList.value = uploadFiles
+}
+
+const handlePasteScreenshot = async (event: ClipboardEvent) => {
+  if (!dialogVisible.value) {
+    return
+  }
+
+  const items = Array.from(event.clipboardData?.items ?? [])
+  const imageFiles = items
+    .filter((item) => item.kind === 'file' && item.type.startsWith('image/'))
+    .map((item) => item.getAsFile())
+    .filter((file): file is File => file !== null)
+
+  if (!imageFiles.length) {
+    return
+  }
+
+  event.preventDefault()
+
+  for (const file of imageFiles) {
+    if (!validateScreenshotFile(file)) {
+      continue
+    }
+
+    try {
+      const result = await uploadTradeRecordScreenshotApi(file)
+      applyUploadedScreenshot(result)
+      ElMessage.success('截图粘贴上传成功')
+    } catch {
+      ElMessage.error('截图粘贴上传失败')
+    }
+  }
 }
 
 const formatCurrency = (value?: number | string | null, fractionDigits = 2) => {
@@ -402,14 +439,26 @@ onMounted(() => {
   void loadContracts()
   void loadTradeRecords()
 })
+
+watch(dialogVisible, (visible) => {
+  if (visible) {
+    window.addEventListener('paste', handlePasteScreenshot)
+    return
+  }
+  window.removeEventListener('paste', handlePasteScreenshot)
+})
+
+onBeforeUnmount(() => {
+  window.removeEventListener('paste', handlePasteScreenshot)
+})
 </script>
 
 <template>
   <div class="pageBox trade-record-manager">
     <div class="toolbar">
       <div>
-        <h2 class="title">{{ '\u4ea4\u6613\u8bb0\u5f55' }}</h2>
-        <p class="subtitle">{{ '\u7ef4\u62a4\u4ea4\u6613\u8bb0\u5f55\u3001\u76c8\u4e8f\u590d\u76d8\u548c\u64cd\u4f5c\u622a\u56fe' }}</p>
+        <h2 class="title">{{ '交易记录' }}</h2>
+        <p class="subtitle">{{ '维护交易记录、盈亏复盘和操作截图' }}</p>
       </div>
       <div class="toolbar-actions">
         <el-upload
@@ -419,20 +468,20 @@ onMounted(() => {
           :http-request="handleImportTradeRecords"
           :disabled="importing"
         >
-          <el-button :loading="importing">{{ '\u4e0a\u4f20\u4ea4\u6613\u8bb0\u5f55' }}</el-button>
+          <el-button :loading="importing">{{ '上传交易记录' }}</el-button>
         </el-upload>
-        <el-button type="primary" @click="openCreateDialog">{{ '\u65b0\u589e\u4ea4\u6613\u8bb0\u5f55' }}</el-button>
+        <el-button type="primary" @click="openCreateDialog">{{ '新增交易记录' }}</el-button>
       </div>
     </div>
 
     <div class="filter-card">
       <el-form :inline="true" class="filter-form">
-        <el-form-item :label="'\u5408\u7ea6'">
+        <el-form-item :label="'合约'">
           <el-select
             v-model="filters.contract"
             filterable
             clearable
-            :placeholder="'\u8bf7\u9009\u62e9\u5408\u7ea6'"
+            :placeholder="'请选择合约'"
             style="width: 180px"
           >
             <el-option
@@ -443,8 +492,8 @@ onMounted(() => {
             />
           </el-select>
         </el-form-item>
-        <el-form-item :label="'30F\u7ebf\u6bb5\u7c7b\u578b'">
-          <el-select v-model="filters.segment_type" :placeholder="'\u5168\u90e8'" clearable style="width: 180px">
+        <el-form-item :label="'30F线段类型'">
+          <el-select v-model="filters.segment_type" :placeholder="'全部'" clearable style="width: 180px">
             <el-option
               v-for="option in segmentTypeOptions"
               :key="option.value"
@@ -453,29 +502,29 @@ onMounted(() => {
             />
           </el-select>
         </el-form-item>
-        <el-form-item :label="'\u5f00\u4ed3\u65f6\u95f4'">
+        <el-form-item :label="'开仓时间'">
           <el-date-picker
             v-model="filters.open_time_range"
             type="datetimerange"
-            :range-separator="'\u81f3'"
-            :start-placeholder="'\u5f00\u59cb\u65f6\u95f4'"
-            :end-placeholder="'\u7ed3\u675f\u65f6\u95f4'"
+            :range-separator="'至'"
+            :start-placeholder="'开始时间'"
+            :end-placeholder="'结束时间'"
             value-format="YYYY-MM-DD HH:mm:ss"
           />
         </el-form-item>
-        <el-form-item :label="'\u5e73\u4ed3\u65f6\u95f4'">
+        <el-form-item :label="'平仓时间'">
           <el-date-picker
             v-model="filters.close_time_range"
             type="datetimerange"
-            :range-separator="'\u81f3'"
-            :start-placeholder="'\u5f00\u59cb\u65f6\u95f4'"
-            :end-placeholder="'\u7ed3\u675f\u65f6\u95f4'"
+            :range-separator="'至'"
+            :start-placeholder="'开始时间'"
+            :end-placeholder="'结束时间'"
             value-format="YYYY-MM-DD HH:mm:ss"
           />
         </el-form-item>
         <el-form-item>
-          <el-button type="primary" @click="handleSearch">{{ '\u67e5\u8be2' }}</el-button>
-          <el-button @click="handleResetFilters">{{ '\u91cd\u7f6e' }}</el-button>
+          <el-button type="primary" @click="handleSearch">{{ '查询' }}</el-button>
+          <el-button @click="handleResetFilters">{{ '重置' }}</el-button>
         </el-form-item>
       </el-form>
     </div>
@@ -485,37 +534,37 @@ onMounted(() => {
       :data="records"
       border
       row-key="trade_record_id"
-      :empty-text="'\u6682\u65e0\u4ea4\u6613\u8bb0\u5f55'"
+      :empty-text="'暂无交易记录'"
     >
       <el-table-column prop="trade_record_id" label="ID" width="80" />
-      <el-table-column prop="contract" :label="'\u5408\u7ea6'" min-width="120" />
-      <el-table-column prop="lots" :label="'\u624b\u6570'" width="90" />
-      <el-table-column prop="open_time" :label="'\u5f00\u4ed3\u65f6\u95f4'" min-width="170">
+      <el-table-column prop="contract" :label="'合约'" min-width="120" />
+      <el-table-column prop="lots" :label="'手数'" width="60" />
+      <el-table-column prop="open_time" :label="'开仓时间'" min-width="170">
         <template #default="{ row }">{{ formatDateTime(row.open_time) }}</template>
       </el-table-column>
-      <el-table-column prop="open_price" :label="'\u5f00\u4ed3\u4ef7\u683c'" min-width="120" align="right">
+      <el-table-column prop="open_price" :label="'开仓价格'" min-width="120" align="right">
         <template #default="{ row }">{{ formatCurrency(row.open_price, 1) }}</template>
       </el-table-column>
-      <el-table-column prop="close_time" :label="'\u5e73\u4ed3\u65f6\u95f4'" min-width="170">
+      <el-table-column prop="close_time" :label="'平仓时间'" min-width="170">
         <template #default="{ row }">{{ formatDateTime(row.close_time) }}</template>
       </el-table-column>
-      <el-table-column prop="close_price" :label="'\u5e73\u4ed3\u4ef7\u683c'" min-width="120" align="right">
+      <el-table-column prop="close_price" :label="'平仓价格'" min-width="120" align="right">
         <template #default="{ row }">{{ formatCurrency(row.close_price, 1) }}</template>
       </el-table-column>
-      <el-table-column prop="segment_type" :label="'30F\u7ebf\u6bb5\u7c7b\u578b'" min-width="140">
+      <el-table-column prop="segment_type" :label="'30F线段类型'" min-width="140">
         <template #default="{ row }">{{ formatSegmentType(row.segment_type) }}</template>
       </el-table-column>
-      <el-table-column prop="fee" :label="'\u624b\u7eed\u8d39'" min-width="110" align="right">
+      <el-table-column prop="fee" :label="'手续费'" min-width="110" align="right">
         <template #default="{ row }">{{ formatCurrency(row.fee) }}</template>
       </el-table-column>
-      <el-table-column prop="actual_pnl" :label="'\u5b9e\u9645\u76c8\u4e8f'" min-width="120" align="right">
+      <el-table-column prop="actual_pnl" :label="'实际盈亏'" min-width="120" align="right">
         <template #default="{ row }">
           <span :class="Number(row.actual_pnl) >= 0 ? 'pnl-positive' : 'pnl-negative'">
             {{ formatCurrency(row.actual_pnl) }}
           </span>
         </template>
       </el-table-column>
-      <el-table-column :label="'\u64cd\u4f5c\u622a\u56fe'" min-width="180">
+      <el-table-column :label="'操作截图'" min-width="140">
         <template #default="{ row }">
           <div v-if="row.screenshots.length" class="screenshot-list">
             <el-image
@@ -532,14 +581,14 @@ onMounted(() => {
           <span v-else class="empty-text">-</span>
         </template>
       </el-table-column>
-      <el-table-column prop="comment" :label="'\u64cd\u4f5c\u8bc4\u4ef7'" min-width="220" show-overflow-tooltip />
-      <el-table-column prop="updated_at" :label="'\u66f4\u65b0\u65f6\u95f4'" min-width="170">
+      <el-table-column prop="comment" :label="'操作评价'" min-width="220" show-overflow-tooltip />
+      <el-table-column prop="updated_at" :label="'更新时间'" min-width="170">
         <template #default="{ row }">{{ formatDateTime(row.updated_at) }}</template>
       </el-table-column>
-      <el-table-column :label="'\u64cd\u4f5c'" fixed="right" width="140">
+      <el-table-column :label="'操作'" fixed="right" width="140">
         <template #default="{ row }">
-          <el-button type="primary" link @click="openEditDialog(row)">{{ '\u4fee\u6539' }}</el-button>
-          <el-button type="danger" link @click="handleDelete(row)">{{ '\u5220\u9664' }}</el-button>
+          <el-button type="primary" link @click="openEditDialog(row)">{{ '修改' }}</el-button>
+          <el-button type="danger" link @click="handleDelete(row)">{{ '删除' }}</el-button>
         </template>
       </el-table-column>
     </el-table>
@@ -547,11 +596,11 @@ onMounted(() => {
     <el-dialog v-model="dialogVisible" :title="dialogTitle" width="48rem" @closed="resetForm">
       <el-form ref="formRef" :model="form" :rules="rules" label-width="8rem" class="trade-form">
         <div class="form-grid">
-          <el-form-item :label="'\u5408\u7ea6'" prop="contract">
+          <el-form-item :label="'合约'" prop="contract">
             <el-select
               v-model="form.contract"
               filterable
-              :placeholder="'\u8bf7\u9009\u62e9\u5408\u7ea6'"
+              :placeholder="'请选择合约'"
               style="width: 100%"
             >
               <el-option
@@ -562,39 +611,39 @@ onMounted(() => {
               />
             </el-select>
           </el-form-item>
-          <el-form-item :label="'\u624b\u6570'" prop="lots">
+          <el-form-item :label="'手数'" prop="lots">
             <el-input-number v-model="form.lots" :min="1" :step="1" :precision="0" style="width: 100%" />
           </el-form-item>
-          <el-form-item :label="'\u5f00\u4ed3\u65f6\u95f4'" prop="open_time">
+          <el-form-item :label="'开仓时间'" prop="open_time">
             <el-date-picker
               v-model="form.open_time"
               type="datetime"
-              :placeholder="'\u8bf7\u9009\u62e9\u5f00\u4ed3\u65f6\u95f4'"
+              :placeholder="'请选择开仓时间'"
               value-format="YYYY-MM-DD HH:mm:ss"
               :disabled-date="disableFutureDateTime"
               style="width: 100%"
             />
           </el-form-item>
-          <el-form-item :label="'\u5f00\u4ed3\u4ef7\u683c'" prop="open_price">
+          <el-form-item :label="'开仓价格'" prop="open_price">
             <el-input-number v-model="form.open_price" :min="0" :precision="1" :step="0.5" style="width: 100%" />
           </el-form-item>
-          <el-form-item :label="'\u5e73\u4ed3\u65f6\u95f4'" prop="close_time">
+          <el-form-item :label="'平仓时间'" prop="close_time">
             <el-date-picker
               v-model="form.close_time"
               type="datetime"
-              :placeholder="'\u8bf7\u9009\u62e9\u5e73\u4ed3\u65f6\u95f4'"
+              :placeholder="'请选择平仓时间'"
               value-format="YYYY-MM-DD HH:mm:ss"
               :disabled-date="disableFutureDateTime"
               style="width: 100%"
             />
           </el-form-item>
-          <el-form-item :label="'\u5e73\u4ed3\u4ef7\u683c'" prop="close_price">
+          <el-form-item :label="'平仓价格'" prop="close_price">
             <el-input-number v-model="form.close_price" :min="0" :precision="1" :step="0.5" style="width: 100%" />
           </el-form-item>
-          <el-form-item :label="'30F\u7ebf\u6bb5\u7c7b\u578b'" prop="segment_type">
+          <el-form-item :label="'30F线段类型'" prop="segment_type">
             <el-select
               v-model="form.segment_type"
-              :placeholder="'\u8bf7\u9009\u62e930F\u7ebf\u6bb5\u7c7b\u578b'"
+              :placeholder="'请选择30F线段类型'"
               style="width: 100%"
             >
               <el-option
@@ -605,15 +654,15 @@ onMounted(() => {
               />
             </el-select>
           </el-form-item>
-          <el-form-item :label="'\u624b\u7eed\u8d39'" prop="fee">
+          <el-form-item :label="'手续费'" prop="fee">
             <el-input-number v-model="form.fee" :min="0" :precision="2" :step="0.01" style="width: 100%" />
           </el-form-item>
-          <el-form-item :label="'\u5b9e\u9645\u76c8\u4e8f'" prop="actual_pnl">
+          <el-form-item :label="'实际盈亏'" prop="actual_pnl">
             <el-input-number v-model="form.actual_pnl" :precision="2" :step="1" style="width: 100%" />
           </el-form-item>
         </div>
 
-        <el-form-item :label="'\u64cd\u4f5c\u622a\u56fe'">
+        <el-form-item :label="'操作截图'">
           <el-upload
             :file-list="uploadFileList"
             list-type="picture-card"
@@ -626,22 +675,23 @@ onMounted(() => {
           >
             <el-icon><Plus /></el-icon>
           </el-upload>
+          <div class="upload-tip">支持点击上传，也支持在弹窗打开时按 Ctrl+V 粘贴截图</div>
         </el-form-item>
 
-        <el-form-item :label="'\u64cd\u4f5c\u8bc4\u4ef7'">
+        <el-form-item :label="'操作评价'">
           <el-input
             v-model="form.comment"
             type="textarea"
             :rows="4"
             maxlength="2000"
             show-word-limit
-            :placeholder="'\u8bf7\u8f93\u5165\u64cd\u4f5c\u8bc4\u4ef7'"
+            :placeholder="'请输入操作评价'"
           />
         </el-form-item>
       </el-form>
       <template #footer>
-        <el-button @click="dialogVisible = false">{{ '\u53d6\u6d88' }}</el-button>
-        <el-button type="primary" :loading="submitting" @click="submitForm">{{ '\u786e\u8ba4' }}</el-button>
+        <el-button @click="dialogVisible = false">{{ '取消' }}</el-button>
+        <el-button type="primary" :loading="submitting" @click="submitForm">{{ '确认' }}</el-button>
       </template>
     </el-dialog>
   </div>
@@ -721,6 +771,12 @@ onMounted(() => {
 
 .empty-text {
   color: #c0c4cc;
+}
+
+.upload-tip {
+  font-size: 12px;
+  line-height: 1.5;
+  color: #909399;
 }
 
 .pnl-positive {
