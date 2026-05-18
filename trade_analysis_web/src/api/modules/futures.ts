@@ -1,6 +1,25 @@
 import axios from "@/api/axios";
 import { toChartTimestampSeconds } from "@/utils/date";
 
+export interface FutureProduct {
+  product_id: number
+  product_code: string
+  display_name: string
+  alias_names: string[]
+  create_at: string
+  updated_at: string
+}
+
+export interface FutureProductCreateParams {
+  product_code: string
+  display_name: string
+  alias_names: string[]
+}
+
+export interface FutureProductUpdateParams extends Partial<FutureProductCreateParams> {
+  product_id: number
+}
+
 export interface FutureContract {
   contract_id: number
   symbol: string
@@ -244,6 +263,18 @@ export const getFutureDataApi = async (params: { symbol: string; period: number;
 
 export const getFutureContractList = () => {
   return axios.get<FutureContract[]>("/contracts") as unknown as Promise<FutureContract[]>
+}
+
+export const getFutureProductList = () => {
+  return axios.get<FutureProduct[]>("/future-products") as unknown as Promise<FutureProduct[]>
+}
+
+export const createFutureProduct = (params: FutureProductCreateParams) => {
+  return axios.post<FutureProduct>("/future-products/create", params) as unknown as Promise<FutureProduct>
+}
+
+export const updateFutureProduct = (params: FutureProductUpdateParams) => {
+  return axios.post<FutureProduct>("/future-products/update", params) as unknown as Promise<FutureProduct>
 }
 
 export const createFutureContract = (params: FutureContractCreateParams) => {

@@ -7,6 +7,7 @@ from sqlmodel import Session
 from app.db.session import get_session
 from app.services.chart_persistence_service import ChartPersistenceService
 from app.services.contract_service import ContractService
+from app.services.future_product_service import FutureProductService
 from app.services.kline_service import KlineService
 from app.services.market_data import (
     KlineProvider,
@@ -50,6 +51,10 @@ def get_contract_service(session: SessionDep) -> ContractService:
     return ContractService(session)
 
 
+def get_future_product_service(session: SessionDep) -> FutureProductService:
+    return FutureProductService(session)
+
+
 def get_chart_persistence_service(session: SessionDep) -> ChartPersistenceService:
     return ChartPersistenceService(session)
 
@@ -90,6 +95,7 @@ def get_realtime_bar_service(
 
 
 ContractServiceDep = Annotated[ContractService, Depends(get_contract_service)]
+FutureProductServiceDep = Annotated[FutureProductService, Depends(get_future_product_service)]
 ChartPersistenceServiceDep = Annotated[
     ChartPersistenceService, Depends(get_chart_persistence_service)
 ]

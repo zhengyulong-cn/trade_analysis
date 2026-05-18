@@ -46,6 +46,14 @@ export const RouterModules: RouteRecordRaw[] = [
     },
     children: [
       {
+        path: "/futures/products",
+        component: () => import("@/views/futures/future_products_manager/FutureProductManager.vue"),
+        meta: {
+          icon: "",
+          title: "期货品种管理",
+        },
+      },
+      {
         path: "/futures/contracts",
         component: () => import("@/views/futures/future_contracts_manager/FutureContractManager.vue"),
         meta: {
