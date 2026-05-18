@@ -11,6 +11,7 @@ import {
   type FutureContract,
   type TradeRecord,
   type TradeRecordCreateParams,
+  type TradeRecordOpenDirection,
   type TradeRecordScreenshot,
   type TradeRecordScreenshotUploadResult,
   type TradeRecordSegmentType,
@@ -22,15 +23,16 @@ import {
   ElMessageBox,
   type FormInstance,
   type FormRules,
-  type UploadRawFile,
   type UploadFile,
   type UploadProps,
+  type UploadRawFile,
   type UploadRequestOptions,
 } from 'element-plus'
 import { computed, onBeforeUnmount, onMounted, reactive, ref, watch } from 'vue'
 
 interface TradeRecordFilters {
   contract: string
+  open_direction: '' | TradeRecordOpenDirection
   segment_type: '' | TradeRecordSegmentType
   open_time_range: string[]
   close_time_range: string[]
@@ -39,6 +41,7 @@ interface TradeRecordFilters {
 interface TradeRecordForm {
   trade_record_id?: number
   contract: string
+  open_direction: TradeRecordOpenDirection
   lots: number
   open_time: string
   open_price: number
@@ -54,6 +57,8 @@ interface TradeRecordForm {
 const SEGMENT_PUSH = 'trend_push' as const
 const SEGMENT_PULLBACK = 'trend_pullback' as const
 const SEGMENT_RANGE = 'range_internal' as const
+const OPEN_DIRECTION_LONG = 'long' as const
+const OPEN_DIRECTION_SHORT = 'short' as const
 
 const segmentTypeOptions: Array<{ label: string; value: TradeRecordSegmentType }> = [
   { label: '趋势推动段', value: SEGMENT_PUSH },
@@ -65,6 +70,16 @@ const segmentTypeLabelMap: Record<TradeRecordSegmentType, string> = {
   trend_push: '趋势推动段',
   trend_pullback: '趋势回调段',
   range_internal: '区间内部段',
+}
+
+const openDirectionOptions: Array<{ label: string; value: TradeRecordOpenDirection }> = [
+  { label: '多单', value: OPEN_DIRECTION_LONG },
+  { label: '空单', value: OPEN_DIRECTION_SHORT },
+]
+
+const openDirectionLabelMap: Record<TradeRecordOpenDirection, string> = {
+  long: '多单',
+  short: '空单',
 }
 
 const loading = ref(false)
@@ -79,6 +94,7 @@ const uploadFileList = ref<UploadFile[]>([])
 
 const filters = reactive<TradeRecordFilters>({
   contract: '',
+  open_direction: '',
   segment_type: '',
   open_time_range: [],
   close_time_range: [],
@@ -86,6 +102,7 @@ const filters = reactive<TradeRecordFilters>({
 
 const form = reactive<TradeRecordForm>({
   contract: '',
+  open_direction: OPEN_DIRECTION_LONG,
   lots: 1,
   open_time: '',
   open_price: 0,
@@ -100,6 +117,7 @@ const form = reactive<TradeRecordForm>({
 
 const rules = reactive<FormRules<TradeRecordForm>>({
   contract: [{ required: true, message: '请选择合约', trigger: 'change' }],
+  open_direction: [{ required: true, message: '请选择开仓方向', trigger: 'change' }],
   lots: [{ required: true, message: '请输入手数', trigger: 'change' }],
   open_time: [{ required: true, message: '请选择开仓时间', trigger: 'change' }],
   open_price: [{ required: true, message: '请输入开仓价格', trigger: 'change' }],
@@ -110,17 +128,14 @@ const rules = reactive<FormRules<TradeRecordForm>>({
   actual_pnl: [{ required: true, message: '请输入实际盈亏', trigger: 'change' }],
 })
 
-const dialogTitle = computed(() =>
-  dialogMode.value === 'create' ? '新增交易记录' : '修改交易记录',
-)
+const dialogTitle = computed(() => (dialogMode.value === 'create' ? '新增交易记录' : '修改交易记录'))
 
-const disableFutureDateTime = (date: Date) => {
-  return date.getTime() > Date.now()
-}
+const disableFutureDateTime = (date: Date) => date.getTime() > Date.now()
 
 const resetForm = () => {
   form.trade_record_id = undefined
   form.contract = ''
+  form.open_direction = OPEN_DIRECTION_LONG
   form.lots = 1
   form.open_time = ''
   form.open_price = 0
@@ -138,6 +153,7 @@ const resetForm = () => {
 const buildListParams = () => {
   return {
     contract: filters.contract.trim() || undefined,
+    open_direction: filters.open_direction || undefined,
     segment_type: filters.segment_type || undefined,
     open_time_start: filters.open_time_range[0] || undefined,
     open_time_end: filters.open_time_range[1] || undefined,
@@ -188,6 +204,7 @@ const openEditDialog = (record: TradeRecord) => {
   dialogMode.value = 'edit'
   form.trade_record_id = record.trade_record_id
   form.contract = record.contract
+  form.open_direction = record.open_direction
   form.lots = record.lots
   form.open_time = record.open_time
   form.open_price = Number(record.open_price)
@@ -206,6 +223,7 @@ const openEditDialog = (record: TradeRecord) => {
 const buildPayload = (): TradeRecordCreateParams => {
   return {
     contract: form.contract.trim(),
+    open_direction: form.open_direction,
     lots: form.lots,
     open_time: form.open_time,
     open_price: form.open_price,
@@ -250,11 +268,7 @@ const submitForm = async () => {
     dialogVisible.value = false
     await loadTradeRecords()
   } catch {
-    ElMessage.error(
-      dialogMode.value === 'create'
-        ? '新增交易记录失败'
-        : '修改交易记录失败',
-    )
+    ElMessage.error(dialogMode.value === 'create' ? '新增交易记录失败' : '修改交易记录失败')
   } finally {
     submitting.value = false
   }
@@ -262,13 +276,9 @@ const submitForm = async () => {
 
 const handleDelete = async (record: TradeRecord) => {
   try {
-    await ElMessageBox.confirm(
-      `确认删除 ${record.contract} 的这条交易记录吗？`,
-      '删除确认',
-      {
-        type: 'warning',
-      },
-    )
+    await ElMessageBox.confirm(`确认删除 ${record.contract} 的这条交易记录吗？`, '删除确认', {
+      type: 'warning',
+    })
     await deleteTradeRecordApi(record.trade_record_id)
     ElMessage.success('删除交易记录成功')
     await loadTradeRecords()
@@ -285,9 +295,7 @@ const handleImportTradeRecords = async (options: UploadRequestOptions) => {
   try {
     const result = await importTradeRecordsApi(options.file)
     options.onSuccess?.(result)
-    ElMessage.success(
-      `导入完成：新增 ${result.imported} 条，跳过 ${result.skipped} 条，失败 ${result.failed} 条`,
-    )
+    ElMessage.success(`导入完成：新增 ${result.imported} 条，跳过 ${result.skipped} 条，失败 ${result.failed} 条`)
     await loadTradeRecords()
   } catch (error) {
     options.onError?.(error as Error)
@@ -346,9 +354,7 @@ const handleUploadRequest = async (options: UploadRequestOptions) => {
   }
 }
 
-const beforeScreenshotUpload: UploadProps['beforeUpload'] = (rawFile) => {
-  return validateScreenshotFile(rawFile)
-}
+const beforeScreenshotUpload: UploadProps['beforeUpload'] = (rawFile) => validateScreenshotFile(rawFile)
 
 const resolveUploadPath = (uploadFile: UploadFile) => {
   const response = uploadFile.response as TradeRecordScreenshotUploadResult | TradeRecordScreenshot | undefined
@@ -423,12 +429,17 @@ const formatSegmentType = (segmentType: TradeRecordSegmentType | null) => {
   return segmentTypeLabelMap[segmentType] ?? segmentType
 }
 
+const formatOpenDirection = (openDirection: TradeRecordOpenDirection) => {
+  return openDirectionLabelMap[openDirection] ?? openDirection
+}
+
 const handleSearch = async () => {
   await loadTradeRecords()
 }
 
 const handleResetFilters = async () => {
   filters.contract = ''
+  filters.open_direction = ''
   filters.segment_type = ''
   filters.open_time_range = []
   filters.close_time_range = []
@@ -457,8 +468,8 @@ onBeforeUnmount(() => {
   <div class="pageBox trade-record-manager">
     <div class="toolbar">
       <div>
-        <h2 class="title">{{ '交易记录' }}</h2>
-        <p class="subtitle">{{ '维护交易记录、盈亏复盘和操作截图' }}</p>
+        <h2 class="title">交易记录</h2>
+        <p class="subtitle">维护交易记录、盈亏复盘和操作截图</p>
       </div>
       <div class="toolbar-actions">
         <el-upload
@@ -468,22 +479,16 @@ onBeforeUnmount(() => {
           :http-request="handleImportTradeRecords"
           :disabled="importing"
         >
-          <el-button :loading="importing">{{ '上传交易记录' }}</el-button>
+          <el-button :loading="importing">上传交易记录</el-button>
         </el-upload>
-        <el-button type="primary" @click="openCreateDialog">{{ '新增交易记录' }}</el-button>
+        <el-button type="primary" @click="openCreateDialog">新增交易记录</el-button>
       </div>
     </div>
 
     <div class="filter-card">
       <el-form :inline="true" class="filter-form">
-        <el-form-item :label="'合约'">
-          <el-select
-            v-model="filters.contract"
-            filterable
-            clearable
-            :placeholder="'请选择合约'"
-            style="width: 180px"
-          >
+        <el-form-item label="合约">
+          <el-select v-model="filters.contract" filterable clearable placeholder="请选择合约" style="width: 180px">
             <el-option
               v-for="contractItem in contracts"
               :key="contractItem.contract_id"
@@ -492,8 +497,18 @@ onBeforeUnmount(() => {
             />
           </el-select>
         </el-form-item>
-        <el-form-item :label="'30F线段类型'">
-          <el-select v-model="filters.segment_type" :placeholder="'全部'" clearable style="width: 180px">
+        <el-form-item label="开仓方向">
+          <el-select v-model="filters.open_direction" placeholder="全部" clearable style="width: 140px">
+            <el-option
+              v-for="option in openDirectionOptions"
+              :key="option.value"
+              :label="option.label"
+              :value="option.value"
+            />
+          </el-select>
+        </el-form-item>
+        <el-form-item label="30F线段类型">
+          <el-select v-model="filters.segment_type" placeholder="全部" clearable style="width: 180px">
             <el-option
               v-for="option in segmentTypeOptions"
               :key="option.value"
@@ -502,69 +517,66 @@ onBeforeUnmount(() => {
             />
           </el-select>
         </el-form-item>
-        <el-form-item :label="'开仓时间'">
+        <el-form-item label="开仓时间">
           <el-date-picker
             v-model="filters.open_time_range"
             type="datetimerange"
-            :range-separator="'至'"
-            :start-placeholder="'开始时间'"
-            :end-placeholder="'结束时间'"
+            range-separator="至"
+            start-placeholder="开始时间"
+            end-placeholder="结束时间"
             value-format="YYYY-MM-DD HH:mm:ss"
           />
         </el-form-item>
-        <el-form-item :label="'平仓时间'">
+        <el-form-item label="平仓时间">
           <el-date-picker
             v-model="filters.close_time_range"
             type="datetimerange"
-            :range-separator="'至'"
-            :start-placeholder="'开始时间'"
-            :end-placeholder="'结束时间'"
+            range-separator="至"
+            start-placeholder="开始时间"
+            end-placeholder="结束时间"
             value-format="YYYY-MM-DD HH:mm:ss"
           />
         </el-form-item>
         <el-form-item>
-          <el-button type="primary" @click="handleSearch">{{ '查询' }}</el-button>
-          <el-button @click="handleResetFilters">{{ '重置' }}</el-button>
+          <el-button type="primary" @click="handleSearch">查询</el-button>
+          <el-button @click="handleResetFilters">重置</el-button>
         </el-form-item>
       </el-form>
     </div>
 
-    <el-table
-      v-loading="loading"
-      :data="records"
-      border
-      row-key="trade_record_id"
-      :empty-text="'暂无交易记录'"
-    >
+    <el-table v-loading="loading" :data="records" border row-key="trade_record_id" empty-text="暂无交易记录">
       <el-table-column prop="trade_record_id" label="ID" width="80" />
-      <el-table-column prop="contract" :label="'合约'" min-width="120" />
-      <el-table-column prop="lots" :label="'手数'" width="60" />
-      <el-table-column prop="open_time" :label="'开仓时间'" min-width="170">
+      <el-table-column prop="contract" label="合约" min-width="120" />
+      <el-table-column prop="open_direction" label="开仓方向" width="100">
+        <template #default="{ row }">{{ formatOpenDirection(row.open_direction) }}</template>
+      </el-table-column>
+      <el-table-column prop="lots" label="手数" width="90" />
+      <el-table-column prop="open_time" label="开仓时间" min-width="170">
         <template #default="{ row }">{{ formatDateTime(row.open_time) }}</template>
       </el-table-column>
-      <el-table-column prop="open_price" :label="'开仓价格'" min-width="120" align="right">
+      <el-table-column prop="open_price" label="开仓价格" min-width="120" align="right">
         <template #default="{ row }">{{ formatCurrency(row.open_price, 1) }}</template>
       </el-table-column>
-      <el-table-column prop="close_time" :label="'平仓时间'" min-width="170">
+      <el-table-column prop="close_time" label="平仓时间" min-width="170">
         <template #default="{ row }">{{ formatDateTime(row.close_time) }}</template>
       </el-table-column>
-      <el-table-column prop="close_price" :label="'平仓价格'" min-width="120" align="right">
+      <el-table-column prop="close_price" label="平仓价格" min-width="120" align="right">
         <template #default="{ row }">{{ formatCurrency(row.close_price, 1) }}</template>
       </el-table-column>
-      <el-table-column prop="segment_type" :label="'30F线段类型'" min-width="140">
+      <el-table-column prop="segment_type" label="30F线段类型" min-width="140">
         <template #default="{ row }">{{ formatSegmentType(row.segment_type) }}</template>
       </el-table-column>
-      <el-table-column prop="fee" :label="'手续费'" min-width="110" align="right">
+      <el-table-column prop="fee" label="手续费" min-width="110" align="right">
         <template #default="{ row }">{{ formatCurrency(row.fee) }}</template>
       </el-table-column>
-      <el-table-column prop="actual_pnl" :label="'实际盈亏'" min-width="120" align="right">
+      <el-table-column prop="actual_pnl" label="实际盈亏" min-width="120" align="right">
         <template #default="{ row }">
           <span :class="Number(row.actual_pnl) >= 0 ? 'pnl-positive' : 'pnl-negative'">
             {{ formatCurrency(row.actual_pnl) }}
           </span>
         </template>
       </el-table-column>
-      <el-table-column :label="'操作截图'" min-width="140">
+      <el-table-column label="操作截图" min-width="180">
         <template #default="{ row }">
           <div v-if="row.screenshots.length" class="screenshot-list">
             <el-image
@@ -581,14 +593,14 @@ onBeforeUnmount(() => {
           <span v-else class="empty-text">-</span>
         </template>
       </el-table-column>
-      <el-table-column prop="comment" :label="'操作评价'" min-width="220" show-overflow-tooltip />
-      <el-table-column prop="updated_at" :label="'更新时间'" min-width="170">
+      <el-table-column prop="comment" label="操作评价" min-width="220" show-overflow-tooltip />
+      <el-table-column prop="updated_at" label="更新时间" min-width="170">
         <template #default="{ row }">{{ formatDateTime(row.updated_at) }}</template>
       </el-table-column>
-      <el-table-column :label="'操作'" fixed="right" width="140">
+      <el-table-column label="操作" fixed="right" width="140">
         <template #default="{ row }">
-          <el-button type="primary" link @click="openEditDialog(row)">{{ '修改' }}</el-button>
-          <el-button type="danger" link @click="handleDelete(row)">{{ '删除' }}</el-button>
+          <el-button type="primary" link @click="openEditDialog(row)">修改</el-button>
+          <el-button type="danger" link @click="handleDelete(row)">删除</el-button>
         </template>
       </el-table-column>
     </el-table>
@@ -596,13 +608,8 @@ onBeforeUnmount(() => {
     <el-dialog v-model="dialogVisible" :title="dialogTitle" width="48rem" @closed="resetForm">
       <el-form ref="formRef" :model="form" :rules="rules" label-width="8rem" class="trade-form">
         <div class="form-grid">
-          <el-form-item :label="'合约'" prop="contract">
-            <el-select
-              v-model="form.contract"
-              filterable
-              :placeholder="'请选择合约'"
-              style="width: 100%"
-            >
+          <el-form-item label="合约" prop="contract">
+            <el-select v-model="form.contract" filterable placeholder="请选择合约" style="width: 100%">
               <el-option
                 v-for="contractItem in contracts"
                 :key="contractItem.contract_id"
@@ -611,41 +618,47 @@ onBeforeUnmount(() => {
               />
             </el-select>
           </el-form-item>
-          <el-form-item :label="'手数'" prop="lots">
+          <el-form-item label="开仓方向" prop="open_direction">
+            <el-select v-model="form.open_direction" placeholder="请选择开仓方向" style="width: 100%">
+              <el-option
+                v-for="option in openDirectionOptions"
+                :key="option.value"
+                :label="option.label"
+                :value="option.value"
+              />
+            </el-select>
+          </el-form-item>
+          <el-form-item label="手数" prop="lots">
             <el-input-number v-model="form.lots" :min="1" :step="1" :precision="0" style="width: 100%" />
           </el-form-item>
-          <el-form-item :label="'开仓时间'" prop="open_time">
+          <el-form-item label="开仓时间" prop="open_time">
             <el-date-picker
               v-model="form.open_time"
               type="datetime"
-              :placeholder="'请选择开仓时间'"
+              placeholder="请选择开仓时间"
               value-format="YYYY-MM-DD HH:mm:ss"
               :disabled-date="disableFutureDateTime"
               style="width: 100%"
             />
           </el-form-item>
-          <el-form-item :label="'开仓价格'" prop="open_price">
+          <el-form-item label="开仓价格" prop="open_price">
             <el-input-number v-model="form.open_price" :min="0" :precision="1" :step="0.5" style="width: 100%" />
           </el-form-item>
-          <el-form-item :label="'平仓时间'" prop="close_time">
+          <el-form-item label="平仓时间" prop="close_time">
             <el-date-picker
               v-model="form.close_time"
               type="datetime"
-              :placeholder="'请选择平仓时间'"
+              placeholder="请选择平仓时间"
               value-format="YYYY-MM-DD HH:mm:ss"
               :disabled-date="disableFutureDateTime"
               style="width: 100%"
             />
           </el-form-item>
-          <el-form-item :label="'平仓价格'" prop="close_price">
+          <el-form-item label="平仓价格" prop="close_price">
             <el-input-number v-model="form.close_price" :min="0" :precision="1" :step="0.5" style="width: 100%" />
           </el-form-item>
-          <el-form-item :label="'30F线段类型'" prop="segment_type">
-            <el-select
-              v-model="form.segment_type"
-              :placeholder="'请选择30F线段类型'"
-              style="width: 100%"
-            >
+          <el-form-item label="30F线段类型" prop="segment_type">
+            <el-select v-model="form.segment_type" placeholder="请选择30F线段类型" style="width: 100%">
               <el-option
                 v-for="option in segmentTypeOptions"
                 :key="option.value"
@@ -654,15 +667,15 @@ onBeforeUnmount(() => {
               />
             </el-select>
           </el-form-item>
-          <el-form-item :label="'手续费'" prop="fee">
+          <el-form-item label="手续费" prop="fee">
             <el-input-number v-model="form.fee" :min="0" :precision="2" :step="0.01" style="width: 100%" />
           </el-form-item>
-          <el-form-item :label="'实际盈亏'" prop="actual_pnl">
+          <el-form-item label="实际盈亏" prop="actual_pnl">
             <el-input-number v-model="form.actual_pnl" :precision="2" :step="1" style="width: 100%" />
           </el-form-item>
         </div>
 
-        <el-form-item :label="'操作截图'">
+        <el-form-item label="操作截图">
           <el-upload
             :file-list="uploadFileList"
             list-type="picture-card"
@@ -678,20 +691,20 @@ onBeforeUnmount(() => {
           <div class="upload-tip">支持点击上传，也支持在弹窗打开时按 Ctrl+V 粘贴截图</div>
         </el-form-item>
 
-        <el-form-item :label="'操作评价'">
+        <el-form-item label="操作评价">
           <el-input
             v-model="form.comment"
             type="textarea"
             :rows="4"
             maxlength="2000"
             show-word-limit
-            :placeholder="'请输入操作评价'"
+            placeholder="请输入操作评价"
           />
         </el-form-item>
       </el-form>
       <template #footer>
-        <el-button @click="dialogVisible = false">{{ '取消' }}</el-button>
-        <el-button type="primary" :loading="submitting" @click="submitForm">{{ '确认' }}</el-button>
+        <el-button @click="dialogVisible = false">取消</el-button>
+        <el-button type="primary" :loading="submitting" @click="submitForm">确认</el-button>
       </template>
     </el-dialog>
   </div>

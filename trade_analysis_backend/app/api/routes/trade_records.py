@@ -20,6 +20,7 @@ router = APIRouter()
 def list_trade_records(
     service: TradeRecordServiceDep,
     contract: str | None = Query(default=None),
+    open_direction: str | None = Query(default=None),
     segment_type: str | None = Query(default=None),
     open_time_start: datetime | None = Query(default=None),
     open_time_end: datetime | None = Query(default=None),
@@ -28,6 +29,7 @@ def list_trade_records(
 ) -> list[TradeRecordRead]:
     query = TradeRecordListQuery(
         contract=contract,
+        open_direction=open_direction,
         segment_type=segment_type,
         open_time_start=open_time_start,
         open_time_end=open_time_end,

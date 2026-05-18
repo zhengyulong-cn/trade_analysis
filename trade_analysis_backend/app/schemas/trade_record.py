@@ -6,6 +6,7 @@ from pydantic import ConfigDict, Field, model_validator
 from sqlmodel import SQLModel
 
 SegmentType = Literal["trend_push", "trend_pullback", "range_internal"]
+TradeRecordOpenDirection = Literal["long", "short"]
 
 
 class TradeRecordScreenshot(SQLModel):
@@ -17,6 +18,7 @@ class TradeRecordScreenshot(SQLModel):
 
 class TradeRecordBase(SQLModel):
     contract: str = Field(min_length=1, max_length=50)
+    open_direction: TradeRecordOpenDirection
     lots: int = Field(ge=0)
     open_time: datetime
     open_price: Decimal
@@ -42,6 +44,7 @@ class TradeRecordCreate(TradeRecordBase):
 class TradeRecordUpdate(SQLModel):
     trade_record_id: int
     contract: str | None = Field(default=None, min_length=1, max_length=50)
+    open_direction: TradeRecordOpenDirection | None = None
     lots: int | None = Field(default=None, ge=0)
     open_time: datetime | None = None
     open_price: Decimal | None = None
@@ -70,6 +73,7 @@ class TradeRecordRead(TradeRecordBase):
 
 class TradeRecordListQuery(SQLModel):
     contract: str | None = None
+    open_direction: TradeRecordOpenDirection | None = None
     segment_type: SegmentType | None = None
     open_time_start: datetime | None = None
     open_time_end: datetime | None = None

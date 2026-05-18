@@ -14,6 +14,7 @@ class TradeRecord(SQLModel, table=True):
 
     trade_record_id: int | None = Field(default=None, primary_key=True)
     contract: str = Field(index=True, min_length=1, max_length=50)
+    open_direction: str = Field(nullable=False, index=True, max_length=16)
     lots: int = Field(nullable=False, ge=0)
     open_time: datetime = Field(index=True)
     open_price: Decimal = Field(max_digits=20, decimal_places=2)

@@ -16,6 +16,21 @@ from app.schemas.trade_record import (
 from app.services.trade_record_storage import TradeRecordStorageService
 
 
+TRADE_DETAIL_TRADE_NO = "成交序号"
+TRADE_DETAIL_TIME = "成交时间"
+TRADE_DETAIL_SIDE = "买/卖"
+TRADE_DETAIL_FEE = "手续费"
+TRADE_DETAIL_DATE = "实际成交日期"
+
+CLOSE_DETAIL_CONTRACT = "合约"
+CLOSE_DETAIL_TRADE_NO = "成交序号"
+CLOSE_DETAIL_OPEN_PRICE = "开仓价"
+CLOSE_DETAIL_CLOSE_PRICE = "成交价"
+CLOSE_DETAIL_LOTS = "手数"
+CLOSE_DETAIL_PNL = "平仓盈亏"
+CLOSE_DETAIL_ORIGINAL_TRADE_NO = "原成交序号"
+
+
 class TradeRecordService:
     def __init__(self, session: Session, storage_service: TradeRecordStorageService):
         self.session = session
@@ -26,6 +41,8 @@ class TradeRecordService:
 
         if query.contract:
             statement = statement.where(TradeRecord.contract.contains(query.contract.strip()))
+        if query.open_direction:
+            statement = statement.where(TradeRecord.open_direction == query.open_direction)
         if query.segment_type:
             statement = statement.where(TradeRecord.segment_type == query.segment_type)
         if query.open_time_start:
@@ -61,8 +78,8 @@ class TradeRecordService:
         close_details = self._clean_close_detail_rows(close_details)
 
         trade_index = self._build_trade_detail_index(trade_details)
-        close_fee_weights = self._build_lots_weight_map(close_details, "成交序号")
-        open_fee_weights = self._build_lots_weight_map(close_details, "原成交序号")
+        close_fee_weights = self._build_lots_weight_map(close_details, CLOSE_DETAIL_TRADE_NO)
+        open_fee_weights = self._build_lots_weight_map(close_details, CLOSE_DETAIL_ORIGINAL_TRADE_NO)
         existing_pairs = self._load_existing_import_pairs()
 
         imported = 0
@@ -71,8 +88,8 @@ class TradeRecordService:
 
         for _, row in close_details.iterrows():
             try:
-                open_trade_no = self._normalize_trade_no(row.get("原成交序号"))
-                close_trade_no = self._normalize_trade_no(row.get("成交序号"))
+                open_trade_no = self._normalize_trade_no(row.get(CLOSE_DETAIL_ORIGINAL_TRADE_NO))
+                close_trade_no = self._normalize_trade_no(row.get(CLOSE_DETAIL_TRADE_NO))
                 if not open_trade_no or not close_trade_no:
                     failed += 1
                     continue
@@ -88,34 +105,35 @@ class TradeRecordService:
                     failed += 1
                     continue
 
-                lots = self._to_int(row.get("手数"))
+                lots = self._to_int(row.get(CLOSE_DETAIL_LOTS))
                 open_fee = self._allocate_fee(
-                    open_trade.get("手续费"),
+                    open_trade.get(TRADE_DETAIL_FEE),
                     lots,
                     open_fee_weights.get(open_trade_no, lots),
                 )
                 close_fee = self._allocate_fee(
-                    close_trade.get("手续费"),
+                    close_trade.get(TRADE_DETAIL_FEE),
                     lots,
                     close_fee_weights.get(close_trade_no, lots),
                 )
 
                 trade_record = TradeRecord(
-                    contract=str(row.get("合约")).strip(),
+                    contract=str(row.get(CLOSE_DETAIL_CONTRACT)).strip(),
+                    open_direction=self._resolve_open_direction(open_trade.get(TRADE_DETAIL_SIDE)),
                     lots=lots,
                     open_time=self._combine_trade_datetime(
-                        open_trade.get("实际成交日期"),
-                        open_trade.get("成交时间"),
+                        open_trade.get(TRADE_DETAIL_DATE),
+                        open_trade.get(TRADE_DETAIL_TIME),
                     ),
-                    open_price=self._to_decimal(row.get("开仓价")),
+                    open_price=self._to_decimal(row.get(CLOSE_DETAIL_OPEN_PRICE)),
                     close_time=self._combine_trade_datetime(
-                        close_trade.get("实际成交日期"),
-                        close_trade.get("成交时间"),
+                        close_trade.get(TRADE_DETAIL_DATE),
+                        close_trade.get(TRADE_DETAIL_TIME),
                     ),
-                    close_price=self._to_decimal(row.get("成交价")),
+                    close_price=self._to_decimal(row.get(CLOSE_DETAIL_CLOSE_PRICE)),
                     segment_type=None,
                     fee=open_fee + close_fee,
-                    actual_pnl=self._to_decimal(row.get("平仓盈亏")),
+                    actual_pnl=self._to_decimal(row.get(CLOSE_DETAIL_PNL)),
                     import_open_trade_no=open_trade_no,
                     import_close_trade_no=close_trade_no,
                     screenshots=[],
@@ -200,20 +218,20 @@ class TradeRecordService:
 
     def _clean_trade_detail_rows(self, dataframe: pd.DataFrame) -> pd.DataFrame:
         cleaned = dataframe.copy()
-        cleaned = cleaned[cleaned["合约"].notna()]
-        cleaned = cleaned[cleaned["合约"] != "合计"]
+        cleaned = cleaned[cleaned[CLOSE_DETAIL_CONTRACT].notna()]
+        cleaned = cleaned[cleaned[CLOSE_DETAIL_CONTRACT] != "合计"]
         return cleaned
 
     def _clean_close_detail_rows(self, dataframe: pd.DataFrame) -> pd.DataFrame:
         cleaned = dataframe.copy()
-        cleaned = cleaned[cleaned["合约"].notna()]
-        cleaned = cleaned[cleaned["合约"] != "合计"]
+        cleaned = cleaned[cleaned[CLOSE_DETAIL_CONTRACT].notna()]
+        cleaned = cleaned[cleaned[CLOSE_DETAIL_CONTRACT] != "合计"]
         return cleaned
 
     def _build_trade_detail_index(self, dataframe: pd.DataFrame) -> dict[str, dict]:
         trade_index: dict[str, dict] = {}
         for _, row in dataframe.iterrows():
-            trade_no = self._normalize_trade_no(row.get("成交序号"))
+            trade_no = self._normalize_trade_no(row.get(TRADE_DETAIL_TRADE_NO))
             if trade_no:
                 trade_index[trade_no] = row.to_dict()
         return trade_index
@@ -224,7 +242,7 @@ class TradeRecordService:
             trade_no = self._normalize_trade_no(row.get(column_name))
             if not trade_no:
                 continue
-            weights[trade_no] = weights.get(trade_no, 0) + self._to_int(row.get("手数"))
+            weights[trade_no] = weights.get(trade_no, 0) + self._to_int(row.get(CLOSE_DETAIL_LOTS))
         return weights
 
     def _load_existing_import_pairs(self) -> set[tuple[str, str]]:
@@ -259,8 +277,16 @@ class TradeRecordService:
             combined = combined - timedelta(days=1)
         return combined
 
+    def _resolve_open_direction(self, side_value: object) -> str:
+        side = str(side_value).strip()
+        if side == "买":
+            return "long"
+        if side == "卖":
+            return "short"
+        raise ValueError(f"Unsupported open direction side: {side}")
+
     def _to_decimal(self, value: object) -> Decimal:
-        if value is None or pd.isna(value):
+        if value is None or pd.isna(value) or str(value).strip() == "--":
             return Decimal("0")
         return Decimal(str(value).strip())
 

@@ -1,6 +1,7 @@
 import axios from "@/api/axios";
 
 export type TradeRecordSegmentType = "trend_push" | "trend_pullback" | "range_internal"
+export type TradeRecordOpenDirection = "long" | "short"
 
 export interface TradeRecordScreenshot {
   path: string
@@ -12,6 +13,7 @@ export interface TradeRecordScreenshot {
 export interface TradeRecord {
   trade_record_id: number
   contract: string
+  open_direction: TradeRecordOpenDirection
   lots: number
   open_time: string
   open_price: number | string
@@ -28,6 +30,7 @@ export interface TradeRecord {
 
 export interface TradeRecordCreateParams {
   contract: string
+  open_direction: TradeRecordOpenDirection
   lots: number
   open_time: string
   open_price: number
@@ -46,6 +49,7 @@ export interface TradeRecordUpdateParams extends Partial<TradeRecordCreateParams
 
 export interface TradeRecordListParams {
   contract?: string
+  open_direction?: TradeRecordOpenDirection
   segment_type?: TradeRecordSegmentType
   open_time_start?: string
   open_time_end?: string
