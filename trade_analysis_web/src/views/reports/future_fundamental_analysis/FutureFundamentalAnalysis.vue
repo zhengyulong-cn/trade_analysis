@@ -13,9 +13,10 @@ import {
   type FutureProduct,
   type FutureReportDocument,
 } from "@/api/modules"
+import { buildFundamentalAnalysisPrompt } from "@/prompts/fundamentalAnalysisPrompt"
 import { formatDateTime as formatDateTimeByDayjs } from "@/utils/date"
 import { ElMessage, ElMessageBox, type FormInstance, type FormRules, type UploadFile } from "element-plus"
-import { computed, onMounted, reactive, ref } from "vue"
+import { computed, onMounted, reactive, ref, watch } from "vue"
 
 interface AnalysisForm {
   analysis_id?: number
@@ -36,6 +37,18 @@ interface ReportUploadForm {
   file: File | null
 }
 
+interface AnalysisJsonPayload {
+  product_code: string
+  product_name: string
+  supply_side: string
+  demand_side: string
+  inventory_side: string
+  industry_profit: string
+  substitution_linkage: string
+  policy_macro: string
+  conclusion: string
+}
+
 const reports = ref<FutureReportDocument[]>([])
 const analyses = ref<FutureFundamentalAnalysis[]>([])
 const products = ref<FutureProduct[]>([])
@@ -48,9 +61,17 @@ const submitting = ref(false)
 const dialogVisible = ref(false)
 const dialogMode = ref<"create" | "edit">("create")
 const formRef = ref<FormInstance>()
+const viewDialogVisible = ref(false)
+const viewingAnalysis = ref<FutureFundamentalAnalysis | null>(null)
 
 const reportUploadDialogVisible = ref(false)
 const reportUploadFormRef = ref<FormInstance>()
+
+const activeAnalysisMode = ref<"fields" | "json">("fields")
+const analysisJsonText = ref("")
+const analysisJsonError = ref("")
+let syncingFromFields = false
+let syncingFromJson = false
 
 const form = reactive<AnalysisForm>({
   product_id: null,
@@ -83,6 +104,96 @@ const reportUploadRules = reactive<FormRules<ReportUploadForm>>({
 
 const dialogTitle = computed(() => (dialogMode.value === "create" ? "新增基本面分析" : "编辑基本面分析"))
 
+const selectedProduct = computed(() => {
+  return products.value.find((item) => item.product_id === form.product_id) ?? null
+})
+
+const selectedReport = computed(() => {
+  return reports.value.find((item) => item.report_id === form.report_id) ?? null
+})
+
+const buildAnalysisJsonPayload = (): AnalysisJsonPayload => ({
+  product_code: selectedProduct.value?.product_code ?? "",
+  product_name: selectedProduct.value?.display_name ?? "",
+  supply_side: form.supply_side,
+  demand_side: form.demand_side,
+  inventory_side: form.inventory_side,
+  industry_profit: form.industry_profit,
+  substitution_linkage: form.substitution_linkage,
+  policy_macro: form.policy_macro,
+  conclusion: form.conclusion,
+})
+
+const syncJsonFromForm = () => {
+  syncingFromFields = true
+  analysisJsonError.value = ""
+  analysisJsonText.value = JSON.stringify(buildAnalysisJsonPayload(), null, 2)
+  syncingFromFields = false
+}
+
+const applyJsonToForm = (payload: Partial<AnalysisJsonPayload>) => {
+  syncingFromJson = true
+  form.supply_side = typeof payload.supply_side === "string" ? payload.supply_side : ""
+  form.demand_side = typeof payload.demand_side === "string" ? payload.demand_side : ""
+  form.inventory_side = typeof payload.inventory_side === "string" ? payload.inventory_side : ""
+  form.industry_profit = typeof payload.industry_profit === "string" ? payload.industry_profit : ""
+  form.substitution_linkage = typeof payload.substitution_linkage === "string" ? payload.substitution_linkage : ""
+  form.policy_macro = typeof payload.policy_macro === "string" ? payload.policy_macro : ""
+  form.conclusion = typeof payload.conclusion === "string" ? payload.conclusion : ""
+
+  const jsonProductCode =
+    typeof payload.product_code === "string" ? payload.product_code.trim().toUpperCase() : ""
+  if (jsonProductCode) {
+    const matchedProduct = products.value.find((item) => item.product_code.toUpperCase() === jsonProductCode)
+    if (matchedProduct) {
+      form.product_id = matchedProduct.product_id
+    }
+  }
+
+  syncingFromJson = false
+  analysisJsonError.value = ""
+}
+
+watch(
+  () => [
+    form.product_id,
+    form.supply_side,
+    form.demand_side,
+    form.inventory_side,
+    form.industry_profit,
+    form.substitution_linkage,
+    form.policy_macro,
+    form.conclusion,
+  ],
+  () => {
+    if (syncingFromJson) {
+      return
+    }
+    syncJsonFromForm()
+  },
+  { deep: true },
+)
+
+watch(
+  analysisJsonText,
+  (value) => {
+    if (syncingFromFields) {
+      return
+    }
+    const trimmed = value.trim()
+    if (!trimmed) {
+      analysisJsonError.value = ""
+      return
+    }
+    try {
+      const parsed = JSON.parse(trimmed) as Partial<AnalysisJsonPayload>
+      applyJsonToForm(parsed)
+    } catch {
+      analysisJsonError.value = "JSON格式不合法，暂未回填字段"
+    }
+  },
+)
+
 const sortProducts = (items: FutureProduct[]) => {
   return [...items].sort((first, second) => first.product_code.localeCompare(second.product_code, "zh-CN"))
 }
@@ -94,6 +205,7 @@ const sortReports = (items: FutureReportDocument[]) => {
 const loadProducts = async () => {
   try {
     products.value = sortProducts(await getFutureProductList())
+    syncJsonFromForm()
   } catch {
     ElMessage.error("获取产品列表失败")
   }
@@ -132,7 +244,10 @@ const resetForm = () => {
   form.substitution_linkage = ""
   form.policy_macro = ""
   form.conclusion = ""
+  activeAnalysisMode.value = "fields"
+  analysisJsonError.value = ""
   formRef.value?.clearValidate()
+  syncJsonFromForm()
 }
 
 const resetReportUploadForm = () => {
@@ -160,13 +275,44 @@ const openEditDialog = (row: FutureFundamentalAnalysis) => {
   form.substitution_linkage = row.substitution_linkage ?? ""
   form.policy_macro = row.policy_macro ?? ""
   form.conclusion = row.conclusion ?? ""
+  activeAnalysisMode.value = "fields"
+  analysisJsonError.value = ""
   formRef.value?.clearValidate()
+  syncJsonFromForm()
   dialogVisible.value = true
+}
+
+const openViewDialog = (row: FutureFundamentalAnalysis) => {
+  viewingAnalysis.value = row
+  viewDialogVisible.value = true
 }
 
 const openUploadDialog = () => {
   resetReportUploadForm()
   reportUploadDialogVisible.value = true
+}
+
+const handleCopyPrompt = async () => {
+  if (!selectedProduct.value) {
+    ElMessage.warning("请先选择产品")
+    return
+  }
+
+  const prompt = buildFundamentalAnalysisPrompt({
+    productCode: selectedProduct.value.product_code,
+    productName: selectedProduct.value.display_name,
+    aliasNames: selectedProduct.value.alias_names,
+    reportName: selectedReport.value?.report_name,
+    reportSource: selectedReport.value?.report_source,
+    publishedAt: selectedReport.value?.published_at,
+  })
+
+  try {
+    await navigator.clipboard.writeText(prompt)
+    ElMessage.success("Prompt已复制")
+  } catch {
+    ElMessage.error("复制失败，请检查浏览器权限")
+  }
 }
 
 const trimToNull = (value: string) => {
@@ -310,8 +456,14 @@ const formatFileSize = (size: number) => {
   return `${size} B`
 }
 
+const displayFieldText = (value?: string | null) => {
+  const cleaned = typeof value === "string" ? value.trim() : ""
+  return cleaned || "未填写"
+}
+
 onMounted(() => {
   void Promise.all([loadProducts(), loadReports(), loadAnalyses()])
+  syncJsonFromForm()
 })
 </script>
 
@@ -320,9 +472,7 @@ onMounted(() => {
     <div class="page-header">
       <div>
         <h2 class="title">基本面分析</h2>
-        <p class="subtitle">左侧维护PDF研报文件，右侧手工沉淀结构化的基本面分析结果。</p>
       </div>
-      <el-button type="primary" @click="openCreateDialog">新增分析</el-button>
     </div>
 
     <div class="content-grid">
@@ -330,7 +480,6 @@ onMounted(() => {
         <div class="panel-header">
           <div>
             <h3>研报上传</h3>
-            <p>PDF原件直接保存到 `/storage/future_reports`，上传时补充发布时间和来源。</p>
           </div>
           <el-button type="primary" @click="openUploadDialog">上传研报</el-button>
         </div>
@@ -341,7 +490,7 @@ onMounted(() => {
           border
           row-key="report_id"
           empty-text="暂无研报"
-          height="620"
+          height="40rem"
         >
           <el-table-column prop="report_name" label="研报" min-width="220">
             <template #default="{ row }">
@@ -349,8 +498,8 @@ onMounted(() => {
               <div class="meta-text">{{ row.original_filename }}</div>
             </template>
           </el-table-column>
-          <el-table-column prop="report_source" label="来源" min-width="140" />
           <el-table-column prop="published_at" label="发布时间" min-width="180" :formatter="formatDateTime" />
+          <el-table-column prop="report_source" label="来源" min-width="140" />
           <el-table-column label="大小" width="110">
             <template #default="{ row }">
               {{ formatFileSize(row.file_size) }}
@@ -369,8 +518,8 @@ onMounted(() => {
         <div class="panel-header">
           <div>
             <h3>分析结果表</h3>
-            <p>先手工录入结构化观点，后续再接JSON自动回填。</p>
           </div>
+          <el-button type="primary" @click="openCreateDialog">新增分析</el-button>
         </div>
 
         <el-table
@@ -379,9 +528,9 @@ onMounted(() => {
           border
           row-key="analysis_id"
           empty-text="暂无基本面分析"
-          height="620"
+          height="40rem"
         >
-          <el-table-column label="产品" min-width="160" fixed="left">
+          <el-table-column label="产品" min-width="80" fixed="left">
             <template #default="{ row }">
               <div>{{ row.product_display_name }}</div>
               <div class="meta-text">{{ row.product_code }}</div>
@@ -400,8 +549,9 @@ onMounted(() => {
           <el-table-column prop="policy_macro" label="政策与宏观" min-width="220" show-overflow-tooltip />
           <el-table-column prop="conclusion" label="结论" min-width="240" show-overflow-tooltip />
           <el-table-column prop="updated_at" label="更新时间" min-width="180" :formatter="formatDateTime" />
-          <el-table-column label="操作" width="140" fixed="right">
+          <el-table-column label="操作" width="190" fixed="right">
             <template #default="{ row }">
+              <el-button type="primary" link @click="openViewDialog(row)">查看</el-button>
               <el-button type="primary" link @click="openEditDialog(row)">编辑</el-button>
               <el-button type="danger" link @click="handleDeleteAnalysis(row)">删除</el-button>
             </template>
@@ -467,31 +617,108 @@ onMounted(() => {
             </el-select>
           </el-form-item>
         </div>
-        <el-form-item label="供给端">
-          <el-input v-model="form.supply_side" type="textarea" :rows="3" />
-        </el-form-item>
-        <el-form-item label="需求端">
-          <el-input v-model="form.demand_side" type="textarea" :rows="3" />
-        </el-form-item>
-        <el-form-item label="库存端">
-          <el-input v-model="form.inventory_side" type="textarea" :rows="3" />
-        </el-form-item>
-        <el-form-item label="产业利润">
-          <el-input v-model="form.industry_profit" type="textarea" :rows="3" />
-        </el-form-item>
-        <el-form-item label="替代与联动">
-          <el-input v-model="form.substitution_linkage" type="textarea" :rows="3" />
-        </el-form-item>
-        <el-form-item label="政策与宏观">
-          <el-input v-model="form.policy_macro" type="textarea" :rows="3" />
-        </el-form-item>
-        <el-form-item label="结论">
-          <el-input v-model="form.conclusion" type="textarea" :rows="4" />
-        </el-form-item>
+
+        <div class="prompt-toolbar">
+          <div class="prompt-toolbar-text">
+            选择好产品和研报后，可一键复制发给 DeepSeek 的分析 prompt。
+          </div>
+          <el-button plain type="primary" @click="handleCopyPrompt">一键复制 Prompt</el-button>
+        </div>
+
+        <el-tabs v-model="activeAnalysisMode" class="analysis-mode-tabs">
+          <el-tab-pane label="字段模式" name="fields">
+            <el-form-item label="供给端">
+              <el-input v-model="form.supply_side" type="textarea" :rows="3" />
+            </el-form-item>
+            <el-form-item label="需求端">
+              <el-input v-model="form.demand_side" type="textarea" :rows="3" />
+            </el-form-item>
+            <el-form-item label="库存端">
+              <el-input v-model="form.inventory_side" type="textarea" :rows="3" />
+            </el-form-item>
+            <el-form-item label="产业利润">
+              <el-input v-model="form.industry_profit" type="textarea" :rows="3" />
+            </el-form-item>
+            <el-form-item label="替代与联动">
+              <el-input v-model="form.substitution_linkage" type="textarea" :rows="3" />
+            </el-form-item>
+            <el-form-item label="政策与宏观">
+              <el-input v-model="form.policy_macro" type="textarea" :rows="3" />
+            </el-form-item>
+            <el-form-item label="结论">
+              <el-input v-model="form.conclusion" type="textarea" :rows="4" />
+            </el-form-item>
+          </el-tab-pane>
+
+          <el-tab-pane label="JSON模式" name="json">
+            <div class="json-mode-tip">
+              粘贴合法JSON后，字段模式会自动回填；字段模式修改内容后，这里也会自动同步。
+            </div>
+            <el-input v-model="analysisJsonText" type="textarea" :rows="20" placeholder="请粘贴JSON" />
+            <div class="json-mode-error" v-if="analysisJsonError">{{ analysisJsonError }}</div>
+          </el-tab-pane>
+        </el-tabs>
       </el-form>
+
       <template #footer>
         <el-button @click="dialogVisible = false">取消</el-button>
         <el-button type="primary" :loading="submitting" @click="submitForm">保存</el-button>
+      </template>
+    </el-dialog>
+
+    <el-dialog v-model="viewDialogVisible" title="分析详情" width="62rem">
+      <div v-if="viewingAnalysis" class="analysis-detail">
+        <div class="detail-hero">
+          <div class="detail-main">
+            <div class="detail-product">
+              {{ viewingAnalysis.product_display_name }}
+              <span class="detail-product-code">{{ viewingAnalysis.product_code }}</span>
+            </div>
+            <div class="detail-report-row">
+              <span class="detail-report-name">{{ viewingAnalysis.report_name }}</span>
+              <el-button type="primary" link @click="openReport(viewingAnalysis)">查看原PDF</el-button>
+            </div>
+          </div>
+          <div class="detail-meta">
+            <div>创建时间：{{ formatDateTime(undefined, undefined, viewingAnalysis.create_at) }}</div>
+            <div>更新时间：{{ formatDateTime(undefined, undefined, viewingAnalysis.updated_at) }}</div>
+          </div>
+        </div>
+
+        <div class="detail-grid">
+          <section class="detail-card">
+            <h4>供给端</h4>
+            <p>{{ displayFieldText(viewingAnalysis.supply_side) }}</p>
+          </section>
+          <section class="detail-card">
+            <h4>需求端</h4>
+            <p>{{ displayFieldText(viewingAnalysis.demand_side) }}</p>
+          </section>
+          <section class="detail-card">
+            <h4>库存端</h4>
+            <p>{{ displayFieldText(viewingAnalysis.inventory_side) }}</p>
+          </section>
+          <section class="detail-card">
+            <h4>产业利润</h4>
+            <p>{{ displayFieldText(viewingAnalysis.industry_profit) }}</p>
+          </section>
+          <section class="detail-card">
+            <h4>替代与联动</h4>
+            <p>{{ displayFieldText(viewingAnalysis.substitution_linkage) }}</p>
+          </section>
+          <section class="detail-card">
+            <h4>政策与宏观</h4>
+            <p>{{ displayFieldText(viewingAnalysis.policy_macro) }}</p>
+          </section>
+        </div>
+
+        <section class="detail-card detail-conclusion">
+          <h4>结论</h4>
+          <p>{{ displayFieldText(viewingAnalysis.conclusion) }}</p>
+        </section>
+      </div>
+      <template #footer>
+        <el-button @click="viewDialogVisible = false">关闭</el-button>
       </template>
     </el-dialog>
   </div>
@@ -558,8 +785,132 @@ onMounted(() => {
   gap: 0 16px;
 }
 
+.analysis-mode-tabs {
+  margin-top: 4px;
+}
+
+.prompt-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin: 4px 0 12px;
+  padding: 12px 14px;
+  border-radius: 10px;
+  background: #f7f9fc;
+  border: 1px solid #e7ecf3;
+}
+
+.prompt-toolbar-text {
+  color: #606266;
+  font-size: 13px;
+}
+
+.json-mode-tip {
+  margin-bottom: 12px;
+  color: #606266;
+  font-size: 13px;
+}
+
+.json-mode-error {
+  margin-top: 8px;
+  color: #f56c6c;
+  font-size: 13px;
+}
+
+.analysis-detail {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.detail-hero {
+  display: flex;
+  justify-content: space-between;
+  gap: 20px;
+  padding: 18px 20px;
+  border-radius: 14px;
+  background: linear-gradient(135deg, #f7fbff 0%, #eef5ff 100%);
+  border: 1px solid #dbe7ff;
+}
+
+.detail-main {
+  min-width: 0;
+}
+
+.detail-product {
+  font-size: 22px;
+  font-weight: 700;
+  color: #1f2d3d;
+}
+
+.detail-product-code {
+  margin-left: 10px;
+  font-size: 14px;
+  font-weight: 600;
+  color: #4e6ef2;
+  background: rgba(78, 110, 242, 0.1);
+  border-radius: 999px;
+  padding: 4px 10px;
+  vertical-align: middle;
+}
+
+.detail-report-row {
+  margin-top: 10px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.detail-report-name,
+.detail-meta {
+  color: #606266;
+  font-size: 13px;
+  line-height: 1.8;
+}
+
+.detail-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 14px;
+}
+
+.detail-card {
+  padding: 16px;
+  border-radius: 12px;
+  background: #ffffff;
+  border: 1px solid #ebeef5;
+  box-shadow: 0 8px 24px rgba(31, 45, 61, 0.06);
+}
+
+.detail-card h4 {
+  margin: 0 0 10px;
+  font-size: 15px;
+  font-weight: 600;
+  color: #303133;
+}
+
+.detail-card p {
+  margin: 0;
+  white-space: pre-wrap;
+  line-height: 1.75;
+  color: #4f5b66;
+  font-size: 14px;
+}
+
+.detail-conclusion {
+  background: linear-gradient(180deg, #fffaf2 0%, #fffdf8 100%);
+  border-color: #f2dfb1;
+}
+
+
 @media (max-width: 1200px) {
   .content-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .detail-grid {
     grid-template-columns: 1fr;
   }
 }
@@ -573,6 +924,15 @@ onMounted(() => {
 
   .dialog-grid {
     grid-template-columns: 1fr;
+  }
+
+  .prompt-toolbar {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+
+  .detail-hero {
+    flex-direction: column;
   }
 }
 </style>
