@@ -111,6 +111,10 @@ const dialogTitle = computed(() =>
   dialogMode.value === 'create' ? '\u65b0\u589e\u4ea4\u6613\u8bb0\u5f55' : '\u4fee\u6539\u4ea4\u6613\u8bb0\u5f55',
 )
 
+const disableFutureDateTime = (date: Date) => {
+  return date.getTime() > Date.now()
+}
+
 const resetForm = () => {
   form.trade_record_id = undefined
   form.contract = ''
@@ -534,6 +538,7 @@ onMounted(() => {
               type="datetime"
               :placeholder="'\u8bf7\u9009\u62e9\u5f00\u4ed3\u65f6\u95f4'"
               value-format="YYYY-MM-DD HH:mm:ss"
+              :disabled-date="disableFutureDateTime"
               style="width: 100%"
             />
           </el-form-item>
@@ -546,6 +551,7 @@ onMounted(() => {
               type="datetime"
               :placeholder="'\u8bf7\u9009\u62e9\u5e73\u4ed3\u65f6\u95f4'"
               value-format="YYYY-MM-DD HH:mm:ss"
+              :disabled-date="disableFutureDateTime"
               style="width: 100%"
             />
           </el-form-item>

@@ -37,7 +37,7 @@ class TradeRecordService:
         return list(self.session.exec(statement).all())
 
     def create_trade_record(self, payload: TradeRecordCreate) -> TradeRecord:
-        trade_record = TradeRecord.model_validate(payload)
+        trade_record = TradeRecord.model_validate(payload.model_dump())
         self.session.add(trade_record)
         self.session.commit()
         self.session.refresh(trade_record)
