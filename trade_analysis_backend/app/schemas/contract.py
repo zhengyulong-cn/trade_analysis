@@ -5,6 +5,7 @@ from sqlmodel import SQLModel
 
 
 class ContractBase(SQLModel):
+    product_id: int
     symbol: str
     exchange: str
     name: str
@@ -44,6 +45,8 @@ class ContractRead(ContractBase):
     model_config = ConfigDict(from_attributes=True)
 
     contract_id: int
+    product_code: str | None = None
+    product_name: str | None = None
     create_at: datetime
     updated_at: datetime
 

@@ -3,6 +3,7 @@ import re
 from fastapi import APIRouter, status
 
 from app.api.dependencies import ContractServiceDep, QuoteProviderDep
+from app.models.product import Product
 from app.schemas.contract import (
     ContractCreate,
     ContractRead,
@@ -11,6 +12,8 @@ from app.schemas.contract import (
     MainContractSyncPayload,
     MainContractSyncResult,
 )
+from app.db.session import engine
+from sqlmodel import Session, select
 
 router = APIRouter()
 
@@ -38,7 +41,27 @@ def _is_allowed_main_contract(symbol: str) -> bool:
 
 @router.get("", response_model=list[ContractRead])
 def list_contracts(service: ContractServiceDep) -> list[ContractRead]:
-    return [ContractRead.model_validate(contract) for contract in service.list_contracts()]
+    contracts = service.list_contracts()
+    product_ids = {item.product_id for item in contracts}
+    product_map: dict[int, Product] = {}
+    if product_ids:
+        with Session(engine) as session:
+            products = session.exec(select(Product).where(Product.product_id.in_(product_ids))).all()
+            product_map = {item.product_id: item for item in products}
+
+    items: list[ContractRead] = []
+    for contract in contracts:
+        product = product_map.get(contract.product_id)
+        items.append(
+            ContractRead.model_validate(
+                {
+                    **contract.model_dump(),
+                    "product_code": product.product_code if product else None,
+                    "product_name": product.name if product else None,
+                }
+            )
+        )
+    return items
 
 
 @router.post("/create", response_model=ContractRead, status_code=status.HTTP_201_CREATED)
@@ -46,7 +69,8 @@ def create_contract(
     payload: ContractCreate,
     service: ContractServiceDep,
 ) -> ContractRead:
-    return ContractRead.model_validate(service.create_contract(payload))
+    contract = service.create_contract(payload)
+    return ContractRead.model_validate(contract.model_dump())
 
 
 @router.post("/update", response_model=ContractRead)
@@ -54,7 +78,8 @@ def update_contract(
     payload: ContractUpdate,
     service: ContractServiceDep,
 ) -> ContractRead:
-    return ContractRead.model_validate(service.update_contract(payload))
+    contract = service.update_contract(payload)
+    return ContractRead.model_validate(contract.model_dump())
 
 
 @router.get("/main-contracts", response_model=list[MainContractCandidateRead])

@@ -60,11 +60,31 @@ def ensure_report_document_columns() -> None:
         connection.commit()
 
 
+def ensure_contract_product_column() -> None:
+    with engine.connect() as connection:
+        exists = connection.execute(
+            text(
+                """
+                SELECT COUNT(*)
+                FROM information_schema.COLUMNS
+                WHERE TABLE_SCHEMA = :schema
+                  AND TABLE_NAME = 'contracts'
+                  AND COLUMN_NAME = 'product_id'
+                """
+            ),
+            {"schema": settings.mysql_database},
+        ).scalar_one()
+        if not exists:
+            connection.execute(text("ALTER TABLE contracts ADD COLUMN product_id BIGINT NULL"))
+            connection.commit()
+
+
 def initialize_database() -> None:
     try:
         create_database_if_not_exists()
         metadata.create_all(engine)
         ensure_report_document_columns()
+        ensure_contract_product_column()
         logger.info("Database tables initialized")
     except SQLAlchemyError:
         logger.exception("Failed to initialize database")

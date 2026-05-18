@@ -1,13 +1,13 @@
 <script lang="ts" setup>
 import {
-  getFutureContractList,
-  getFutureContractPromptProfileList,
+  getProductList,
+  getProductPromptProfileList,
   getReportDocumentListApi,
   getSingleContractReportAnalysisItemApi,
   getSingleContractReportAnalysisListApi,
   runSingleContractReportAnalysisApi,
-  type FutureContract,
-  type FutureContractPromptProfile,
+  type Product,
+  type ProductPromptProfile,
   type ReportDocumentListItem,
   type SingleContractReportAnalysis,
   type SingleContractReportAnalysisListItem,
@@ -19,21 +19,21 @@ import { formatDateTime } from '@/utils/date'
 const loading = ref(false)
 const running = ref(false)
 const detailLoading = ref(false)
-const contracts = ref<FutureContract[]>([])
-const promptProfiles = ref<FutureContractPromptProfile[]>([])
+const products = ref<Product[]>([])
+const promptProfiles = ref<ProductPromptProfile[]>([])
 const reports = ref<ReportDocumentListItem[]>([])
 const analysisList = ref<SingleContractReportAnalysisListItem[]>([])
 const currentAnalysis = ref<SingleContractReportAnalysis | null>(null)
-const selectedContractId = ref<number | undefined>()
+const selectedProductId = ref<number | undefined>()
 const selectedReportId = ref<number | undefined>()
 
-const profileMap = computed(() => new Map(promptProfiles.value.map((item) => [item.contract_id, item])))
+const profileMap = computed(() => new Map(promptProfiles.value.map((item) => [item.product_id, item])))
 
 const selectedProfile = computed(() => {
-  if (!selectedContractId.value) {
+  if (!selectedProductId.value) {
     return null
   }
-  return profileMap.value.get(selectedContractId.value) ?? null
+  return profileMap.value.get(selectedProductId.value) ?? null
 })
 
 const selectedReport = computed(() => {
@@ -43,7 +43,7 @@ const selectedReport = computed(() => {
   return reports.value.find((item) => item.report_id === selectedReportId.value) ?? null
 })
 
-const canRun = computed(() => Boolean(selectedContractId.value && selectedReportId.value))
+const canRun = computed(() => Boolean(selectedProductId.value && selectedReportId.value))
 
 const stanceLabelMap: Record<string, string> = {
   bullish: '偏多',
@@ -62,13 +62,13 @@ const relevanceLabelMap: Record<string, string> = {
 const loadBaseData = async () => {
   loading.value = true
   try {
-    const [contractData, profileData, reportData, analysisData] = await Promise.all([
-      getFutureContractList(),
-      getFutureContractPromptProfileList(),
+    const [productData, profileData, reportData, analysisData] = await Promise.all([
+      getProductList(),
+      getProductPromptProfileList(),
       getReportDocumentListApi(),
       getSingleContractReportAnalysisListApi(),
     ])
-    contracts.value = contractData
+    products.value = productData
     promptProfiles.value = profileData
     reports.value = reportData
     analysisList.value = analysisData
@@ -85,7 +85,7 @@ const loadBaseData = async () => {
 const loadAnalysisList = async () => {
   try {
     analysisList.value = await getSingleContractReportAnalysisListApi({
-      contract_id: selectedContractId.value,
+      product_id: selectedProductId.value,
       report_id: selectedReportId.value,
     })
   } catch {
@@ -105,23 +105,23 @@ const loadAnalysisDetail = async (analysisId: number) => {
 }
 
 const handleRunAnalysis = async () => {
-  if (!selectedContractId.value || !selectedReportId.value) {
-    ElMessage.warning('请先选择合约和研报')
+  if (!selectedProductId.value || !selectedReportId.value) {
+    ElMessage.warning('请先选择品种和研报')
     return
   }
   if (!selectedProfile.value) {
-    ElMessage.warning('该合约还没有配置 AI 画像')
+    ElMessage.warning('该品种还没有配置 AI画像')
     return
   }
   if (selectedProfile.value.is_active !== 1) {
-    ElMessage.warning('该合约的 AI 画像当前未启用')
+    ElMessage.warning('该品种的 AI画像当前未启用')
     return
   }
 
   running.value = true
   try {
     const result = await runSingleContractReportAnalysisApi({
-      contract_id: selectedContractId.value,
+      product_id: selectedProductId.value,
       report_id: selectedReportId.value,
     })
     currentAnalysis.value = result
@@ -145,19 +145,19 @@ onMounted(() => {
     <div class="page-header">
       <div>
         <h2 class="title">单品种研报分析</h2>
-        <p class="subtitle">一个品种配一套 AI 画像，每次拿一篇研报做一次定向分析，并保存分析记录。</p>
+        <p class="subtitle">固定输入为：1 个品种 + 该品种 AI画像 + 1 篇研报，每次保存一条分析记录。</p>
       </div>
     </div>
 
     <div class="selector-card">
       <div class="selector-grid">
-        <el-form-item label="目标合约" class="selector-item">
-          <el-select v-model="selectedContractId" filterable placeholder="请选择合约">
+        <el-form-item label="目标品种" class="selector-item">
+          <el-select v-model="selectedProductId" filterable placeholder="请选择品种">
             <el-option
-              v-for="item in contracts"
-              :key="item.contract_id"
-              :label="`${item.symbol} ${item.name}`"
-              :value="item.contract_id"
+              v-for="item in products"
+              :key="item.product_id"
+              :label="`${item.product_code} ${item.name}`"
+              :value="item.product_id"
             />
           </el-select>
         </el-form-item>
@@ -172,9 +172,7 @@ onMounted(() => {
           </el-select>
         </el-form-item>
         <div class="selector-actions">
-          <el-button type="primary" :loading="running" :disabled="!canRun" @click="handleRunAnalysis">
-            开始分析
-          </el-button>
+          <el-button type="primary" :loading="running" :disabled="!canRun" @click="handleRunAnalysis">开始分析</el-button>
           <el-button @click="loadAnalysisList">刷新记录</el-button>
         </div>
       </div>
@@ -190,7 +188,7 @@ onMounted(() => {
           <div class="meta-line"><strong>额外提示：</strong>{{ selectedProfile.extra_instruction || '-' }}</div>
           <div class="meta-line"><strong>输出偏好：</strong>{{ selectedProfile.output_preference || '-' }}</div>
         </template>
-        <div v-else class="placeholder-text">当前合约尚未配置 AI 画像。</div>
+        <div v-else class="placeholder-text">当前品种尚未配置 AI画像。</div>
       </div>
 
       <div class="info-card">
@@ -240,32 +238,22 @@ onMounted(() => {
             </div>
             <div class="result-section">
               <strong>命中片段</strong>
-              <div
-                v-for="(item, index) in currentAnalysis.matched_snippets"
-                :key="`${currentAnalysis.analysis_id}-${index}`"
-                class="snippet-block"
-              >
+              <div v-for="(item, index) in currentAnalysis.matched_snippets" :key="`${currentAnalysis.analysis_id}-${index}`" class="snippet-block">
                 {{ item }}
               </div>
             </div>
           </template>
-          <div v-else class="placeholder-text">还没有分析结果，先选择合约和研报后执行一次分析。</div>
+          <div v-else class="placeholder-text">还没有分析结果，先选择品种和研报后执行一次分析。</div>
         </div>
       </div>
 
       <div class="history-panel">
         <h3>分析记录</h3>
-        <el-table
-          :data="analysisList"
-          border
-          row-key="analysis_id"
-          height="620"
-          empty-text="暂无分析记录"
-        >
+        <el-table :data="analysisList" border row-key="analysis_id" height="620" empty-text="暂无分析记录">
           <el-table-column prop="analysis_id" label="ID" width="80" />
           <el-table-column label="品种" min-width="150">
             <template #default="{ row }">
-              {{ row.contract_symbol }} {{ row.contract_name }}
+              {{ row.product_code }} {{ row.product_name }}
             </template>
           </el-table-column>
           <el-table-column prop="report_title" label="研报" min-width="220" show-overflow-tooltip />
@@ -294,23 +282,19 @@ onMounted(() => {
 .single-contract-report-analysis {
   padding: 16px;
 }
-
 .page-header {
   margin-bottom: 16px;
 }
-
 .title {
   margin: 0;
   font-size: 20px;
   font-weight: 600;
 }
-
 .subtitle {
   margin: 6px 0 0;
   color: #909399;
   font-size: 13px;
 }
-
 .selector-card,
 .info-card,
 .result-panel,
@@ -319,115 +303,71 @@ onMounted(() => {
   border: 1px solid #ebeef5;
   border-radius: 10px;
 }
-
 .selector-card {
   padding: 16px;
   margin-bottom: 16px;
 }
-
 .selector-grid {
   display: grid;
   grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) auto;
   gap: 16px;
   align-items: end;
 }
-
 .selector-item {
   margin-bottom: 0;
 }
-
 .selector-actions {
   display: flex;
   gap: 12px;
 }
-
 .info-grid {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 16px;
   margin-bottom: 16px;
 }
-
 .info-card,
 .result-panel,
 .history-panel {
   padding: 16px;
 }
-
-.info-card h3,
-.result-panel h3,
-.history-panel h3 {
-  margin: 0 0 12px;
-  font-size: 16px;
-}
-
 .meta-line {
   line-height: 1.8;
-  color: #303133;
 }
-
 .result-layout {
   display: grid;
   grid-template-columns: minmax(0, 1.5fr) minmax(420px, 1fr);
   gap: 16px;
 }
-
 .result-body {
   min-height: 620px;
 }
-
 .result-summary {
   display: flex;
   flex-wrap: wrap;
   gap: 8px;
   margin-bottom: 16px;
 }
-
 .result-section {
   margin-bottom: 18px;
 }
-
 .result-section p {
-  margin: 8px 0 0;
   line-height: 1.8;
 }
-
 .result-section ul {
-  margin: 8px 0 0;
   padding-left: 18px;
 }
-
 .result-section li {
   line-height: 1.8;
 }
-
 .snippet-block {
   margin-top: 8px;
   padding: 10px 12px;
   background: #f7f9fc;
   border-radius: 8px;
   line-height: 1.8;
-  color: #303133;
 }
-
 .placeholder-text {
   color: #909399;
-}
-
-@media (max-width: 1200px) {
-  .result-layout {
-    grid-template-columns: 1fr;
-  }
-}
-
-@media (max-width: 768px) {
-  .selector-grid,
-  .info-grid {
-    grid-template-columns: 1fr;
-  }
-
-  .selector-actions {
-    justify-content: flex-end;
-  }
 }
 </style>

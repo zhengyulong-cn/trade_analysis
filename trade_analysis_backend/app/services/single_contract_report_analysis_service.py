@@ -9,9 +9,9 @@ from app.schemas.single_contract_report_analysis import (
     SingleContractReportAnalysisResult,
     SingleContractReportAnalysisRunRequest,
 )
-from app.services.contract_prompt_profile_service import ContractPromptProfileService
-from app.services.contract_service import ContractService
 from app.services.deepseek_llm_service import DeepSeekLLMService
+from app.services.product_prompt_profile_service import ProductPromptProfileService
+from app.services.product_service import ProductService
 from app.services.report_document_service import ReportDocumentService
 
 
@@ -19,27 +19,27 @@ class SingleContractReportAnalysisService:
     def __init__(
         self,
         session: Session,
-        contract_service: ContractService,
-        prompt_profile_service: ContractPromptProfileService,
+        product_service: ProductService,
+        prompt_profile_service: ProductPromptProfileService,
         report_document_service: ReportDocumentService,
         deepseek_service: DeepSeekLLMService,
     ):
         self.session = session
-        self.contract_service = contract_service
+        self.product_service = product_service
         self.prompt_profile_service = prompt_profile_service
         self.report_document_service = report_document_service
         self.deepseek_service = deepseek_service
 
     def list_analyses(
         self,
-        contract_id: int | None = None,
+        product_id: int | None = None,
         report_id: int | None = None,
     ) -> list[SingleContractReportAnalysis]:
         statement = select(SingleContractReportAnalysis).order_by(
             SingleContractReportAnalysis.create_at.desc()
         )
-        if contract_id is not None:
-            statement = statement.where(SingleContractReportAnalysis.contract_id == contract_id)
+        if product_id is not None:
+            statement = statement.where(SingleContractReportAnalysis.product_id == product_id)
         if report_id is not None:
             statement = statement.where(SingleContractReportAnalysis.report_id == report_id)
         return list(self.session.exec(statement).all())
@@ -57,25 +57,25 @@ class SingleContractReportAnalysisService:
         self,
         payload: SingleContractReportAnalysisRunRequest,
     ) -> SingleContractReportAnalysis:
-        contract = self.contract_service.get_contract_by_id(payload.contract_id)
+        product = self.product_service.get_product_by_id(payload.product_id)
         report = self.report_document_service.get_document_by_id(payload.report_id)
-        profile = self.prompt_profile_service.get_profile_by_contract_id(payload.contract_id)
+        profile = self.prompt_profile_service.get_profile_by_product_id(payload.product_id)
 
         if profile.is_active != 1:
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
-                detail=f"AI profile is disabled for contract: {contract.symbol}",
+                detail=f"AI profile is disabled for product: {product.product_code}",
             )
 
         matched_snippets = self._extract_relevant_snippets(
             raw_text=report.raw_text,
-            contract_symbol=contract.symbol,
-            contract_name=contract.name,
+            contract_symbol=product.product_code,
+            contract_name=product.name,
             focus_dimensions=profile.focus_dimensions,
         )
         system_prompt, user_prompt = self._build_prompts(
-            contract_symbol=contract.symbol,
-            contract_name=contract.name,
+            contract_symbol=product.product_code,
+            contract_name=product.name,
             report_title=report.title or report.original_name,
             report_source=report.source,
             report_published_at=report.published_at.isoformat() if report.published_at else None,
@@ -95,11 +95,11 @@ class SingleContractReportAnalysisService:
 
         now = datetime.now(timezone.utc)
         analysis = SingleContractReportAnalysis(
-            contract_id=contract.contract_id,
+            product_id=product.product_id,
             report_id=report.report_id,
             profile_id=profile.profile_id,
-            contract_symbol=contract.symbol,
-            contract_name=contract.name,
+            product_code=product.product_code,
+            product_name=product.name,
             report_title=report.title or report.original_name,
             report_source=report.source,
             status="success",
@@ -207,7 +207,7 @@ class SingleContractReportAnalysisService:
         )
         user_prompt = f"""
 目标品种：
-- 合约代码：{contract_symbol}
+- 品种代码：{contract_symbol}
 - 品种名称：{contract_name}
 
 研报信息：

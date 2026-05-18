@@ -1,8 +1,30 @@
 import axios from "@/api/axios";
 import { toChartTimestampSeconds } from "@/utils/date";
 
+export interface Product {
+  product_id: number
+  product_code: string
+  exchange: string
+  name: string
+  create_at: string
+  updated_at: string
+}
+
+export interface ProductCreateParams {
+  product_code: string
+  exchange: string
+  name: string
+}
+
+export interface ProductUpdateParams extends Partial<ProductCreateParams> {
+  product_id: number
+}
+
 export interface FutureContract {
   contract_id: number
+  product_id: number
+  product_code: string | null
+  product_name: string | null
   symbol: string
   exchange: string
   name: string
@@ -12,6 +34,7 @@ export interface FutureContract {
 }
 
 export interface FutureContractCreateParams {
+  product_id: number
   symbol: string
   exchange: string
   name: string
@@ -43,9 +66,9 @@ export interface FutureMainContractSyncResult {
   items: FutureContract[]
 }
 
-export interface FutureContractPromptProfile {
+export interface ProductPromptProfile {
   profile_id: number
-  contract_id: number
+  product_id: number
   focus_dimensions: string[]
   analysis_style: string | null
   extra_instruction: string | null
@@ -55,8 +78,8 @@ export interface FutureContractPromptProfile {
   updated_at: string
 }
 
-export interface FutureContractPromptProfileCreateParams {
-  contract_id: number
+export interface ProductPromptProfileCreateParams {
+  product_id: number
   focus_dimensions: string[]
   analysis_style?: string | null
   extra_instruction?: string | null
@@ -64,8 +87,8 @@ export interface FutureContractPromptProfileCreateParams {
   is_active?: number
 }
 
-export interface FutureContractPromptProfileUpdateParams
-  extends Partial<Omit<FutureContractPromptProfileCreateParams, "contract_id">> {
+export interface ProductPromptProfileUpdateParams
+  extends Partial<Omit<ProductPromptProfileCreateParams, "product_id">> {
   profile_id: number
 }
 
@@ -268,6 +291,18 @@ export const getFutureDataApi = async (params: { symbol: string; period: number;
   } as FutureKlineData
 }
 
+export const getProductList = () => {
+  return axios.get<Product[]>("/products") as unknown as Promise<Product[]>
+}
+
+export const createProduct = (params: ProductCreateParams) => {
+  return axios.post<Product>("/products/create", params) as unknown as Promise<Product>
+}
+
+export const updateProduct = (params: ProductUpdateParams) => {
+  return axios.post<Product>("/products/update", params) as unknown as Promise<Product>
+}
+
 export const getFutureContractList = () => {
   return axios.get<FutureContract[]>("/contracts") as unknown as Promise<FutureContract[]>
 }
@@ -292,32 +327,32 @@ export const syncFutureMainContracts = (params: FutureMainContractSyncParams) =>
   >
 }
 
-export const getFutureContractPromptProfileList = () => {
-  return axios.get<FutureContractPromptProfile[]>("/contract-prompt-profiles") as unknown as Promise<
-    FutureContractPromptProfile[]
+export const getProductPromptProfileList = () => {
+  return axios.get<ProductPromptProfile[]>("/product-prompt-profiles") as unknown as Promise<
+    ProductPromptProfile[]
   >
 }
 
-export const getFutureContractPromptProfileItem = (params: { profile_id?: number; contract_id?: number }) => {
-  return axios.get<FutureContractPromptProfile>("/contract-prompt-profiles/item", params) as unknown as Promise<
-    FutureContractPromptProfile
+export const getProductPromptProfileItem = (params: { profile_id?: number; product_id?: number }) => {
+  return axios.get<ProductPromptProfile>("/product-prompt-profiles/item", params) as unknown as Promise<
+    ProductPromptProfile
   >
 }
 
-export const createFutureContractPromptProfile = (params: FutureContractPromptProfileCreateParams) => {
-  return axios.post<FutureContractPromptProfile>("/contract-prompt-profiles/create", params) as unknown as Promise<
-    FutureContractPromptProfile
+export const createProductPromptProfile = (params: ProductPromptProfileCreateParams) => {
+  return axios.post<ProductPromptProfile>("/product-prompt-profiles/create", params) as unknown as Promise<
+    ProductPromptProfile
   >
 }
 
-export const updateFutureContractPromptProfile = (params: FutureContractPromptProfileUpdateParams) => {
-  return axios.post<FutureContractPromptProfile>("/contract-prompt-profiles/update", params) as unknown as Promise<
-    FutureContractPromptProfile
+export const updateProductPromptProfile = (params: ProductPromptProfileUpdateParams) => {
+  return axios.post<ProductPromptProfile>("/product-prompt-profiles/update", params) as unknown as Promise<
+    ProductPromptProfile
   >
 }
 
-export const deleteFutureContractPromptProfile = (profileId: number) => {
-  return axios.post<void>("/contract-prompt-profiles/delete", { profile_id: profileId }) as unknown as Promise<void>
+export const deleteProductPromptProfile = (profileId: number) => {
+  return axios.post<void>("/product-prompt-profiles/delete", { profile_id: profileId }) as unknown as Promise<void>
 }
 
 export const getFutureKlinePageApi = (params: {

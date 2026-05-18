@@ -6,7 +6,7 @@ from sqlmodel import SQLModel
 
 
 class SingleContractReportAnalysisRunRequest(SQLModel):
-    contract_id: int
+    product_id: int
     report_id: int
 
 
@@ -25,11 +25,11 @@ class SingleContractReportAnalysisListItem(SQLModel):
     model_config = ConfigDict(from_attributes=True)
 
     analysis_id: int
-    contract_id: int
+    product_id: int
     report_id: int
     profile_id: int | None = None
-    contract_symbol: str
-    contract_name: str
+    product_code: str
+    product_name: str
     report_title: str
     report_source: str | None = None
     status: str

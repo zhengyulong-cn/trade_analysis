@@ -4,8 +4,8 @@ from pydantic import ConfigDict, field_validator
 from sqlmodel import Field, SQLModel
 
 
-class ContractPromptProfileBase(SQLModel):
-    contract_id: int
+class ProductPromptProfileBase(SQLModel):
+    product_id: int
     focus_dimensions: list[str] = Field(default_factory=list)
     analysis_style: str | None = None
     extra_instruction: str | None = None
@@ -19,15 +19,7 @@ class ContractPromptProfileBase(SQLModel):
             return []
         if not isinstance(value, list):
             raise ValueError("focus_dimensions must be a list")
-
-        normalized: list[str] = []
-        for item in value:
-            if not isinstance(item, str):
-                raise ValueError("focus_dimensions items must be strings")
-            cleaned = item.strip()
-            if cleaned:
-                normalized.append(cleaned)
-        return normalized
+        return [item.strip() for item in value if isinstance(item, str) and item.strip()]
 
     @field_validator("analysis_style", "extra_instruction", "output_preference", mode="before")
     @classmethod
@@ -38,11 +30,11 @@ class ContractPromptProfileBase(SQLModel):
         return cleaned or None
 
 
-class ContractPromptProfileCreate(ContractPromptProfileBase):
+class ProductPromptProfileCreate(ProductPromptProfileBase):
     pass
 
 
-class ContractPromptProfileUpdate(SQLModel):
+class ProductPromptProfileUpdate(SQLModel):
     profile_id: int
     focus_dimensions: list[str] | None = None
     analysis_style: str | None = None
@@ -57,15 +49,7 @@ class ContractPromptProfileUpdate(SQLModel):
             return None
         if not isinstance(value, list):
             raise ValueError("focus_dimensions must be a list")
-
-        normalized: list[str] = []
-        for item in value:
-            if not isinstance(item, str):
-                raise ValueError("focus_dimensions items must be strings")
-            cleaned = item.strip()
-            if cleaned:
-                normalized.append(cleaned)
-        return normalized
+        return [item.strip() for item in value if isinstance(item, str) and item.strip()]
 
     @field_validator("analysis_style", "extra_instruction", "output_preference", mode="before")
     @classmethod
@@ -76,11 +60,11 @@ class ContractPromptProfileUpdate(SQLModel):
         return cleaned or None
 
 
-class ContractPromptProfileDeleteRequest(SQLModel):
+class ProductPromptProfileDeleteRequest(SQLModel):
     profile_id: int
 
 
-class ContractPromptProfileRead(ContractPromptProfileBase):
+class ProductPromptProfileRead(ProductPromptProfileBase):
     model_config = ConfigDict(from_attributes=True)
 
     profile_id: int

@@ -7,7 +7,7 @@ from sqlmodel import Session
 from app.db.session import get_session
 from app.services.chart_persistence_service import ChartPersistenceService
 from app.services.contract_service import ContractService
-from app.services.contract_prompt_profile_service import ContractPromptProfileService
+from app.services.product_prompt_profile_service import ProductPromptProfileService
 from app.services.kline_service import KlineService
 from app.services.market_data import (
     KlineProvider,
@@ -20,6 +20,7 @@ from app.services.realtime_bar_service import RealtimeBarService
 from app.services.report_document_service import ReportDocumentService
 from app.services.report_document_storage import ReportDocumentStorageService
 from app.services.deepseek_llm_service import DeepSeekLLMService
+from app.services.product_service import ProductService
 from app.services.single_contract_report_analysis_service import SingleContractReportAnalysisService
 # from app.services.analysis_service import AnalysisService
 from app.services.analysis_service_v2 import AnalysisServiceV2
@@ -55,14 +56,18 @@ def get_contract_service(session: SessionDep) -> ContractService:
     return ContractService(session)
 
 
+def get_product_service(session: SessionDep) -> ProductService:
+    return ProductService(session)
+
+
 def get_chart_persistence_service(session: SessionDep) -> ChartPersistenceService:
     return ChartPersistenceService(session)
 
 
-def get_contract_prompt_profile_service(
+def get_product_prompt_profile_service(
     session: SessionDep,
-) -> ContractPromptProfileService:
-    return ContractPromptProfileService(session)
+) -> ProductPromptProfileService:
+    return ProductPromptProfileService(session)
 
 
 def get_trade_record_storage_service() -> TradeRecordStorageService:
@@ -121,11 +126,12 @@ def get_report_document_service(
 
 
 ContractServiceDep = Annotated[ContractService, Depends(get_contract_service)]
+ProductServiceDep = Annotated[ProductService, Depends(get_product_service)]
 ChartPersistenceServiceDep = Annotated[
     ChartPersistenceService, Depends(get_chart_persistence_service)
 ]
-ContractPromptProfileServiceDep = Annotated[
-    ContractPromptProfileService, Depends(get_contract_prompt_profile_service)
+ProductPromptProfileServiceDep = Annotated[
+    ProductPromptProfileService, Depends(get_product_prompt_profile_service)
 ]
 KlineServiceDep = Annotated[KlineService, Depends(get_kline_service)]
 RealtimeBarServiceDep = Annotated[
@@ -165,15 +171,15 @@ OpportunityAnalysisServiceDep = Annotated[
 
 def get_single_contract_report_analysis_service(
     session: SessionDep,
-    contract_service: ContractServiceDep,
-    contract_prompt_profile_service: ContractPromptProfileServiceDep,
+    product_service: ProductServiceDep,
+    product_prompt_profile_service: ProductPromptProfileServiceDep,
     report_document_service: ReportDocumentServiceDep,
     deepseek_service: DeepSeekLLMServiceDep,
 ) -> SingleContractReportAnalysisService:
     return SingleContractReportAnalysisService(
         session=session,
-        contract_service=contract_service,
-        prompt_profile_service=contract_prompt_profile_service,
+        product_service=product_service,
+        prompt_profile_service=product_prompt_profile_service,
         report_document_service=report_document_service,
         deepseek_service=deepseek_service,
     )

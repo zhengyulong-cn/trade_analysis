@@ -2,7 +2,8 @@ from fastapi import APIRouter
 
 from app.api.routes.chart_persistences import router as chart_persistence_router
 from app.api.routes.contracts import router as contract_router
-from app.api.routes.contract_prompt_profiles import router as contract_prompt_profile_router
+from app.api.routes.product_prompt_profiles import router as product_prompt_profile_router
+from app.api.routes.products import router as product_router
 from app.api.routes.report_documents import router as report_document_router
 from app.api.routes.single_contract_report_analyses import router as single_contract_report_analysis_router
 from app.api.routes.analysis import router as analysis_router
@@ -19,10 +20,11 @@ api_router.include_router(
     tags=["chart-persistences"],
 )
 api_router.include_router(contract_router, prefix="/contracts", tags=["contracts"])
+api_router.include_router(product_router, prefix="/products", tags=["products"])
 api_router.include_router(
-    contract_prompt_profile_router,
-    prefix="/contract-prompt-profiles",
-    tags=["contract-prompt-profiles"],
+    product_prompt_profile_router,
+    prefix="/product-prompt-profiles",
+    tags=["product-prompt-profiles"],
 )
 api_router.include_router(
     report_document_router,
@@ -31,8 +33,8 @@ api_router.include_router(
 )
 api_router.include_router(
     single_contract_report_analysis_router,
-    prefix="/single-contract-report-analyses",
-    tags=["single-contract-report-analyses"],
+    prefix="/single-product-report-analyses",
+    tags=["single-product-report-analyses"],
 )
 api_router.include_router(kline_router, prefix="/klines", tags=["klines"])
 api_router.include_router(

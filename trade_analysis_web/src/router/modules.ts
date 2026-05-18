@@ -46,6 +46,14 @@ export const RouterModules: RouteRecordRaw[] = [
     },
     children: [
       {
+        path: "/products",
+        component: () => import("@/views/futures/product_manager/ProductManager.vue"),
+        meta: {
+          icon: "",
+          title: "品种管理",
+        },
+      },
+      {
         path: "/futures/contracts",
         component: () => import("@/views/futures/future_contracts_manager/FutureContractManager.vue"),
         meta: {
@@ -54,7 +62,7 @@ export const RouterModules: RouteRecordRaw[] = [
         },
       },
       {
-        path: "/futures/contract-prompt-profiles",
+        path: "/products/prompt-profiles",
         component: () => import("@/views/futures/contract_prompt_profile_manager/ContractPromptProfileManager.vue"),
         meta: {
           icon: "",

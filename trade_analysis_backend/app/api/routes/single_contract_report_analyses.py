@@ -13,12 +13,12 @@ router = APIRouter()
 @router.get("", response_model=list[SingleContractReportAnalysisListItem])
 def list_single_contract_report_analyses(
     service: SingleContractReportAnalysisServiceDep,
-    contract_id: int | None = None,
+    product_id: int | None = None,
     report_id: int | None = None,
 ) -> list[SingleContractReportAnalysisListItem]:
     return [
         SingleContractReportAnalysisListItem.model_validate(item)
-        for item in service.list_analyses(contract_id=contract_id, report_id=report_id)
+        for item in service.list_analyses(product_id=product_id, report_id=report_id)
     ]
 
 

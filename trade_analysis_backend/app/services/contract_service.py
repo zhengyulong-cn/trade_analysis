@@ -5,6 +5,7 @@ from sqlalchemy.exc import IntegrityError
 from sqlmodel import Session, select
 
 from app.models.contract import Contract
+from app.models.product import Product
 from app.schemas.contract import ContractCreate, MainContractSyncItem, ContractUpdate
 
 
@@ -13,6 +14,7 @@ class ContractService:
         self.session = session
 
     def create_contract(self, payload: ContractCreate) -> Contract:
+        self._validate_product_exists(payload.product_id)
         self._validate_binary_flag(
             field_name="is_favorite",
             value=payload.is_favorite,
@@ -47,6 +49,8 @@ class ContractService:
                 field_name="is_favorite",
                 value=update_data["is_favorite"],
             )
+        if "product_id" in update_data:
+            self._validate_product_exists(update_data["product_id"])
 
         for field_name, value in update_data.items():
             setattr(contract, field_name, value)
@@ -118,10 +122,17 @@ class ContractService:
             symbol = item.symbol.strip()
             exchange = item.exchange.strip().upper()
             name = item.name.strip() or symbol
+            product_code = self._extract_product_code(symbol)
+            product = self.get_product_by_code_exchange(product_code=product_code, exchange=exchange)
+            if product is None:
+                product = Product(product_code=product_code, exchange=exchange, name=name)
+                self.session.add(product)
+                self.session.flush()
 
             existing = self.get_contract_by_symbol_exchange(symbol=symbol, exchange=exchange)
             if existing is None:
                 contract = Contract(
+                    product_id=product.product_id,
                     symbol=symbol,
                     exchange=exchange,
                     name=name,
@@ -132,6 +143,9 @@ class ContractService:
                 continue
 
             changed = False
+            if existing.product_id != product.product_id:
+                existing.product_id = product.product_id
+                changed = True
             if existing.name != name:
                 existing.name = name
                 changed = True
@@ -153,6 +167,25 @@ class ContractService:
         for contract in synced_contracts:
             self.session.refresh(contract)
         return created, updated, synced_contracts
+
+    def get_product_by_code_exchange(self, product_code: str, exchange: str) -> Product | None:
+        statement = select(Product).where(
+            Product.product_code == product_code,
+            Product.exchange == exchange,
+        )
+        return self.session.exec(statement).first()
+
+    def _extract_product_code(self, symbol: str) -> str:
+        return "".join(char for char in symbol.strip() if char.isalpha()).upper() or symbol.strip().upper()
+
+    def _validate_product_exists(self, product_id: int) -> None:
+        product = self.session.get(Product, product_id)
+        if product is not None:
+            return
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Product not found: {product_id}",
+        )
 
     def _validate_binary_flag(self, field_name: str, value: int) -> None:
         if value in (0, 1):

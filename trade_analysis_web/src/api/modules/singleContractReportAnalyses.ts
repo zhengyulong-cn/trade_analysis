@@ -13,11 +13,11 @@ export interface SingleContractReportAnalysisResult {
 
 export interface SingleContractReportAnalysisListItem {
   analysis_id: number
-  contract_id: number
+  product_id: number
   report_id: number
   profile_id: number | null
-  contract_symbol: string
-  contract_name: string
+  product_code: string
+  product_name: string
   report_title: string
   report_source: string | null
   status: string
@@ -41,29 +41,29 @@ export interface SingleContractReportAnalysis extends SingleContractReportAnalys
 }
 
 export interface SingleContractReportAnalysisRunPayload {
-  contract_id: number
+  product_id: number
   report_id: number
 }
 
 export const getSingleContractReportAnalysisListApi = (params?: {
-  contract_id?: number
+  product_id?: number
   report_id?: number
 }) => {
-  return axios.get<SingleContractReportAnalysisListItem>(
-    "/single-contract-report-analyses",
+  return axios.get<SingleContractReportAnalysisListItem[]>(
+    "/single-product-report-analyses",
     params,
   ) as unknown as Promise<SingleContractReportAnalysisListItem[]>
 }
 
 export const getSingleContractReportAnalysisItemApi = (analysisId: number) => {
   return axios.get<SingleContractReportAnalysis>(
-    `/single-contract-report-analyses/item/${analysisId}`,
+    `/single-product-report-analyses/item/${analysisId}`,
   ) as unknown as Promise<SingleContractReportAnalysis>
 }
 
 export const runSingleContractReportAnalysisApi = (payload: SingleContractReportAnalysisRunPayload) => {
   return axios.post<SingleContractReportAnalysis>(
-    "/single-contract-report-analyses/run",
+    "/single-product-report-analyses/run",
     payload,
   ) as unknown as Promise<SingleContractReportAnalysis>
 }
