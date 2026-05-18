@@ -4,6 +4,7 @@ import {
   deleteTradeRecordApi,
   getFutureContractList,
   getTradeRecordListApi,
+  importTradeRecordsApi,
   resolveTradeRecordScreenshotUrl,
   updateTradeRecordApi,
   uploadTradeRecordScreenshotApi,
@@ -67,6 +68,7 @@ const segmentTypeLabelMap: Record<TradeRecordSegmentType, string> = {
 
 const loading = ref(false)
 const submitting = ref(false)
+const importing = ref(false)
 const dialogVisible = ref(false)
 const dialogMode = ref<'create' | 'edit'>('create')
 const formRef = ref<FormInstance>()
@@ -190,7 +192,7 @@ const openEditDialog = (record: TradeRecord) => {
   form.open_price = Number(record.open_price)
   form.close_time = record.close_time
   form.close_price = Number(record.close_price)
-  form.segment_type = record.segment_type
+  form.segment_type = record.segment_type ?? SEGMENT_PUSH
   form.fee = Number(record.fee)
   form.actual_pnl = Number(record.actual_pnl)
   form.screenshots = [...record.screenshots]
@@ -277,6 +279,23 @@ const handleDelete = async (record: TradeRecord) => {
   }
 }
 
+const handleImportTradeRecords = async (options: UploadRequestOptions) => {
+  importing.value = true
+  try {
+    const result = await importTradeRecordsApi(options.file)
+    options.onSuccess?.(result)
+    ElMessage.success(
+      `\u5bfc\u5165\u5b8c\u6210\uff1a\u65b0\u589e ${result.imported} \u6761\uff0c\u8df3\u8fc7 ${result.skipped} \u6761\uff0c\u5931\u8d25 ${result.failed} \u6761`,
+    )
+    await loadTradeRecords()
+  } catch (error) {
+    options.onError?.(error as Error)
+    ElMessage.error('\u4e0a\u4f20\u4ea4\u6613\u8bb0\u5f55\u5931\u8d25')
+  } finally {
+    importing.value = false
+  }
+}
+
 const applyUploadedScreenshot = (result: TradeRecordScreenshotUploadResult) => {
   form.screenshots = [
     ...form.screenshots,
@@ -360,7 +379,10 @@ const getPreviewScreenshotUrls = (screenshots: TradeRecordScreenshot[]) => {
   return screenshots.map((item) => resolveTradeRecordScreenshotUrl(item.path))
 }
 
-const formatSegmentType = (segmentType: TradeRecordSegmentType) => {
+const formatSegmentType = (segmentType: TradeRecordSegmentType | null) => {
+  if (!segmentType) {
+    return '-'
+  }
   return segmentTypeLabelMap[segmentType] ?? segmentType
 }
 
@@ -389,7 +411,18 @@ onMounted(() => {
         <h2 class="title">{{ '\u4ea4\u6613\u8bb0\u5f55' }}</h2>
         <p class="subtitle">{{ '\u7ef4\u62a4\u4ea4\u6613\u8bb0\u5f55\u3001\u76c8\u4e8f\u590d\u76d8\u548c\u64cd\u4f5c\u622a\u56fe' }}</p>
       </div>
-      <el-button type="primary" @click="openCreateDialog">{{ '\u65b0\u589e\u4ea4\u6613\u8bb0\u5f55' }}</el-button>
+      <div class="toolbar-actions">
+        <el-upload
+          accept=".xlsx,.xls"
+          :show-file-list="false"
+          :auto-upload="true"
+          :http-request="handleImportTradeRecords"
+          :disabled="importing"
+        >
+          <el-button :loading="importing">{{ '\u4e0a\u4f20\u4ea4\u6613\u8bb0\u5f55' }}</el-button>
+        </el-upload>
+        <el-button type="primary" @click="openCreateDialog">{{ '\u65b0\u589e\u4ea4\u6613\u8bb0\u5f55' }}</el-button>
+      </div>
     </div>
 
     <div class="filter-card">
@@ -627,6 +660,12 @@ onMounted(() => {
   margin-bottom: 16px;
 }
 
+.toolbar-actions {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
 .title {
   margin: 0;
   font-size: 20px;
@@ -698,6 +737,11 @@ onMounted(() => {
   .toolbar {
     flex-direction: column;
     align-items: flex-start;
+  }
+
+  .toolbar-actions {
+    width: 100%;
+    flex-wrap: wrap;
   }
 
   .form-grid {

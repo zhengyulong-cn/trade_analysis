@@ -19,9 +19,11 @@ class TradeRecord(SQLModel, table=True):
     open_price: Decimal = Field(max_digits=20, decimal_places=2)
     close_time: datetime = Field(index=True)
     close_price: Decimal = Field(max_digits=20, decimal_places=2)
-    segment_type: str = Field(index=True, min_length=1, max_length=32)
+    segment_type: str | None = Field(default=None, index=True, max_length=32)
     fee: Decimal = Field(default=0, max_digits=20, decimal_places=2)
     actual_pnl: Decimal = Field(max_digits=20, decimal_places=2)
+    import_open_trade_no: str | None = Field(default=None, index=True, max_length=32)
+    import_close_trade_no: str | None = Field(default=None, index=True, max_length=32)
     screenshots: list[dict] = Field(
         default_factory=list,
         sa_column=Column(JSON, nullable=False),

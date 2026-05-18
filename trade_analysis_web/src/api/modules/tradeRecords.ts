@@ -17,7 +17,7 @@ export interface TradeRecord {
   open_price: number | string
   close_time: string
   close_price: number | string
-  segment_type: TradeRecordSegmentType
+  segment_type: TradeRecordSegmentType | null
   fee: number | string
   actual_pnl: number | string
   screenshots: TradeRecordScreenshot[]
@@ -57,6 +57,13 @@ export interface TradeRecordScreenshotUploadResult extends TradeRecordScreenshot
   url: string
 }
 
+export interface TradeRecordImportResult {
+  imported: number
+  skipped: number
+  failed: number
+  message: string
+}
+
 export const getTradeRecordListApi = (params?: TradeRecordListParams) => {
   return axios.get<TradeRecord[]>("/trade-records", params) as unknown as Promise<TradeRecord[]>
 }
@@ -81,6 +88,16 @@ export const uploadTradeRecordScreenshotApi = (file: File) => {
       "Content-Type": "multipart/form-data",
     },
   }) as unknown as Promise<TradeRecordScreenshotUploadResult>
+}
+
+export const importTradeRecordsApi = (file: File) => {
+  const formData = new FormData()
+  formData.append("file", file)
+  return axios.post<TradeRecordImportResult>("/trade-records/import", formData, {
+    headers: {
+      "Content-Type": "multipart/form-data",
+    },
+  }) as unknown as Promise<TradeRecordImportResult>
 }
 
 export const resolveTradeRecordScreenshotUrl = (path?: string | null) => {

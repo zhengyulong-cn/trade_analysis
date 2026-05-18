@@ -22,7 +22,7 @@ class TradeRecordBase(SQLModel):
     open_price: Decimal
     close_time: datetime
     close_price: Decimal
-    segment_type: SegmentType
+    segment_type: SegmentType | None = None
     fee: Decimal = 0
     actual_pnl: Decimal
     screenshots: list[TradeRecordScreenshot] = Field(default_factory=list)
@@ -36,7 +36,7 @@ class TradeRecordBase(SQLModel):
 
 
 class TradeRecordCreate(TradeRecordBase):
-    pass
+    segment_type: SegmentType
 
 
 class TradeRecordUpdate(SQLModel):
@@ -62,6 +62,8 @@ class TradeRecordRead(TradeRecordBase):
     model_config = ConfigDict(from_attributes=True)
 
     trade_record_id: int
+    import_open_trade_no: str | None = None
+    import_close_trade_no: str | None = None
     created_at: datetime
     updated_at: datetime
 
@@ -77,3 +79,10 @@ class TradeRecordListQuery(SQLModel):
 
 class TradeRecordScreenshotUploadResult(TradeRecordScreenshot):
     url: str
+
+
+class TradeRecordImportResult(SQLModel):
+    imported: int
+    skipped: int
+    failed: int
+    message: str

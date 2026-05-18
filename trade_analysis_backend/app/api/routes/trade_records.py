@@ -6,6 +6,7 @@ from app.api.dependencies import TradeRecordServiceDep, TradeRecordStorageServic
 from app.schemas.trade_record import (
     TradeRecordCreate,
     TradeRecordDeleteRequest,
+    TradeRecordImportResult,
     TradeRecordListQuery,
     TradeRecordRead,
     TradeRecordScreenshotUploadResult,
@@ -70,3 +71,12 @@ async def upload_trade_record_screenshot(
 ) -> TradeRecordScreenshotUploadResult:
     result = await storage_service.save_screenshot(file)
     return TradeRecordScreenshotUploadResult(**result)
+
+
+@router.post("/import", response_model=TradeRecordImportResult)
+async def import_trade_records(
+    service: TradeRecordServiceDep,
+    file: UploadFile = File(...),
+) -> TradeRecordImportResult:
+    file_bytes = await file.read()
+    return service.import_trade_records_from_excel(file_bytes)

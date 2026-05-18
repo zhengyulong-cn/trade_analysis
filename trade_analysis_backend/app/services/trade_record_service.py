@@ -1,11 +1,15 @@
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
+from decimal import Decimal
+from io import BytesIO
 
 from fastapi import HTTPException, status
+import pandas as pd
 from sqlmodel import Session, select
 
 from app.models.trade_record import TradeRecord
 from app.schemas.trade_record import (
     TradeRecordCreate,
+    TradeRecordImportResult,
     TradeRecordListQuery,
     TradeRecordUpdate,
 )
@@ -33,7 +37,7 @@ class TradeRecordService:
         if query.close_time_end:
             statement = statement.where(TradeRecord.close_time <= query.close_time_end)
 
-        statement = statement.order_by(TradeRecord.open_time.desc(), TradeRecord.trade_record_id.desc())
+        statement = statement.order_by(TradeRecord.open_time, TradeRecord.trade_record_id)
         return list(self.session.exec(statement).all())
 
     def create_trade_record(self, payload: TradeRecordCreate) -> TradeRecord:
@@ -42,6 +46,95 @@ class TradeRecordService:
         self.session.commit()
         self.session.refresh(trade_record)
         return trade_record
+
+    def import_trade_records_from_excel(self, file_bytes: bytes) -> TradeRecordImportResult:
+        try:
+            trade_details = self._load_statement_sheet(file_bytes, sheet_index=2)
+            close_details = self._load_statement_sheet(file_bytes, sheet_index=3)
+        except Exception as exc:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Failed to parse trade record workbook",
+            ) from exc
+
+        trade_details = self._clean_trade_detail_rows(trade_details)
+        close_details = self._clean_close_detail_rows(close_details)
+
+        trade_index = self._build_trade_detail_index(trade_details)
+        close_fee_weights = self._build_lots_weight_map(close_details, "成交序号")
+        open_fee_weights = self._build_lots_weight_map(close_details, "原成交序号")
+        existing_pairs = self._load_existing_import_pairs()
+
+        imported = 0
+        skipped = 0
+        failed = 0
+
+        for _, row in close_details.iterrows():
+            try:
+                open_trade_no = self._normalize_trade_no(row.get("原成交序号"))
+                close_trade_no = self._normalize_trade_no(row.get("成交序号"))
+                if not open_trade_no or not close_trade_no:
+                    failed += 1
+                    continue
+
+                pair = (open_trade_no, close_trade_no)
+                if pair in existing_pairs:
+                    skipped += 1
+                    continue
+
+                open_trade = trade_index.get(open_trade_no)
+                close_trade = trade_index.get(close_trade_no)
+                if open_trade is None or close_trade is None:
+                    failed += 1
+                    continue
+
+                lots = self._to_int(row.get("手数"))
+                open_fee = self._allocate_fee(
+                    open_trade.get("手续费"),
+                    lots,
+                    open_fee_weights.get(open_trade_no, lots),
+                )
+                close_fee = self._allocate_fee(
+                    close_trade.get("手续费"),
+                    lots,
+                    close_fee_weights.get(close_trade_no, lots),
+                )
+
+                trade_record = TradeRecord(
+                    contract=str(row.get("合约")).strip(),
+                    lots=lots,
+                    open_time=self._combine_trade_datetime(
+                        open_trade.get("实际成交日期"),
+                        open_trade.get("成交时间"),
+                    ),
+                    open_price=self._to_decimal(row.get("开仓价")),
+                    close_time=self._combine_trade_datetime(
+                        close_trade.get("实际成交日期"),
+                        close_trade.get("成交时间"),
+                    ),
+                    close_price=self._to_decimal(row.get("成交价")),
+                    segment_type=None,
+                    fee=open_fee + close_fee,
+                    actual_pnl=self._to_decimal(row.get("平仓盈亏")),
+                    import_open_trade_no=open_trade_no,
+                    import_close_trade_no=close_trade_no,
+                    screenshots=[],
+                    comment=None,
+                )
+                self._validate_time_range(trade_record.open_time, trade_record.close_time)
+                self.session.add(trade_record)
+                existing_pairs.add(pair)
+                imported += 1
+            except Exception:
+                failed += 1
+
+        self.session.commit()
+        return TradeRecordImportResult(
+            imported=imported,
+            skipped=skipped,
+            failed=failed,
+            message=f"Imported {imported}, skipped {skipped}, failed {failed}",
+        )
 
     def update_trade_record(self, payload: TradeRecordUpdate) -> TradeRecord:
         trade_record = self.get_trade_record_by_id(payload.trade_record_id)
@@ -104,3 +197,91 @@ class TradeRecordService:
             if path:
                 paths.add(path)
         return paths
+
+    def _clean_trade_detail_rows(self, dataframe: pd.DataFrame) -> pd.DataFrame:
+        cleaned = dataframe.copy()
+        cleaned = cleaned[cleaned["合约"].notna()]
+        cleaned = cleaned[cleaned["合约"] != "合计"]
+        return cleaned
+
+    def _clean_close_detail_rows(self, dataframe: pd.DataFrame) -> pd.DataFrame:
+        cleaned = dataframe.copy()
+        cleaned = cleaned[cleaned["合约"].notna()]
+        cleaned = cleaned[cleaned["合约"] != "合计"]
+        return cleaned
+
+    def _build_trade_detail_index(self, dataframe: pd.DataFrame) -> dict[str, dict]:
+        trade_index: dict[str, dict] = {}
+        for _, row in dataframe.iterrows():
+            trade_no = self._normalize_trade_no(row.get("成交序号"))
+            if trade_no:
+                trade_index[trade_no] = row.to_dict()
+        return trade_index
+
+    def _build_lots_weight_map(self, dataframe: pd.DataFrame, column_name: str) -> dict[str, int]:
+        weights: dict[str, int] = {}
+        for _, row in dataframe.iterrows():
+            trade_no = self._normalize_trade_no(row.get(column_name))
+            if not trade_no:
+                continue
+            weights[trade_no] = weights.get(trade_no, 0) + self._to_int(row.get("手数"))
+        return weights
+
+    def _load_existing_import_pairs(self) -> set[tuple[str, str]]:
+        statement = select(TradeRecord).where(
+            TradeRecord.import_open_trade_no.is_not(None),
+            TradeRecord.import_close_trade_no.is_not(None),
+        )
+        items = self.session.exec(statement).all()
+        pairs: set[tuple[str, str]] = set()
+        for item in items:
+            if item.import_open_trade_no and item.import_close_trade_no:
+                pairs.add((item.import_open_trade_no, item.import_close_trade_no))
+        return pairs
+
+    def _normalize_trade_no(self, value: object) -> str | None:
+        if value is None or pd.isna(value):
+            return None
+        digits = "".join(ch for ch in str(value).strip() if ch.isdigit())
+        if not digits:
+            return None
+        normalized = digits.lstrip("0")
+        return normalized or "0"
+
+    def _combine_trade_datetime(self, trade_date: object, trade_time: object) -> datetime:
+        if trade_date is None or trade_time is None or pd.isna(trade_date) or pd.isna(trade_time):
+            raise ValueError("Missing trade date or trade time")
+        combined = datetime.strptime(
+            f"{str(trade_date).strip()} {str(trade_time).strip()}",
+            "%Y-%m-%d %H:%M:%S",
+        )
+        if combined.hour >= 20:
+            combined = combined - timedelta(days=1)
+        return combined
+
+    def _to_decimal(self, value: object) -> Decimal:
+        if value is None or pd.isna(value):
+            return Decimal("0")
+        return Decimal(str(value).strip())
+
+    def _to_int(self, value: object) -> int:
+        if value is None or pd.isna(value):
+            return 0
+        return int(Decimal(str(value).strip()))
+
+    def _allocate_fee(self, total_fee_value: object, matched_lots: int, total_lots: int) -> Decimal:
+        total_fee = self._to_decimal(total_fee_value)
+        if total_lots <= 0:
+            return total_fee
+        return (total_fee * Decimal(matched_lots) / Decimal(total_lots)).quantize(Decimal("0.01"))
+
+    def _load_statement_sheet(self, file_bytes: bytes, sheet_index: int) -> pd.DataFrame:
+        dataframe = pd.read_excel(BytesIO(file_bytes), sheet_name=sheet_index, header=8)
+        if dataframe.empty:
+            raise ValueError("Statement sheet is empty")
+
+        header_row = dataframe.iloc[0].tolist()
+        normalized_headers = [str(value).strip() if not pd.isna(value) else "" for value in header_row]
+        normalized_dataframe = dataframe.iloc[1:].copy().reset_index(drop=True)
+        normalized_dataframe.columns = normalized_headers
+        return normalized_dataframe
