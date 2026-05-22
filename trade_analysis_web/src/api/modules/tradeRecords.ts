@@ -69,6 +69,10 @@ export interface TradeRecordImportResult {
   message: string
 }
 
+export interface TradeRecordMergeParams {
+  trade_record_ids: number[]
+}
+
 export const getTradeRecordListApi = (params?: TradeRecordListParams) => {
   return axios.get<TradeRecord[]>("/trade-records", params) as unknown as Promise<TradeRecord[]>
 }
@@ -83,6 +87,10 @@ export const updateTradeRecordApi = (params: TradeRecordUpdateParams) => {
 
 export const deleteTradeRecordApi = (tradeRecordId: number) => {
   return axios.post<void>("/trade-records/delete", { trade_record_id: tradeRecordId }) as unknown as Promise<void>
+}
+
+export const mergeTradeRecordsApi = (params: TradeRecordMergeParams) => {
+  return axios.post<TradeRecord>("/trade-records/merge", params) as unknown as Promise<TradeRecord>
 }
 
 export const uploadTradeRecordScreenshotApi = (file: File) => {

@@ -20,6 +20,7 @@ class TradeFillRecord(SQLModel, table=True):
     price: Decimal = Field(max_digits=20, decimal_places=2)
     lots: int = Field(nullable=False, ge=0)
     fee: Decimal = Field(default=0, max_digits=20, decimal_places=2)
+    is_excluded_from_sync: bool = Field(default=False, nullable=False, index=True)
     matched_open_trade_no: str | None = Field(default=None, index=True, max_length=32)
     close_pnl: Decimal | None = Field(default=None, max_digits=20, decimal_places=2)
     source_file_name: str | None = Field(default=None, max_length=255)

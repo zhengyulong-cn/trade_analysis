@@ -14,6 +14,7 @@ from app.schemas.trade_record import (
     TradeRecordCreate,
     TradeRecordImportResult,
     TradeRecordListQuery,
+    TradeRecordMergeRequest,
     TradeRecordUpdate,
 )
 from app.services.trade_record_storage import TradeRecordStorageService
@@ -195,6 +196,55 @@ class TradeRecordService:
 
         return trade_record
 
+    def merge_trade_records(self, payload: TradeRecordMergeRequest) -> TradeRecord:
+        trade_record_ids = list(dict.fromkeys(payload.trade_record_ids))
+        if len(trade_record_ids) < 2:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="At least 2 trade records are required for merge",
+            )
+
+        statement = select(TradeRecord).where(TradeRecord.trade_record_id.in_(trade_record_ids))
+        records = list(self.session.exec(statement).all())
+        if len(records) != len(trade_record_ids):
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="One or more trade records were not found",
+            )
+
+        records.sort(key=lambda item: item.trade_record_id or 0)
+        self._validate_merge_records(records)
+
+        merged_record = TradeRecord(
+            contract=records[0].contract,
+            source=SOURCE_MANUAL,
+            open_direction=records[0].open_direction,
+            lots=sum(item.lots for item in records),
+            open_time=min(item.open_time for item in records),
+            open_price=self._weighted_average_price(records, "open_price"),
+            close_time=max(item.close_time for item in records if item.close_time is not None),
+            close_price=self._weighted_average_price(records, "close_price"),
+            segment_type=self._merge_segment_type(records),
+            fee=sum((item.fee for item in records), Decimal("0")),
+            actual_pnl=sum((item.actual_pnl or Decimal("0") for item in records), Decimal("0")),
+            screenshots=self._merge_screenshots(records),
+            comment=self._merge_comments(records),
+        )
+        self._validate_time_range(merged_record.open_time, merged_record.close_time)
+        self.session.add(merged_record)
+        self.session.flush()
+
+        self._exclude_import_fill_records(records)
+
+        screenshot_paths = set()
+        for record in records:
+            screenshot_paths.update(self._extract_screenshot_paths(record.screenshots))
+            self.session.delete(record)
+
+        self.session.commit()
+        self.session.refresh(merged_record)
+        return merged_record
+
     def delete_trade_record(self, trade_record_id: int) -> None:
         trade_record = self.get_trade_record_by_id(trade_record_id)
         screenshot_paths = self._extract_screenshot_paths(trade_record.screenshots)
@@ -214,7 +264,7 @@ class TradeRecordService:
 
     def _sync_import_trade_records(self) -> int:
         fill_records = list(self.session.exec(select(TradeFillRecord).order_by(TradeFillRecord.trade_time)).all())
-        open_fills = [item for item in fill_records if item.offset == OFFSET_OPEN]
+        open_fills = [item for item in fill_records if item.offset == OFFSET_OPEN and not item.is_excluded_from_sync]
         close_fills = [item for item in fill_records if item.offset == OFFSET_CLOSE]
 
         close_fill_map: dict[str, list[TradeFillRecord]] = defaultdict(list)
@@ -238,9 +288,10 @@ class TradeRecordService:
             if not open_fill.trade_no:
                 continue
 
-            related_close_fills = close_fill_map.get(open_fill.trade_no, [])
+            all_related_close_fills = close_fill_map.get(open_fill.trade_no, [])
+            related_close_fills = [item for item in all_related_close_fills if not item.is_excluded_from_sync]
             matched_close_lots = 0
-            total_close_lots = sum(item.lots for item in related_close_fills)
+            consumed_close_lots = sum(item.lots for item in all_related_close_fills)
 
             for close_fill in related_close_fills:
                 matched_close_lots += close_fill.lots
@@ -281,7 +332,7 @@ class TradeRecordService:
                 self._validate_time_range(trade_record.open_time, trade_record.close_time)
                 self.session.add(trade_record)
 
-            remaining_lots = max(open_fill.lots - matched_close_lots, 0)
+            remaining_lots = max(open_fill.lots - consumed_close_lots, 0)
             if remaining_lots > 0:
                 record_key = self._build_import_record_key(open_fill.trade_no, None)
                 generated_keys.add(record_key)
@@ -355,6 +406,79 @@ class TradeRecordService:
         open_key = self._normalize_trade_no(import_open_trade_no) or ""
         close_key = self._normalize_trade_no(import_close_trade_no) or ""
         return (open_key, close_key)
+
+    def _validate_merge_records(self, records: list[TradeRecord]) -> None:
+        first_record = records[0]
+        contract = first_record.contract
+        open_direction = first_record.open_direction
+
+        for record in records:
+            if record.contract != contract:
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail="Only trade records with the same contract can be merged",
+                )
+            if record.open_direction != open_direction:
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail="Only trade records with the same open direction can be merged",
+                )
+            if record.close_time is None or record.close_price is None:
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail="Only closed trade records can be merged",
+                )
+
+    def _weighted_average_price(self, records: list[TradeRecord], field_name: str) -> Decimal:
+        total_lots = sum(item.lots for item in records)
+        weighted_sum = sum(
+            (getattr(item, field_name) or Decimal("0")) * Decimal(item.lots)
+            for item in records
+        )
+        if total_lots <= 0:
+            return Decimal("0")
+        return (weighted_sum / Decimal(total_lots)).quantize(Decimal("0.01"))
+
+    def _merge_segment_type(self, records: list[TradeRecord]) -> str | None:
+        segment_types = {item.segment_type for item in records if item.segment_type}
+        if len(segment_types) == 1:
+            return next(iter(segment_types))
+        return None
+
+    def _merge_screenshots(self, records: list[TradeRecord]) -> list[dict]:
+        screenshots: list[dict] = []
+        seen_paths: set[str] = set()
+        for record in records:
+            for item in record.screenshots or []:
+                if not isinstance(item, dict):
+                    continue
+                path = item.get("path")
+                if path and path not in seen_paths:
+                    screenshots.append(item)
+                    seen_paths.add(path)
+        return screenshots
+
+    def _merge_comments(self, records: list[TradeRecord]) -> str | None:
+        comments = [item.comment.strip() for item in records if item.comment and item.comment.strip()]
+        if not comments:
+            return None
+        return "\n\n".join(comments)
+
+    def _exclude_import_fill_records(self, records: list[TradeRecord]) -> None:
+        close_trade_nos = {
+            item.import_close_trade_no
+            for item in records
+            if item.source == SOURCE_IMPORT and item.import_close_trade_no
+        }
+        if not close_trade_nos:
+            return
+
+        statement = select(TradeFillRecord).where(TradeFillRecord.trade_no.in_(close_trade_nos))
+        fill_records = self.session.exec(statement).all()
+        for fill_record in fill_records:
+            fill_record.is_excluded_from_sync = True
+            fill_record.updated_at = datetime.now(timezone.utc)
+            self.session.add(fill_record)
 
     def _validate_time_range(self, open_time: datetime, close_time: datetime | None) -> None:
         if close_time is not None and close_time < open_time:

@@ -66,6 +66,10 @@ class TradeRecordDeleteRequest(SQLModel):
     trade_record_id: int
 
 
+class TradeRecordMergeRequest(SQLModel):
+    trade_record_ids: list[int] = Field(min_length=2)
+
+
 class TradeRecordRead(TradeRecordBase):
     model_config = ConfigDict(from_attributes=True)
 

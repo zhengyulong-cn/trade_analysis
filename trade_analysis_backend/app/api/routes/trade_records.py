@@ -8,6 +8,7 @@ from app.schemas.trade_record import (
     TradeRecordDeleteRequest,
     TradeRecordImportResult,
     TradeRecordListQuery,
+    TradeRecordMergeRequest,
     TradeRecordRead,
     TradeRecordScreenshotUploadResult,
     TradeRecordUpdate,
@@ -64,6 +65,14 @@ def delete_trade_record(
     service: TradeRecordServiceDep,
 ) -> None:
     service.delete_trade_record(payload.trade_record_id)
+
+
+@router.post("/merge", response_model=TradeRecordRead)
+def merge_trade_records(
+    payload: TradeRecordMergeRequest,
+    service: TradeRecordServiceDep,
+) -> TradeRecordRead:
+    return TradeRecordRead.model_validate(service.merge_trade_records(payload))
 
 
 @router.post("/upload-screenshot", response_model=TradeRecordScreenshotUploadResult)
