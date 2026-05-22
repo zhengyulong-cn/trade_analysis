@@ -46,10 +46,10 @@ interface TradeRecordForm {
   open_time: string
   open_price: number
   close_time: string
-  close_price: number
+  close_price: number | null
   segment_type: TradeRecordSegmentType
   fee: number
-  actual_pnl: number
+  actual_pnl: number | null
   screenshots: TradeRecordScreenshot[]
   comment: string
 }
@@ -107,10 +107,10 @@ const form = reactive<TradeRecordForm>({
   open_time: '',
   open_price: 0,
   close_time: '',
-  close_price: 0,
+  close_price: null,
   segment_type: SEGMENT_PUSH,
   fee: 0,
-  actual_pnl: 0,
+  actual_pnl: null,
   screenshots: [],
   comment: '',
 })
@@ -121,11 +121,8 @@ const rules = reactive<FormRules<TradeRecordForm>>({
   lots: [{ required: true, message: '请输入手数', trigger: 'change' }],
   open_time: [{ required: true, message: '请选择开仓时间', trigger: 'change' }],
   open_price: [{ required: true, message: '请输入开仓价格', trigger: 'change' }],
-  close_time: [{ required: true, message: '请选择平仓时间', trigger: 'change' }],
-  close_price: [{ required: true, message: '请输入平仓价格', trigger: 'change' }],
   segment_type: [{ required: true, message: '请选择30F线段类型', trigger: 'change' }],
   fee: [{ required: true, message: '请输入手续费', trigger: 'change' }],
-  actual_pnl: [{ required: true, message: '请输入实际盈亏', trigger: 'change' }],
 })
 
 const dialogTitle = computed(() => (dialogMode.value === 'create' ? '新增交易记录' : '修改交易记录'))
@@ -140,10 +137,10 @@ const resetForm = () => {
   form.open_time = ''
   form.open_price = 0
   form.close_time = ''
-  form.close_price = 0
+  form.close_price = null
   form.segment_type = SEGMENT_PUSH
   form.fee = 0
-  form.actual_pnl = 0
+  form.actual_pnl = null
   form.screenshots = []
   form.comment = ''
   uploadFileList.value = []
@@ -208,11 +205,11 @@ const openEditDialog = (record: TradeRecord) => {
   form.lots = record.lots
   form.open_time = record.open_time
   form.open_price = Number(record.open_price)
-  form.close_time = record.close_time
-  form.close_price = Number(record.close_price)
+  form.close_time = record.close_time ?? ''
+  form.close_price = record.close_price === null ? null : Number(record.close_price)
   form.segment_type = record.segment_type ?? SEGMENT_PUSH
   form.fee = Number(record.fee)
-  form.actual_pnl = Number(record.actual_pnl)
+  form.actual_pnl = record.actual_pnl === null ? null : Number(record.actual_pnl)
   form.screenshots = [...record.screenshots]
   form.comment = record.comment ?? ''
   uploadFileList.value = record.screenshots.map(toUploadFile)
@@ -221,14 +218,15 @@ const openEditDialog = (record: TradeRecord) => {
 }
 
 const buildPayload = (): TradeRecordCreateParams => {
+  const hasCloseInfo = Boolean(form.close_time && form.close_price !== null)
   return {
     contract: form.contract.trim(),
     open_direction: form.open_direction,
     lots: form.lots,
     open_time: form.open_time,
     open_price: form.open_price,
-    close_time: form.close_time,
-    close_price: form.close_price,
+    close_time: hasCloseInfo ? form.close_time : null,
+    close_price: hasCloseInfo ? form.close_price : null,
     segment_type: form.segment_type,
     fee: form.fee,
     actual_pnl: form.actual_pnl,
@@ -246,7 +244,14 @@ const submitForm = async () => {
   if (!valid) {
     return
   }
-  if (new Date(form.close_time).getTime() < new Date(form.open_time).getTime()) {
+
+  const hasCloseTime = Boolean(form.close_time)
+  const hasClosePrice = form.close_price !== null
+  if (hasCloseTime !== hasClosePrice) {
+    ElMessage.error('平仓时间和平仓价格需要同时填写，或同时留空')
+    return
+  }
+  if (hasCloseTime && new Date(form.close_time).getTime() < new Date(form.open_time).getTime()) {
     ElMessage.error('平仓时间不能早于开仓时间')
     return
   }
@@ -295,7 +300,7 @@ const handleImportTradeRecords = async (options: UploadRequestOptions) => {
   try {
     const result = await importTradeRecordsApi(options.file)
     options.onSuccess?.(result)
-    ElMessage.success(`导入完成：新增 ${result.imported} 条，跳过 ${result.skipped} 条，失败 ${result.failed} 条`)
+    ElMessage.success(result.message)
     await loadTradeRecords()
   } catch (error) {
     options.onError?.(error as Error)
@@ -433,6 +438,10 @@ const formatOpenDirection = (openDirection: TradeRecordOpenDirection) => {
   return openDirectionLabelMap[openDirection] ?? openDirection
 }
 
+const formatStatus = (record: TradeRecord) => {
+  return record.close_time ? '已平仓' : '未平仓'
+}
+
 const handleSearch = async () => {
   await loadTradeRecords()
 }
@@ -550,6 +559,9 @@ onBeforeUnmount(() => {
       <el-table-column prop="open_direction" label="开仓方向" width="100">
         <template #default="{ row }">{{ formatOpenDirection(row.open_direction) }}</template>
       </el-table-column>
+      <el-table-column label="状态" width="100">
+        <template #default="{ row }">{{ formatStatus(row) }}</template>
+      </el-table-column>
       <el-table-column prop="lots" label="手数" width="90" />
       <el-table-column prop="open_time" label="开仓时间" min-width="170">
         <template #default="{ row }">{{ formatDateTime(row.open_time) }}</template>
@@ -558,7 +570,7 @@ onBeforeUnmount(() => {
         <template #default="{ row }">{{ formatCurrency(row.open_price, 1) }}</template>
       </el-table-column>
       <el-table-column prop="close_time" label="平仓时间" min-width="170">
-        <template #default="{ row }">{{ formatDateTime(row.close_time) }}</template>
+        <template #default="{ row }">{{ row.close_time ? formatDateTime(row.close_time) : '-' }}</template>
       </el-table-column>
       <el-table-column prop="close_price" label="平仓价格" min-width="120" align="right">
         <template #default="{ row }">{{ formatCurrency(row.close_price, 1) }}</template>
@@ -571,9 +583,10 @@ onBeforeUnmount(() => {
       </el-table-column>
       <el-table-column prop="actual_pnl" label="实际盈亏" min-width="120" align="right">
         <template #default="{ row }">
-          <span :class="Number(row.actual_pnl) >= 0 ? 'pnl-positive' : 'pnl-negative'">
+          <span v-if="row.actual_pnl !== null" :class="Number(row.actual_pnl) >= 0 ? 'pnl-positive' : 'pnl-negative'">
             {{ formatCurrency(row.actual_pnl) }}
           </span>
+          <span v-else class="empty-text">-</span>
         </template>
       </el-table-column>
       <el-table-column label="操作截图" min-width="180">
@@ -644,18 +657,26 @@ onBeforeUnmount(() => {
           <el-form-item label="开仓价格" prop="open_price">
             <el-input-number v-model="form.open_price" :min="0" :precision="1" :step="0.5" style="width: 100%" />
           </el-form-item>
-          <el-form-item label="平仓时间" prop="close_time">
+          <el-form-item label="平仓时间">
             <el-date-picker
               v-model="form.close_time"
               type="datetime"
-              placeholder="请选择平仓时间"
+              placeholder="未平仓可留空"
               value-format="YYYY-MM-DD HH:mm:ss"
               :disabled-date="disableFutureDateTime"
+              clearable
               style="width: 100%"
             />
           </el-form-item>
-          <el-form-item label="平仓价格" prop="close_price">
-            <el-input-number v-model="form.close_price" :min="0" :precision="1" :step="0.5" style="width: 100%" />
+          <el-form-item label="平仓价格">
+            <el-input-number
+              v-model="form.close_price"
+              :min="0"
+              :precision="1"
+              :step="0.5"
+              controls-position="right"
+              style="width: 100%"
+            />
           </el-form-item>
           <el-form-item label="30F线段类型" prop="segment_type">
             <el-select v-model="form.segment_type" placeholder="请选择30F线段类型" style="width: 100%">
@@ -670,7 +691,7 @@ onBeforeUnmount(() => {
           <el-form-item label="手续费" prop="fee">
             <el-input-number v-model="form.fee" :min="0" :precision="2" :step="0.01" style="width: 100%" />
           </el-form-item>
-          <el-form-item label="实际盈亏" prop="actual_pnl">
+          <el-form-item label="实际盈亏">
             <el-input-number v-model="form.actual_pnl" :precision="2" :step="1" style="width: 100%" />
           </el-form-item>
         </div>

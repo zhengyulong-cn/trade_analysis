@@ -81,4 +81,4 @@ async def import_trade_records(
     file: UploadFile = File(...),
 ) -> TradeRecordImportResult:
     file_bytes = await file.read()
-    return service.import_trade_records_from_excel(file_bytes)
+    return service.import_trade_records_from_excel(file_bytes, file.filename)

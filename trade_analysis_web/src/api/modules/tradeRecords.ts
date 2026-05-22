@@ -13,15 +13,16 @@ export interface TradeRecordScreenshot {
 export interface TradeRecord {
   trade_record_id: number
   contract: string
+  source: "manual" | "import"
   open_direction: TradeRecordOpenDirection
   lots: number
   open_time: string
   open_price: number | string
-  close_time: string
-  close_price: number | string
+  close_time: string | null
+  close_price: number | string | null
   segment_type: TradeRecordSegmentType | null
   fee: number | string
-  actual_pnl: number | string
+  actual_pnl: number | string | null
   screenshots: TradeRecordScreenshot[]
   comment: string | null
   created_at: string
@@ -34,11 +35,11 @@ export interface TradeRecordCreateParams {
   lots: number
   open_time: string
   open_price: number
-  close_time: string
-  close_price: number
+  close_time?: string | null
+  close_price?: number | null
   segment_type: TradeRecordSegmentType
   fee: number
-  actual_pnl: number
+  actual_pnl?: number | null
   screenshots: TradeRecordScreenshot[]
   comment?: string | null
 }

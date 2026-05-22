@@ -1,11 +1,14 @@
+from collections import defaultdict
 from datetime import datetime, timedelta, timezone
 from decimal import Decimal
 from io import BytesIO
+from typing import Any
 
 from fastapi import HTTPException, status
 import pandas as pd
 from sqlmodel import Session, select
 
+from app.models.trade_fill_record import TradeFillRecord
 from app.models.trade_record import TradeRecord
 from app.schemas.trade_record import (
     TradeRecordCreate,
@@ -16,9 +19,13 @@ from app.schemas.trade_record import (
 from app.services.trade_record_storage import TradeRecordStorageService
 
 
+TRADE_DETAIL_CONTRACT = "合约"
 TRADE_DETAIL_TRADE_NO = "成交序号"
 TRADE_DETAIL_TIME = "成交时间"
 TRADE_DETAIL_SIDE = "买/卖"
+TRADE_DETAIL_PRICE = "成交价"
+TRADE_DETAIL_LOTS = "手数"
+TRADE_DETAIL_OFFSET = "开/平"
 TRADE_DETAIL_FEE = "手续费"
 TRADE_DETAIL_DATE = "实际成交日期"
 
@@ -29,6 +36,13 @@ CLOSE_DETAIL_CLOSE_PRICE = "成交价"
 CLOSE_DETAIL_LOTS = "手数"
 CLOSE_DETAIL_PNL = "平仓盈亏"
 CLOSE_DETAIL_ORIGINAL_TRADE_NO = "原成交序号"
+
+SIDE_BUY = "buy"
+SIDE_SELL = "sell"
+OFFSET_OPEN = "open"
+OFFSET_CLOSE = "close"
+SOURCE_MANUAL = "manual"
+SOURCE_IMPORT = "import"
 
 
 class TradeRecordService:
@@ -58,13 +72,19 @@ class TradeRecordService:
         return list(self.session.exec(statement).all())
 
     def create_trade_record(self, payload: TradeRecordCreate) -> TradeRecord:
-        trade_record = TradeRecord.model_validate(payload.model_dump())
+        trade_record = TradeRecord.model_validate(
+            {
+                **payload.model_dump(),
+                "source": SOURCE_MANUAL,
+            }
+        )
+        self._validate_time_range(trade_record.open_time, trade_record.close_time)
         self.session.add(trade_record)
         self.session.commit()
         self.session.refresh(trade_record)
         return trade_record
 
-    def import_trade_records_from_excel(self, file_bytes: bytes) -> TradeRecordImportResult:
+    def import_trade_records_from_excel(self, file_bytes: bytes, file_name: str | None = None) -> TradeRecordImportResult:
         try:
             trade_details = self._load_statement_sheet(file_bytes, sheet_index=2)
             close_details = self._load_statement_sheet(file_bytes, sheet_index=3)
@@ -74,84 +94,78 @@ class TradeRecordService:
                 detail="Failed to parse trade record workbook",
             ) from exc
 
-        trade_details = self._clean_trade_detail_rows(trade_details)
-        close_details = self._clean_close_detail_rows(close_details)
+        trade_details = self._clean_sheet_rows(trade_details)
+        close_details = self._clean_sheet_rows(close_details)
 
-        trade_index = self._build_trade_detail_index(trade_details)
-        close_fee_weights = self._build_lots_weight_map(close_details, CLOSE_DETAIL_TRADE_NO)
-        open_fee_weights = self._build_lots_weight_map(close_details, CLOSE_DETAIL_ORIGINAL_TRADE_NO)
-        existing_pairs = self._load_existing_import_pairs()
+        close_detail_index = self._build_close_detail_index(close_details)
+        fill_records_by_trade_no = self._load_fill_records_by_trade_no()
 
         imported = 0
         skipped = 0
         failed = 0
 
-        for _, row in close_details.iterrows():
+        for _, row in trade_details.iterrows():
             try:
-                open_trade_no = self._normalize_trade_no(row.get(CLOSE_DETAIL_ORIGINAL_TRADE_NO))
-                close_trade_no = self._normalize_trade_no(row.get(CLOSE_DETAIL_TRADE_NO))
-                if not open_trade_no or not close_trade_no:
+                trade_no = self._extract_trade_no(row.get(TRADE_DETAIL_TRADE_NO))
+                if not trade_no:
                     failed += 1
                     continue
 
-                pair = (open_trade_no, close_trade_no)
-                if pair in existing_pairs:
+                close_detail = close_detail_index.get(self._normalize_trade_no(trade_no) or "")
+                trade_fill = fill_records_by_trade_no.get(trade_no)
+                is_new = trade_fill is None
+                if trade_fill is None:
+                    trade_fill = TradeFillRecord(
+                        trade_no=trade_no,
+                        contract=str(row.get(TRADE_DETAIL_CONTRACT)).strip(),
+                        side=self._resolve_side(row.get(TRADE_DETAIL_SIDE)),
+                        offset=self._resolve_offset(row.get(TRADE_DETAIL_OFFSET)),
+                        trade_time=self._combine_trade_datetime(
+                            row.get(TRADE_DETAIL_DATE),
+                            row.get(TRADE_DETAIL_TIME),
+                        ),
+                        price=self._to_decimal(row.get(TRADE_DETAIL_PRICE)),
+                        lots=self._to_int(row.get(TRADE_DETAIL_LOTS)),
+                        fee=self._to_decimal(row.get(TRADE_DETAIL_FEE)),
+                        source_file_name=file_name,
+                    )
+                    self.session.add(trade_fill)
+                    fill_records_by_trade_no[trade_no] = trade_fill
+                else:
+                    trade_fill.contract = str(row.get(TRADE_DETAIL_CONTRACT)).strip()
+                    trade_fill.side = self._resolve_side(row.get(TRADE_DETAIL_SIDE))
+                    trade_fill.offset = self._resolve_offset(row.get(TRADE_DETAIL_OFFSET))
+                    trade_fill.trade_time = self._combine_trade_datetime(
+                        row.get(TRADE_DETAIL_DATE),
+                        row.get(TRADE_DETAIL_TIME),
+                    )
+                    trade_fill.price = self._to_decimal(row.get(TRADE_DETAIL_PRICE))
+                    trade_fill.lots = self._to_int(row.get(TRADE_DETAIL_LOTS))
+                    trade_fill.fee = self._to_decimal(row.get(TRADE_DETAIL_FEE))
+                    trade_fill.source_file_name = file_name
+                    trade_fill.updated_at = datetime.now(timezone.utc)
+
+                if close_detail is not None:
+                    trade_fill.matched_open_trade_no = close_detail["original_trade_no_raw"]
+                    trade_fill.close_pnl = self._to_decimal(close_detail["pnl"])
+                else:
+                    trade_fill.matched_open_trade_no = None
+                    trade_fill.close_pnl = None
+
+                if is_new:
+                    imported += 1
+                else:
                     skipped += 1
-                    continue
-
-                open_trade = trade_index.get(open_trade_no)
-                close_trade = trade_index.get(close_trade_no)
-                if open_trade is None or close_trade is None:
-                    failed += 1
-                    continue
-
-                lots = self._to_int(row.get(CLOSE_DETAIL_LOTS))
-                open_fee = self._allocate_fee(
-                    open_trade.get(TRADE_DETAIL_FEE),
-                    lots,
-                    open_fee_weights.get(open_trade_no, lots),
-                )
-                close_fee = self._allocate_fee(
-                    close_trade.get(TRADE_DETAIL_FEE),
-                    lots,
-                    close_fee_weights.get(close_trade_no, lots),
-                )
-
-                trade_record = TradeRecord(
-                    contract=str(row.get(CLOSE_DETAIL_CONTRACT)).strip(),
-                    open_direction=self._resolve_open_direction(open_trade.get(TRADE_DETAIL_SIDE)),
-                    lots=lots,
-                    open_time=self._combine_trade_datetime(
-                        open_trade.get(TRADE_DETAIL_DATE),
-                        open_trade.get(TRADE_DETAIL_TIME),
-                    ),
-                    open_price=self._to_decimal(row.get(CLOSE_DETAIL_OPEN_PRICE)),
-                    close_time=self._combine_trade_datetime(
-                        close_trade.get(TRADE_DETAIL_DATE),
-                        close_trade.get(TRADE_DETAIL_TIME),
-                    ),
-                    close_price=self._to_decimal(row.get(CLOSE_DETAIL_CLOSE_PRICE)),
-                    segment_type=None,
-                    fee=open_fee + close_fee,
-                    actual_pnl=self._to_decimal(row.get(CLOSE_DETAIL_PNL)),
-                    import_open_trade_no=open_trade_no,
-                    import_close_trade_no=close_trade_no,
-                    screenshots=[],
-                    comment=None,
-                )
-                self._validate_time_range(trade_record.open_time, trade_record.close_time)
-                self.session.add(trade_record)
-                existing_pairs.add(pair)
-                imported += 1
             except Exception:
                 failed += 1
 
         self.session.commit()
+        generated_count = self._sync_import_trade_records()
         return TradeRecordImportResult(
             imported=imported,
             skipped=skipped,
             failed=failed,
-            message=f"Imported {imported}, skipped {skipped}, failed {failed}",
+            message=f"导入成交明细 {imported} 条，更新 {skipped} 条，失败 {failed} 条；同步交易记录 {generated_count} 条",
         )
 
     def update_trade_record(self, payload: TradeRecordUpdate) -> TradeRecord:
@@ -169,7 +183,6 @@ class TradeRecordService:
             setattr(trade_record, field_name, value)
 
         self._validate_time_range(trade_record.open_time, trade_record.close_time)
-
         trade_record.updated_at = datetime.now(timezone.utc)
         self.session.add(trade_record)
         self.session.commit()
@@ -198,8 +211,155 @@ class TradeRecordService:
             )
         return trade_record
 
-    def _validate_time_range(self, open_time: datetime, close_time: datetime) -> None:
-        if close_time < open_time:
+    def _sync_import_trade_records(self) -> int:
+        fill_records = list(self.session.exec(select(TradeFillRecord).order_by(TradeFillRecord.trade_time)).all())
+        open_fills = [item for item in fill_records if item.offset == OFFSET_OPEN]
+        close_fills = [item for item in fill_records if item.offset == OFFSET_CLOSE]
+
+        close_fill_map: dict[str, list[TradeFillRecord]] = defaultdict(list)
+        for close_fill in close_fills:
+            normalized_open_trade_no = self._normalize_trade_no(close_fill.matched_open_trade_no)
+            if normalized_open_trade_no:
+                close_fill_map[normalized_open_trade_no].append(close_fill)
+
+        for items in close_fill_map.values():
+            items.sort(key=lambda item: item.trade_time)
+
+        existing_import_records = list(
+            self.session.exec(select(TradeRecord).where(TradeRecord.source == SOURCE_IMPORT)).all()
+        )
+        existing_record_map = {
+            self._build_import_record_key(item.import_open_trade_no, item.import_close_trade_no): item
+            for item in existing_import_records
+        }
+        generated_keys: set[tuple[str, str]] = set()
+
+        for open_fill in open_fills:
+            open_key_normalized = self._normalize_trade_no(open_fill.trade_no)
+            if not open_key_normalized:
+                continue
+
+            related_close_fills = close_fill_map.get(open_key_normalized, [])
+            matched_close_lots = 0
+            total_close_lots = sum(item.lots for item in related_close_fills)
+
+            for close_fill in related_close_fills:
+                matched_close_lots += close_fill.lots
+                record_key = self._build_import_record_key(open_fill.trade_no, close_fill.trade_no)
+                generated_keys.add(record_key)
+                trade_record = existing_record_map.get(record_key)
+                if trade_record is None:
+                    trade_record = TradeRecord(
+                        contract=open_fill.contract,
+                        source=SOURCE_IMPORT,
+                        open_direction=self._resolve_open_direction_from_fill_side(open_fill.side),
+                        lots=close_fill.lots,
+                        open_time=open_fill.trade_time,
+                        open_price=open_fill.price,
+                        close_time=close_fill.trade_time,
+                        close_price=close_fill.price,
+                        segment_type=None,
+                        fee=Decimal("0"),
+                        actual_pnl=close_fill.close_pnl,
+                        import_open_trade_no=open_fill.trade_no,
+                        import_close_trade_no=close_fill.trade_no,
+                        screenshots=[],
+                        comment=None,
+                    )
+                trade_record.contract = open_fill.contract
+                trade_record.source = SOURCE_IMPORT
+                trade_record.open_direction = self._resolve_open_direction_from_fill_side(open_fill.side)
+                trade_record.lots = close_fill.lots
+                trade_record.open_time = open_fill.trade_time
+                trade_record.open_price = open_fill.price
+                trade_record.close_time = close_fill.trade_time
+                trade_record.close_price = close_fill.price
+                trade_record.fee = self._allocate_fee(open_fill.fee, close_fill.lots, open_fill.lots) + close_fill.fee
+                trade_record.actual_pnl = close_fill.close_pnl
+                trade_record.import_open_trade_no = open_fill.trade_no
+                trade_record.import_close_trade_no = close_fill.trade_no
+                trade_record.updated_at = datetime.now(timezone.utc)
+                self._validate_time_range(trade_record.open_time, trade_record.close_time)
+                self.session.add(trade_record)
+
+            remaining_lots = max(open_fill.lots - matched_close_lots, 0)
+            if remaining_lots > 0:
+                record_key = self._build_import_record_key(open_fill.trade_no, None)
+                generated_keys.add(record_key)
+                trade_record = existing_record_map.get(record_key)
+                if trade_record is None:
+                    trade_record = TradeRecord(
+                        contract=open_fill.contract,
+                        source=SOURCE_IMPORT,
+                        open_direction=self._resolve_open_direction_from_fill_side(open_fill.side),
+                        lots=remaining_lots,
+                        open_time=open_fill.trade_time,
+                        open_price=open_fill.price,
+                        close_time=None,
+                        close_price=None,
+                        segment_type=None,
+                        fee=Decimal("0"),
+                        actual_pnl=None,
+                        import_open_trade_no=open_fill.trade_no,
+                        import_close_trade_no=None,
+                        screenshots=[],
+                        comment=None,
+                    )
+                trade_record.contract = open_fill.contract
+                trade_record.source = SOURCE_IMPORT
+                trade_record.open_direction = self._resolve_open_direction_from_fill_side(open_fill.side)
+                trade_record.lots = remaining_lots
+                trade_record.open_time = open_fill.trade_time
+                trade_record.open_price = open_fill.price
+                trade_record.close_time = None
+                trade_record.close_price = None
+                trade_record.fee = self._allocate_fee(open_fill.fee, remaining_lots, open_fill.lots)
+                trade_record.actual_pnl = None
+                trade_record.import_open_trade_no = open_fill.trade_no
+                trade_record.import_close_trade_no = None
+                trade_record.updated_at = datetime.now(timezone.utc)
+                self.session.add(trade_record)
+
+        stale_records = [item for key, item in existing_record_map.items() if key not in generated_keys]
+        for stale_record in stale_records:
+            self.session.delete(stale_record)
+
+        self.session.commit()
+        return len(generated_keys)
+
+    def _build_close_detail_index(self, dataframe: pd.DataFrame) -> dict[str, dict[str, Any]]:
+        close_detail_index: dict[str, dict[str, Any]] = {}
+        for _, row in dataframe.iterrows():
+            close_trade_no_raw = self._extract_trade_no(row.get(CLOSE_DETAIL_TRADE_NO))
+            close_trade_no = self._normalize_trade_no(close_trade_no_raw)
+            original_trade_no_raw = self._extract_trade_no(row.get(CLOSE_DETAIL_ORIGINAL_TRADE_NO))
+            if not close_trade_no or not original_trade_no_raw:
+                continue
+            close_detail_index[close_trade_no] = {
+                "contract": str(row.get(CLOSE_DETAIL_CONTRACT)).strip(),
+                "close_price": row.get(CLOSE_DETAIL_CLOSE_PRICE),
+                "open_price": row.get(CLOSE_DETAIL_OPEN_PRICE),
+                "lots": row.get(CLOSE_DETAIL_LOTS),
+                "pnl": row.get(CLOSE_DETAIL_PNL),
+                "original_trade_no_raw": original_trade_no_raw,
+            }
+        return close_detail_index
+
+    def _load_fill_records_by_trade_no(self) -> dict[str, TradeFillRecord]:
+        fill_records = self.session.exec(select(TradeFillRecord)).all()
+        return {item.trade_no: item for item in fill_records}
+
+    def _build_import_record_key(
+        self,
+        import_open_trade_no: str | None,
+        import_close_trade_no: str | None,
+    ) -> tuple[str, str]:
+        open_key = self._normalize_trade_no(import_open_trade_no) or ""
+        close_key = self._normalize_trade_no(import_close_trade_no) or ""
+        return (open_key, close_key)
+
+    def _validate_time_range(self, open_time: datetime, close_time: datetime | None) -> None:
+        if close_time is not None and close_time < open_time:
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
                 detail="close_time must be greater than or equal to open_time",
@@ -216,51 +376,22 @@ class TradeRecordService:
                 paths.add(path)
         return paths
 
-    def _clean_trade_detail_rows(self, dataframe: pd.DataFrame) -> pd.DataFrame:
+    def _clean_sheet_rows(self, dataframe: pd.DataFrame) -> pd.DataFrame:
         cleaned = dataframe.copy()
-        cleaned = cleaned[cleaned[CLOSE_DETAIL_CONTRACT].notna()]
-        cleaned = cleaned[cleaned[CLOSE_DETAIL_CONTRACT] != "合计"]
+        cleaned = cleaned[cleaned[TRADE_DETAIL_CONTRACT].notna()]
+        cleaned = cleaned[cleaned[TRADE_DETAIL_CONTRACT] != "合计"]
         return cleaned
 
-    def _clean_close_detail_rows(self, dataframe: pd.DataFrame) -> pd.DataFrame:
-        cleaned = dataframe.copy()
-        cleaned = cleaned[cleaned[CLOSE_DETAIL_CONTRACT].notna()]
-        cleaned = cleaned[cleaned[CLOSE_DETAIL_CONTRACT] != "合计"]
-        return cleaned
-
-    def _build_trade_detail_index(self, dataframe: pd.DataFrame) -> dict[str, dict]:
-        trade_index: dict[str, dict] = {}
-        for _, row in dataframe.iterrows():
-            trade_no = self._normalize_trade_no(row.get(TRADE_DETAIL_TRADE_NO))
-            if trade_no:
-                trade_index[trade_no] = row.to_dict()
-        return trade_index
-
-    def _build_lots_weight_map(self, dataframe: pd.DataFrame, column_name: str) -> dict[str, int]:
-        weights: dict[str, int] = {}
-        for _, row in dataframe.iterrows():
-            trade_no = self._normalize_trade_no(row.get(column_name))
-            if not trade_no:
-                continue
-            weights[trade_no] = weights.get(trade_no, 0) + self._to_int(row.get(CLOSE_DETAIL_LOTS))
-        return weights
-
-    def _load_existing_import_pairs(self) -> set[tuple[str, str]]:
-        statement = select(TradeRecord).where(
-            TradeRecord.import_open_trade_no.is_not(None),
-            TradeRecord.import_close_trade_no.is_not(None),
-        )
-        items = self.session.exec(statement).all()
-        pairs: set[tuple[str, str]] = set()
-        for item in items:
-            if item.import_open_trade_no and item.import_close_trade_no:
-                pairs.add((item.import_open_trade_no, item.import_close_trade_no))
-        return pairs
-
-    def _normalize_trade_no(self, value: object) -> str | None:
+    def _extract_trade_no(self, value: object) -> str | None:
         if value is None or pd.isna(value):
             return None
         digits = "".join(ch for ch in str(value).strip() if ch.isdigit())
+        if not digits:
+            return None
+        return digits
+
+    def _normalize_trade_no(self, value: object) -> str | None:
+        digits = self._extract_trade_no(value)
         if not digits:
             return None
         normalized = digits.lstrip("0")
@@ -277,13 +408,28 @@ class TradeRecordService:
             combined = combined - timedelta(days=1)
         return combined
 
-    def _resolve_open_direction(self, side_value: object) -> str:
+    def _resolve_side(self, side_value: object) -> str:
         side = str(side_value).strip()
         if side == "买":
-            return "long"
+            return SIDE_BUY
         if side == "卖":
+            return SIDE_SELL
+        raise ValueError(f"Unsupported side: {side}")
+
+    def _resolve_offset(self, offset_value: object) -> str:
+        offset = str(offset_value).strip()
+        if offset == "开":
+            return OFFSET_OPEN
+        if offset == "平":
+            return OFFSET_CLOSE
+        raise ValueError(f"Unsupported offset: {offset}")
+
+    def _resolve_open_direction_from_fill_side(self, side: str) -> str:
+        if side == SIDE_BUY:
+            return "long"
+        if side == SIDE_SELL:
             return "short"
-        raise ValueError(f"Unsupported open direction side: {side}")
+        raise ValueError(f"Unsupported fill side: {side}")
 
     def _to_decimal(self, value: object) -> Decimal:
         if value is None or pd.isna(value) or str(value).strip() == "--":
