@@ -36,6 +36,14 @@ export const RouterModules: RouteRecordRaw[] = [
           title: "交易记录",
         },
       },
+      {
+        path: "/futures/trade-thoughts",
+        component: () => import("@/views/futures/trade_thoughts/TradeThoughtManager.vue"),
+        meta: {
+          icon: "",
+          title: "交易小记",
+        },
+      },
     ],
   },
   {
@@ -66,7 +74,7 @@ export const RouterModules: RouteRecordRaw[] = [
         component: () => import("@/views/futures/future_klines_manager/FutureKlinesManager.vue"),
         meta: {
           icon: "",
-          title: "期货K管理",
+          title: "期货K线管理",
         },
       },
       {
