@@ -87,6 +87,7 @@ const submitting = ref(false)
 const importing = ref(false)
 const dialogVisible = ref(false)
 const dialogMode = ref<'create' | 'edit'>('create')
+let uploadUidSeed = 1
 const formRef = ref<FormInstance>()
 const contracts = ref<FutureContract[]>([])
 const records = ref<TradeRecord[]>([])
@@ -159,9 +160,22 @@ const buildListParams = () => {
   }
 }
 
+const nextUploadUid = () => uploadUidSeed++
+
+const toUploadError = (message: string, options: UploadRequestOptions): Parameters<NonNullable<typeof options.onError>>[0] => {
+  return {
+    name: 'UploadError',
+    message,
+    status: 500,
+    method: 'POST',
+    url: '',
+  }
+}
+
 const toUploadFile = (screenshot: TradeRecordScreenshot): UploadFile => {
   const resolvedUrl = resolveTradeRecordScreenshotUrl(screenshot.path)
   return {
+    uid: nextUploadUid(),
     name: screenshot.original_name,
     url: resolvedUrl,
     status: 'success',
@@ -303,7 +317,7 @@ const handleImportTradeRecords = async (options: UploadRequestOptions) => {
     ElMessage.success(result.message)
     await loadTradeRecords()
   } catch (error) {
-    options.onError?.(error as Error)
+    options.onError?.(toUploadError(error instanceof Error ? error.message : '上传交易记录失败', options))
     ElMessage.error('上传交易记录失败')
   } finally {
     importing.value = false
@@ -323,6 +337,7 @@ const applyUploadedScreenshot = (result: TradeRecordScreenshotUploadResult) => {
   uploadFileList.value = [
     ...uploadFileList.value,
     {
+      uid: nextUploadUid(),
       name: result.original_name,
       url: result.url,
       status: 'success',
@@ -354,7 +369,7 @@ const handleUploadRequest = async (options: UploadRequestOptions) => {
     options.onSuccess?.(result)
     ElMessage.success('截图上传成功')
   } catch (error) {
-    options.onError?.(error as Error)
+    options.onError?.(toUploadError(error instanceof Error ? error.message : '截图上传失败', options))
     ElMessage.error('截图上传失败')
   }
 }
@@ -488,7 +503,7 @@ onBeforeUnmount(() => {
           :http-request="handleImportTradeRecords"
           :disabled="importing"
         >
-          <el-button :loading="importing">上传交易记录</el-button>
+          <el-button :loading="importing">上传日结交易记录</el-button>
         </el-upload>
         <el-button type="primary" @click="openCreateDialog">新增交易记录</el-button>
       </div>
@@ -553,7 +568,7 @@ onBeforeUnmount(() => {
       </el-form>
     </div>
 
-    <el-table v-loading="loading" :data="records" border row-key="trade_record_id" empty-text="暂无交易记录">
+    <el-table v-loading="loading" :data="records" border row-key="trade_record_id" empty-text="暂无交易记录" max-height="80rem">
       <el-table-column prop="trade_record_id" label="ID" width="80" />
       <el-table-column prop="contract" label="合约" min-width="120" />
       <el-table-column prop="open_direction" label="开仓方向" width="100">

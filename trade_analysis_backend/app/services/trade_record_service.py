@@ -43,6 +43,7 @@ OFFSET_OPEN = "open"
 OFFSET_CLOSE = "close"
 SOURCE_MANUAL = "manual"
 SOURCE_IMPORT = "import"
+TRADE_NO_LENGTH = 18
 
 
 class TradeRecordService:
@@ -106,12 +107,12 @@ class TradeRecordService:
 
         for _, row in trade_details.iterrows():
             try:
-                trade_no = self._extract_trade_no(row.get(TRADE_DETAIL_TRADE_NO))
+                trade_no = self._normalize_trade_no(row.get(TRADE_DETAIL_TRADE_NO))
                 if not trade_no:
                     failed += 1
                     continue
 
-                close_detail = close_detail_index.get(self._normalize_trade_no(trade_no) or "")
+                close_detail = close_detail_index.get(trade_no)
                 trade_fill = fill_records_by_trade_no.get(trade_no)
                 is_new = trade_fill is None
                 if trade_fill is None:
@@ -146,7 +147,7 @@ class TradeRecordService:
                     trade_fill.updated_at = datetime.now(timezone.utc)
 
                 if close_detail is not None:
-                    trade_fill.matched_open_trade_no = close_detail["original_trade_no_raw"]
+                    trade_fill.matched_open_trade_no = close_detail["original_trade_no"]
                     trade_fill.close_pnl = self._to_decimal(close_detail["pnl"])
                 else:
                     trade_fill.matched_open_trade_no = None
@@ -218,9 +219,8 @@ class TradeRecordService:
 
         close_fill_map: dict[str, list[TradeFillRecord]] = defaultdict(list)
         for close_fill in close_fills:
-            normalized_open_trade_no = self._normalize_trade_no(close_fill.matched_open_trade_no)
-            if normalized_open_trade_no:
-                close_fill_map[normalized_open_trade_no].append(close_fill)
+            if close_fill.matched_open_trade_no:
+                close_fill_map[close_fill.matched_open_trade_no].append(close_fill)
 
         for items in close_fill_map.values():
             items.sort(key=lambda item: item.trade_time)
@@ -235,11 +235,10 @@ class TradeRecordService:
         generated_keys: set[tuple[str, str]] = set()
 
         for open_fill in open_fills:
-            open_key_normalized = self._normalize_trade_no(open_fill.trade_no)
-            if not open_key_normalized:
+            if not open_fill.trade_no:
                 continue
 
-            related_close_fills = close_fill_map.get(open_key_normalized, [])
+            related_close_fills = close_fill_map.get(open_fill.trade_no, [])
             matched_close_lots = 0
             total_close_lots = sum(item.lots for item in related_close_fills)
 
@@ -330,10 +329,9 @@ class TradeRecordService:
     def _build_close_detail_index(self, dataframe: pd.DataFrame) -> dict[str, dict[str, Any]]:
         close_detail_index: dict[str, dict[str, Any]] = {}
         for _, row in dataframe.iterrows():
-            close_trade_no_raw = self._extract_trade_no(row.get(CLOSE_DETAIL_TRADE_NO))
-            close_trade_no = self._normalize_trade_no(close_trade_no_raw)
-            original_trade_no_raw = self._extract_trade_no(row.get(CLOSE_DETAIL_ORIGINAL_TRADE_NO))
-            if not close_trade_no or not original_trade_no_raw:
+            close_trade_no = self._normalize_trade_no(row.get(CLOSE_DETAIL_TRADE_NO))
+            original_trade_no = self._normalize_trade_no(row.get(CLOSE_DETAIL_ORIGINAL_TRADE_NO))
+            if not close_trade_no or not original_trade_no:
                 continue
             close_detail_index[close_trade_no] = {
                 "contract": str(row.get(CLOSE_DETAIL_CONTRACT)).strip(),
@@ -341,7 +339,7 @@ class TradeRecordService:
                 "open_price": row.get(CLOSE_DETAIL_OPEN_PRICE),
                 "lots": row.get(CLOSE_DETAIL_LOTS),
                 "pnl": row.get(CLOSE_DETAIL_PNL),
-                "original_trade_no_raw": original_trade_no_raw,
+                "original_trade_no": original_trade_no,
             }
         return close_detail_index
 
@@ -394,8 +392,9 @@ class TradeRecordService:
         digits = self._extract_trade_no(value)
         if not digits:
             return None
-        normalized = digits.lstrip("0")
-        return normalized or "0"
+        if len(digits) > TRADE_NO_LENGTH:
+            return digits
+        return digits.zfill(TRADE_NO_LENGTH)
 
     def _combine_trade_datetime(self, trade_date: object, trade_time: object) -> datetime:
         if trade_date is None or trade_time is None or pd.isna(trade_date) or pd.isna(trade_time):
