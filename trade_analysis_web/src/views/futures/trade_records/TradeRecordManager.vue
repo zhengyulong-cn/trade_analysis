@@ -12,6 +12,7 @@ import {
   type TradeRecord,
   type TradeRecordCreateParams,
   type TradeRecordOpenDirection,
+  type TradeRecordOpenSignal,
   type TradeRecordSegmentType,
   type TradeRecordUpdateParams,
 } from '@/api/modules'
@@ -39,6 +40,7 @@ interface TradeRecordFormModel {
   close_time: string
   close_price: number | null
   segment_type: TradeRecordSegmentType
+  open_signal: TradeRecordOpenSignal | null
   fee: number
   actual_pnl: number | null
   screenshots: Array<{
@@ -68,12 +70,32 @@ const segmentTypeOptions: Array<{ label: string; value: TradeRecordSegmentType }
   { label: '趋势推动段', value: 'trend_push' },
   { label: '趋势回调段', value: 'trend_pullback' },
   { label: '区间内部段', value: 'range_internal' },
+  { label: '假突破转区间段', value: 'false_break_range_transition' },
 ]
 
 const segmentTypeLabelMap: Record<TradeRecordSegmentType, string> = {
   trend_push: '趋势推动段',
   trend_pullback: '趋势回调段',
   range_internal: '区间内部段',
+  false_break_range_transition: '假突破转区间段',
+}
+
+const openSignalOptions: Array<{ label: string; value: TradeRecordOpenSignal }> = [
+  { label: 'EMA20阻力+站稳关键位', value: 'ema20_resistance_key_level_confirmed' },
+  { label: 'EMA120阻力+头肩顶/头肩底', value: 'ema120_resistance_head_shoulders' },
+  { label: 'EMA120阻力+三推楔形', value: 'ema120_resistance_three_push_wedge' },
+  { label: 'EMA120阻力+突破交易区间然后回拉', value: 'ema120_resistance_range_break_pullback' },
+  { label: '区间边界附近+两次以上尝试突破受阻', value: 'range_edge_multiple_breakout_failures' },
+  { label: '不符合开仓信号', value: 'not_matching_open_signal' },
+]
+
+const openSignalLabelMap: Record<TradeRecordOpenSignal, string> = {
+  ema20_resistance_key_level_confirmed: 'EMA20阻力+站稳关键位',
+  ema120_resistance_head_shoulders: 'EMA120阻力+头肩顶/头肩底',
+  ema120_resistance_three_push_wedge: 'EMA120阻力+三推楔形',
+  ema120_resistance_range_break_pullback: 'EMA120阻力+突破交易区间然后回拉',
+  range_edge_multiple_breakout_failures: '区间边界附近+两次以上尝试突破受阻',
+  not_matching_open_signal: '不符合开仓信号',
 }
 
 const openDirectionOptions: Array<{ label: string; value: TradeRecordOpenDirection }> = [
@@ -121,6 +143,7 @@ const emptyFormModel = (): TradeRecordFormModel => ({
   close_time: '',
   close_price: null,
   segment_type: SEGMENT_PUSH,
+  open_signal: null,
   fee: 0,
   actual_pnl: null,
   screenshots: [],
@@ -165,6 +188,13 @@ const formatSegmentType = (segmentType: TradeRecordSegmentType | null) => {
     return '-'
   }
   return segmentTypeLabelMap[segmentType] ?? segmentType
+}
+
+const formatOpenSignal = (openSignal: TradeRecordOpenSignal | null) => {
+  if (!openSignal) {
+    return '-'
+  }
+  return openSignalLabelMap[openSignal] ?? openSignal
 }
 
 const formatOpenDirection = (openDirection: TradeRecordOpenDirection) => {
@@ -222,6 +252,7 @@ const openEditDialog = (record: TradeRecord) => {
     close_time: record.close_time ?? '',
     close_price: record.close_price === null ? null : Number(record.close_price),
     segment_type: record.segment_type ?? SEGMENT_PUSH,
+    open_signal: record.open_signal,
     fee: Number(record.fee),
     actual_pnl: record.actual_pnl === null ? null : Number(record.actual_pnl),
     screenshots: [...record.screenshots],
@@ -465,8 +496,8 @@ void loadTradeRecords()
       @selection-change="handleSelectionChange"
     >
       <el-table-column type="selection" width="52" />
-      <el-table-column prop="trade_record_id" label="ID" width="80" />
-      <el-table-column prop="contract" label="合约" min-width="120" />
+      <el-table-column prop="trade_record_id" label="ID" width="50" fixed="left" />
+      <el-table-column prop="contract" label="合约" min-width="80" fixed="left" />
       <el-table-column prop="open_direction" label="开仓方向" width="100">
         <template #default="{ row }">{{ formatOpenDirection(row.open_direction) }}</template>
       </el-table-column>
@@ -491,6 +522,9 @@ void loadTradeRecords()
       </el-table-column>
       <el-table-column prop="segment_type" label="30F线段类型" min-width="140">
         <template #default="{ row }">{{ formatSegmentType(row.segment_type) }}</template>
+      </el-table-column>
+      <el-table-column prop="open_signal" label="开仓信号" min-width="220">
+        <template #default="{ row }">{{ formatOpenSignal(row.open_signal) }}</template>
       </el-table-column>
       <el-table-column prop="fee" label="手续费" min-width="110" align="right">
         <template #default="{ row }">{{ formatCurrency(row.fee) }}</template>
@@ -524,7 +558,7 @@ void loadTradeRecords()
       <el-table-column prop="updated_at" label="更新时间" min-width="170">
         <template #default="{ row }">{{ formatDateTime(row.updated_at) }}</template>
       </el-table-column>
-      <el-table-column label="操作" fixed="right" width="140">
+      <el-table-column label="操作" fixed="right" width="120">
         <template #default="{ row }">
           <el-button type="primary" link @click="openEditDialog(row)">修改</el-button>
           <el-button type="danger" link @click="handleDelete(row)">删除</el-button>
@@ -537,6 +571,7 @@ void loadTradeRecords()
       :mode="dialogMode"
       :submitting="submitting"
       :contracts="contracts"
+      :open-signal-options="openSignalOptions"
       :initial-value="dialogInitialValue"
       @submit="submitTradeRecord"
     />

@@ -1,6 +1,17 @@
 import axios from "@/api/axios";
 
-export type TradeRecordSegmentType = "trend_push" | "trend_pullback" | "range_internal"
+export type TradeRecordSegmentType =
+  | "trend_push"
+  | "trend_pullback"
+  | "range_internal"
+  | "false_break_range_transition"
+export type TradeRecordOpenSignal =
+  | "ema20_resistance_key_level_confirmed"
+  | "ema120_resistance_head_shoulders"
+  | "ema120_resistance_three_push_wedge"
+  | "ema120_resistance_range_break_pullback"
+  | "range_edge_multiple_breakout_failures"
+  | "not_matching_open_signal"
 export type TradeRecordOpenDirection = "long" | "short"
 
 export interface TradeRecordScreenshot {
@@ -21,6 +32,7 @@ export interface TradeRecord {
   close_time: string | null
   close_price: number | string | null
   segment_type: TradeRecordSegmentType | null
+  open_signal: TradeRecordOpenSignal | null
   fee: number | string
   actual_pnl: number | string | null
   screenshots: TradeRecordScreenshot[]
@@ -38,6 +50,7 @@ export interface TradeRecordCreateParams {
   close_time?: string | null
   close_price?: number | null
   segment_type: TradeRecordSegmentType
+  open_signal?: TradeRecordOpenSignal | null
   fee: number
   actual_pnl?: number | null
   screenshots: TradeRecordScreenshot[]
@@ -52,6 +65,7 @@ export interface TradeRecordListParams {
   contract?: string
   open_direction?: TradeRecordOpenDirection
   segment_type?: TradeRecordSegmentType
+  open_signal?: TradeRecordOpenSignal
   open_time_start?: string
   open_time_end?: string
   close_time_start?: string

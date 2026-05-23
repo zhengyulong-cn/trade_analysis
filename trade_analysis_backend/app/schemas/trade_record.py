@@ -5,7 +5,15 @@ from typing import Literal
 from pydantic import ConfigDict, Field, model_validator
 from sqlmodel import SQLModel
 
-SegmentType = Literal["trend_push", "trend_pullback", "range_internal"]
+SegmentType = Literal["trend_push", "trend_pullback", "range_internal", "false_break_range_transition"]
+OpenSignalType = Literal[
+    "ema20_resistance_key_level_confirmed",
+    "ema120_resistance_head_shoulders",
+    "ema120_resistance_three_push_wedge",
+    "ema120_resistance_range_break_pullback",
+    "range_edge_multiple_breakout_failures",
+    "not_matching_open_signal",
+]
 TradeRecordOpenDirection = Literal["long", "short"]
 TradeRecordSource = Literal["manual", "import"]
 
@@ -26,6 +34,7 @@ class TradeRecordBase(SQLModel):
     close_time: datetime | None = None
     close_price: Decimal | None = None
     segment_type: SegmentType | None = None
+    open_signal: OpenSignalType | None = None
     fee: Decimal = 0
     actual_pnl: Decimal | None = None
     screenshots: list[TradeRecordScreenshot] = Field(default_factory=list)
@@ -56,6 +65,7 @@ class TradeRecordUpdate(SQLModel):
     close_time: datetime | None = None
     close_price: Decimal | None = None
     segment_type: SegmentType | None = None
+    open_signal: OpenSignalType | None = None
     fee: Decimal | None = None
     actual_pnl: Decimal | None = None
     screenshots: list[TradeRecordScreenshot] | None = None

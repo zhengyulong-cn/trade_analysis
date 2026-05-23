@@ -5,6 +5,7 @@ import {
   type FutureContract,
   type TradeRecordCreateParams,
   type TradeRecordOpenDirection,
+  type TradeRecordOpenSignal,
   type TradeRecordScreenshot,
   type TradeRecordScreenshotUploadResult,
   type TradeRecordSegmentType,
@@ -32,6 +33,7 @@ interface TradeRecordFormModel {
   close_time: string
   close_price: number | null
   segment_type: TradeRecordSegmentType
+  open_signal: TradeRecordOpenSignal | null
   fee: number
   actual_pnl: number | null
   screenshots: TradeRecordScreenshot[]
@@ -43,6 +45,7 @@ const props = defineProps<{
   mode: 'create' | 'edit'
   submitting: boolean
   contracts: FutureContract[]
+  openSignalOptions: Array<{ label: string; value: TradeRecordOpenSignal }>
   initialValue: TradeRecordFormModel
 }>()
 
@@ -55,6 +58,7 @@ const segmentTypeOptions: Array<{ label: string; value: TradeRecordSegmentType }
   { label: '趋势推动段', value: 'trend_push' },
   { label: '趋势回调段', value: 'trend_pullback' },
   { label: '区间内部段', value: 'range_internal' },
+  { label: '假突破转区间段', value: 'false_break_range_transition' },
 ]
 
 const openDirectionOptions: Array<{ label: string; value: TradeRecordOpenDirection }> = [
@@ -75,6 +79,7 @@ const form = reactive<TradeRecordFormModel>({
   close_time: '',
   close_price: null,
   segment_type: 'trend_push',
+  open_signal: null,
   fee: 0,
   actual_pnl: null,
   screenshots: [],
@@ -107,6 +112,7 @@ const syncFromProps = () => {
   form.close_time = props.initialValue.close_time
   form.close_price = props.initialValue.close_price
   form.segment_type = props.initialValue.segment_type
+  form.open_signal = props.initialValue.open_signal
   form.fee = props.initialValue.fee
   form.actual_pnl = props.initialValue.actual_pnl
   form.screenshots = [...props.initialValue.screenshots]
@@ -264,6 +270,7 @@ const submitForm = async () => {
     close_time: hasCloseTime ? form.close_time : null,
     close_price: hasClosePrice ? form.close_price : null,
     segment_type: form.segment_type,
+    open_signal: form.open_signal,
     fee: form.fee,
     actual_pnl: form.actual_pnl,
     screenshots: [...form.screenshots],
@@ -368,6 +375,16 @@ onBeforeUnmount(() => {
           <el-select v-model="form.segment_type" placeholder="请选择30F线段类型" style="width: 100%">
             <el-option
               v-for="option in segmentTypeOptions"
+              :key="option.value"
+              :label="option.label"
+              :value="option.value"
+            />
+          </el-select>
+        </el-form-item>
+        <el-form-item label="开仓信号">
+          <el-select v-model="form.open_signal" clearable placeholder="可留空" style="width: 100%">
+            <el-option
+              v-for="option in openSignalOptions"
               :key="option.value"
               :label="option.label"
               :value="option.value"
