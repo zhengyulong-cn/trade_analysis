@@ -1,4 +1,4 @@
-from datetime import datetime
+from datetime import date, datetime
 from decimal import Decimal
 from typing import Literal
 
@@ -16,6 +16,7 @@ OpenSignalType = Literal[
 ]
 TradeRecordOpenDirection = Literal["long", "short"]
 TradeRecordSource = Literal["manual", "import"]
+TradeRecordAnalysisPeriod = Literal["day", "week", "half_month", "month"]
 
 
 class TradeRecordScreenshot(SQLModel):
@@ -95,6 +96,7 @@ class TradeRecordListQuery(SQLModel):
     contract: str | None = None
     open_direction: TradeRecordOpenDirection | None = None
     segment_type: SegmentType | None = None
+    open_signal: OpenSignalType | None = None
     open_time_start: datetime | None = None
     open_time_end: datetime | None = None
     close_time_start: datetime | None = None
@@ -110,3 +112,82 @@ class TradeRecordImportResult(SQLModel):
     skipped: int
     failed: int
     message: str
+
+
+class TradeRecordAnalysisQuery(SQLModel):
+    period_type: TradeRecordAnalysisPeriod = "day"
+    contract: str | None = None
+    open_direction: TradeRecordOpenDirection | None = None
+    segment_type: SegmentType | None = None
+    open_signal: OpenSignalType | None = None
+    open_time_start: datetime | None = None
+    open_time_end: datetime | None = None
+
+
+class TradeRecordAnalysisSummary(SQLModel):
+    trade_count: int
+    total_lots: int
+    gross_pnl: Decimal
+    total_fee: Decimal
+    net_pnl: Decimal
+    win_count: int
+    loss_count: int
+    win_rate: float | None
+    avg_net_pnl: Decimal | None
+    trading_days: int
+    avg_trades_per_day: float | None
+    signal_coverage_rate: float | None
+    invalid_signal_rate: float | None
+
+
+class TradeRecordAnalysisPeriodItem(SQLModel):
+    period_label: str
+    period_start: date
+    period_end: date
+    trade_count: int
+    total_lots: int
+    gross_pnl: Decimal
+    total_fee: Decimal
+    net_pnl: Decimal
+    win_count: int
+    loss_count: int
+    win_rate: float | None
+    avg_net_pnl: Decimal | None
+    empty_signal_count: int
+    invalid_signal_count: int
+    valid_signal_count: int
+    signal_coverage_rate: float | None
+    invalid_signal_rate: float | None
+    cumulative_net_pnl: Decimal
+    net_pnl_change: Decimal | None
+    trade_count_change: int | None
+    win_rate_change: float | None
+    risk_flags: list[str]
+
+
+class TradeRecordAnalysisBreakdownItem(SQLModel):
+    key: str | None
+    label: str
+    trade_count: int
+    total_lots: int
+    gross_pnl: Decimal
+    total_fee: Decimal
+    net_pnl: Decimal
+    win_count: int
+    loss_count: int
+    win_rate: float | None
+    avg_net_pnl: Decimal | None
+    signal_coverage_rate: float | None
+    invalid_signal_rate: float | None
+
+
+class TradeRecordAnalysisResult(SQLModel):
+    summary: TradeRecordAnalysisSummary
+    period_series: list[TradeRecordAnalysisPeriodItem]
+    by_contract: list[TradeRecordAnalysisBreakdownItem]
+    by_direction: list[TradeRecordAnalysisBreakdownItem]
+    by_segment_type: list[TradeRecordAnalysisBreakdownItem]
+    by_open_signal: list[TradeRecordAnalysisBreakdownItem]
+    loss_periods: list[TradeRecordAnalysisPeriodItem]
+    high_frequency_periods: list[TradeRecordAnalysisPeriodItem]
+    execution_worse_periods: list[TradeRecordAnalysisPeriodItem]

@@ -13,6 +13,7 @@ export type TradeRecordOpenSignal =
   | "range_edge_multiple_breakout_failures"
   | "not_matching_open_signal"
 export type TradeRecordOpenDirection = "long" | "short"
+export type TradeRecordAnalysisPeriod = "day" | "week" | "half_month" | "month"
 
 export interface TradeRecordScreenshot {
   path: string
@@ -87,8 +88,93 @@ export interface TradeRecordMergeParams {
   trade_record_ids: number[]
 }
 
+export interface TradeRecordAnalysisParams {
+  period_type: TradeRecordAnalysisPeriod
+  contract?: string
+  open_direction?: TradeRecordOpenDirection
+  segment_type?: TradeRecordSegmentType
+  open_signal?: TradeRecordOpenSignal
+  open_time_start?: string
+  open_time_end?: string
+}
+
+export interface TradeRecordAnalysisSummary {
+  trade_count: number
+  total_lots: number
+  gross_pnl: number | string
+  total_fee: number | string
+  net_pnl: number | string
+  win_count: number
+  loss_count: number
+  win_rate: number | null
+  avg_net_pnl: number | string | null
+  trading_days: number
+  avg_trades_per_day: number | null
+  signal_coverage_rate: number | null
+  invalid_signal_rate: number | null
+}
+
+export interface TradeRecordAnalysisPeriodItem {
+  period_label: string
+  period_start: string
+  period_end: string
+  trade_count: number
+  total_lots: number
+  gross_pnl: number | string
+  total_fee: number | string
+  net_pnl: number | string
+  win_count: number
+  loss_count: number
+  win_rate: number | null
+  avg_net_pnl: number | string | null
+  empty_signal_count: number
+  invalid_signal_count: number
+  valid_signal_count: number
+  signal_coverage_rate: number | null
+  invalid_signal_rate: number | null
+  cumulative_net_pnl: number | string
+  net_pnl_change: number | string | null
+  trade_count_change: number | null
+  win_rate_change: number | null
+  risk_flags: string[]
+}
+
+export interface TradeRecordAnalysisBreakdownItem {
+  key: string | null
+  label: string
+  trade_count: number
+  total_lots: number
+  gross_pnl: number | string
+  total_fee: number | string
+  net_pnl: number | string
+  win_count: number
+  loss_count: number
+  win_rate: number | null
+  avg_net_pnl: number | string | null
+  signal_coverage_rate: number | null
+  invalid_signal_rate: number | null
+}
+
+export interface TradeRecordAnalysisResult {
+  summary: TradeRecordAnalysisSummary
+  period_series: TradeRecordAnalysisPeriodItem[]
+  by_contract: TradeRecordAnalysisBreakdownItem[]
+  by_direction: TradeRecordAnalysisBreakdownItem[]
+  by_segment_type: TradeRecordAnalysisBreakdownItem[]
+  by_open_signal: TradeRecordAnalysisBreakdownItem[]
+  loss_periods: TradeRecordAnalysisPeriodItem[]
+  high_frequency_periods: TradeRecordAnalysisPeriodItem[]
+  execution_worse_periods: TradeRecordAnalysisPeriodItem[]
+}
+
 export const getTradeRecordListApi = (params?: TradeRecordListParams) => {
   return axios.get<TradeRecord[]>("/trade-records", params) as unknown as Promise<TradeRecord[]>
+}
+
+export const getTradeRecordAnalysisApi = (params: TradeRecordAnalysisParams) => {
+  return axios.get<TradeRecordAnalysisResult>("/trade-records/analysis", params) as unknown as Promise<
+    TradeRecordAnalysisResult
+  >
 }
 
 export const createTradeRecordApi = (params: TradeRecordCreateParams) => {

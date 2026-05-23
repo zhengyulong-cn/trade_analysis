@@ -4,6 +4,11 @@ from fastapi import APIRouter, File, Query, UploadFile, status
 
 from app.api.dependencies import TradeRecordServiceDep, TradeRecordStorageServiceDep
 from app.schemas.trade_record import (
+    OpenSignalType,
+    SegmentType,
+    TradeRecordAnalysisPeriod,
+    TradeRecordAnalysisQuery,
+    TradeRecordAnalysisResult,
     TradeRecordCreate,
     TradeRecordDeleteRequest,
     TradeRecordImportResult,
@@ -12,6 +17,7 @@ from app.schemas.trade_record import (
     TradeRecordRead,
     TradeRecordScreenshotUploadResult,
     TradeRecordUpdate,
+    TradeRecordOpenDirection,
 )
 
 router = APIRouter()
@@ -21,8 +27,9 @@ router = APIRouter()
 def list_trade_records(
     service: TradeRecordServiceDep,
     contract: str | None = Query(default=None),
-    open_direction: str | None = Query(default=None),
-    segment_type: str | None = Query(default=None),
+    open_direction: TradeRecordOpenDirection | None = Query(default=None),
+    segment_type: SegmentType | None = Query(default=None),
+    open_signal: OpenSignalType | None = Query(default=None),
     open_time_start: datetime | None = Query(default=None),
     open_time_end: datetime | None = Query(default=None),
     close_time_start: datetime | None = Query(default=None),
@@ -32,6 +39,7 @@ def list_trade_records(
         contract=contract,
         open_direction=open_direction,
         segment_type=segment_type,
+        open_signal=open_signal,
         open_time_start=open_time_start,
         open_time_end=open_time_end,
         close_time_start=close_time_start,
@@ -41,6 +49,29 @@ def list_trade_records(
         TradeRecordRead.model_validate(record)
         for record in service.list_trade_records(query)
     ]
+
+
+@router.get("/analysis", response_model=TradeRecordAnalysisResult)
+def analyze_trade_records(
+    service: TradeRecordServiceDep,
+    period_type: TradeRecordAnalysisPeriod = Query(default="day"),
+    contract: str | None = Query(default=None),
+    open_direction: TradeRecordOpenDirection | None = Query(default=None),
+    segment_type: SegmentType | None = Query(default=None),
+    open_signal: OpenSignalType | None = Query(default=None),
+    open_time_start: datetime | None = Query(default=None),
+    open_time_end: datetime | None = Query(default=None),
+) -> TradeRecordAnalysisResult:
+    query = TradeRecordAnalysisQuery(
+        period_type=period_type,
+        contract=contract,
+        open_direction=open_direction,
+        segment_type=segment_type,
+        open_signal=open_signal,
+        open_time_start=open_time_start,
+        open_time_end=open_time_end,
+    )
+    return service.analyze_trade_records(query)
 
 
 @router.post("/create", response_model=TradeRecordRead, status_code=status.HTTP_201_CREATED)

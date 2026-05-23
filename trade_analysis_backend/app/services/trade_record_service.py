@@ -1,5 +1,6 @@
 from collections import defaultdict
-from datetime import datetime, timedelta, timezone
+from calendar import monthrange
+from datetime import date, datetime, timedelta, timezone
 from decimal import Decimal
 from io import BytesIO
 from typing import Any
@@ -11,6 +12,11 @@ from sqlmodel import Session, select
 from app.models.trade_fill_record import TradeFillRecord
 from app.models.trade_record import TradeRecord
 from app.schemas.trade_record import (
+    TradeRecordAnalysisBreakdownItem,
+    TradeRecordAnalysisPeriodItem,
+    TradeRecordAnalysisQuery,
+    TradeRecordAnalysisResult,
+    TradeRecordAnalysisSummary,
     TradeRecordCreate,
     TradeRecordImportResult,
     TradeRecordListQuery,
@@ -61,6 +67,8 @@ class TradeRecordService:
             statement = statement.where(TradeRecord.open_direction == query.open_direction)
         if query.segment_type:
             statement = statement.where(TradeRecord.segment_type == query.segment_type)
+        if query.open_signal:
+            statement = statement.where(TradeRecord.open_signal == query.open_signal)
         if query.open_time_start:
             statement = statement.where(TradeRecord.open_time >= query.open_time_start)
         if query.open_time_end:
@@ -72,6 +80,29 @@ class TradeRecordService:
 
         statement = statement.order_by(TradeRecord.open_time, TradeRecord.trade_record_id)
         return list(self.session.exec(statement).all())
+
+    def analyze_trade_records(self, query: TradeRecordAnalysisQuery) -> TradeRecordAnalysisResult:
+        records = self._list_closed_trade_records_for_analysis(query)
+        records.sort(key=lambda item: (item.open_time, item.trade_record_id or 0))
+
+        summary = self._build_analysis_summary(records)
+        period_series = self._build_period_series(records, query.period_type)
+
+        return TradeRecordAnalysisResult(
+            summary=summary,
+            period_series=period_series,
+            by_contract=self._build_breakdown(records, lambda item: item.contract, lambda value: value or "未填写"),
+            by_direction=self._build_breakdown(records, lambda item: item.open_direction, self._format_open_direction),
+            by_segment_type=self._build_breakdown(records, lambda item: item.segment_type, self._format_segment_type),
+            by_open_signal=self._build_breakdown(records, lambda item: item.open_signal, self._format_open_signal),
+            loss_periods=[item for item in period_series if "loss_period" in item.risk_flags],
+            high_frequency_periods=[
+                item
+                for item in period_series
+                if "high_frequency" in item.risk_flags or "frequency_up" in item.risk_flags
+            ],
+            execution_worse_periods=[item for item in period_series if "execution_worse" in item.risk_flags],
+        )
 
     def create_trade_record(self, payload: TradeRecordCreate) -> TradeRecord:
         trade_record = TradeRecord.model_validate(
@@ -261,6 +292,234 @@ class TradeRecordService:
                 detail=f"Trade record not found: {trade_record_id}",
             )
         return trade_record
+
+    def _list_closed_trade_records_for_analysis(self, query: TradeRecordAnalysisQuery) -> list[TradeRecord]:
+        statement = select(TradeRecord).where(
+            TradeRecord.close_time.is_not(None),
+            TradeRecord.close_price.is_not(None),
+            TradeRecord.actual_pnl.is_not(None),
+        )
+
+        if query.contract:
+            statement = statement.where(TradeRecord.contract.contains(query.contract.strip()))
+        if query.open_direction:
+            statement = statement.where(TradeRecord.open_direction == query.open_direction)
+        if query.segment_type:
+            statement = statement.where(TradeRecord.segment_type == query.segment_type)
+        if query.open_signal:
+            statement = statement.where(TradeRecord.open_signal == query.open_signal)
+        if query.open_time_start:
+            statement = statement.where(TradeRecord.open_time >= query.open_time_start)
+        if query.open_time_end:
+            statement = statement.where(TradeRecord.open_time <= query.open_time_end)
+
+        statement = statement.order_by(TradeRecord.open_time, TradeRecord.trade_record_id)
+        return list(self.session.exec(statement).all())
+
+    def _build_analysis_summary(self, records: list[TradeRecord]) -> TradeRecordAnalysisSummary:
+        metrics = self._calculate_record_metrics(records)
+        trading_days = len({item.open_time.date() for item in records})
+        return TradeRecordAnalysisSummary(
+            **metrics,
+            trading_days=trading_days,
+            avg_trades_per_day=self._safe_float(metrics["trade_count"], trading_days),
+        )
+
+    def _build_period_series(
+        self,
+        records: list[TradeRecord],
+        period_type: str,
+    ) -> list[TradeRecordAnalysisPeriodItem]:
+        grouped_records: dict[tuple[date, date], list[TradeRecord]] = defaultdict(list)
+        for record in records:
+            grouped_records[self._get_period_bounds(record.open_time.date(), period_type)].append(record)
+
+        period_series: list[TradeRecordAnalysisPeriodItem] = []
+        cumulative_net_pnl = Decimal("0")
+        previous_item: TradeRecordAnalysisPeriodItem | None = None
+        previous_bad_signal_rate: float | None = None
+
+        for period_start, period_end in sorted(grouped_records.keys()):
+            period_records = grouped_records[(period_start, period_end)]
+            metrics = self._calculate_record_metrics(period_records)
+            cumulative_net_pnl += metrics["net_pnl"]
+            bad_signal_rate = self._calculate_bad_signal_rate(period_records)
+
+            risk_flags = self._build_period_risk_flags(
+                metrics=metrics,
+                bad_signal_rate=bad_signal_rate,
+                previous_item=previous_item,
+                previous_bad_signal_rate=previous_bad_signal_rate,
+            )
+            current_item = TradeRecordAnalysisPeriodItem(
+                period_label=self._format_period_label(period_start, period_end, period_type),
+                period_start=period_start,
+                period_end=period_end,
+                **metrics,
+                cumulative_net_pnl=cumulative_net_pnl,
+                net_pnl_change=None if previous_item is None else metrics["net_pnl"] - previous_item.net_pnl,
+                trade_count_change=None
+                if previous_item is None
+                else metrics["trade_count"] - previous_item.trade_count,
+                win_rate_change=None
+                if previous_item is None or metrics["win_rate"] is None or previous_item.win_rate is None
+                else metrics["win_rate"] - previous_item.win_rate,
+                risk_flags=risk_flags,
+            )
+            period_series.append(current_item)
+            previous_item = current_item
+            previous_bad_signal_rate = bad_signal_rate
+
+        return period_series
+
+    def _build_breakdown(
+        self,
+        records: list[TradeRecord],
+        key_getter,
+        label_getter,
+    ) -> list[TradeRecordAnalysisBreakdownItem]:
+        grouped_records: dict[str | None, list[TradeRecord]] = defaultdict(list)
+        for record in records:
+            grouped_records[key_getter(record)].append(record)
+
+        items: list[TradeRecordAnalysisBreakdownItem] = []
+        for key, group_records in grouped_records.items():
+            metrics = self._calculate_record_metrics(group_records)
+            items.append(
+                TradeRecordAnalysisBreakdownItem(
+                    key=key,
+                    label=label_getter(key),
+                    **metrics,
+                )
+            )
+
+        return sorted(items, key=lambda item: (item.net_pnl, item.trade_count), reverse=True)
+
+    def _calculate_record_metrics(self, records: list[TradeRecord]) -> dict[str, Any]:
+        trade_count = len(records)
+        total_lots = sum(item.lots for item in records)
+        gross_pnl = sum((item.actual_pnl or Decimal("0") for item in records), Decimal("0"))
+        total_fee = sum((item.fee for item in records), Decimal("0"))
+        net_pnl = gross_pnl - total_fee
+        net_pnls = [self._get_net_pnl(item) for item in records]
+        win_count = sum(1 for value in net_pnls if value > 0)
+        loss_count = sum(1 for value in net_pnls if value < 0)
+        empty_signal_count = sum(1 for item in records if item.open_signal is None)
+        invalid_signal_count = sum(1 for item in records if item.open_signal == "not_matching_open_signal")
+        valid_signal_count = trade_count - empty_signal_count - invalid_signal_count
+
+        return {
+            "trade_count": trade_count,
+            "total_lots": total_lots,
+            "gross_pnl": gross_pnl,
+            "total_fee": total_fee,
+            "net_pnl": net_pnl,
+            "win_count": win_count,
+            "loss_count": loss_count,
+            "win_rate": self._safe_float(win_count, trade_count),
+            "avg_net_pnl": None if trade_count == 0 else net_pnl / Decimal(trade_count),
+            "empty_signal_count": empty_signal_count,
+            "invalid_signal_count": invalid_signal_count,
+            "valid_signal_count": valid_signal_count,
+            "signal_coverage_rate": self._safe_float(trade_count - empty_signal_count, trade_count),
+            "invalid_signal_rate": self._safe_float(invalid_signal_count, trade_count),
+        }
+
+    def _build_period_risk_flags(
+        self,
+        metrics: dict[str, Any],
+        bad_signal_rate: float | None,
+        previous_item: TradeRecordAnalysisPeriodItem | None,
+        previous_bad_signal_rate: float | None,
+    ) -> list[str]:
+        risk_flags: list[str] = []
+        if metrics["trade_count"] < 3:
+            risk_flags.append("sample_low")
+        if metrics["net_pnl"] < 0:
+            risk_flags.append("loss_period")
+        if metrics["trade_count"] >= 5:
+            risk_flags.append("high_frequency")
+
+        if previous_item is None:
+            return risk_flags
+
+        if previous_item.trade_count > 0 and metrics["trade_count"] > previous_item.trade_count * 1.5:
+            risk_flags.append("frequency_up")
+        if metrics["win_rate"] is not None and previous_item.win_rate is not None:
+            if metrics["win_rate"] - previous_item.win_rate <= -0.2:
+                risk_flags.append("win_rate_down")
+        if bad_signal_rate is not None and previous_bad_signal_rate is not None:
+            if bad_signal_rate - previous_bad_signal_rate >= 0.2:
+                risk_flags.append("execution_worse")
+
+        return risk_flags
+
+    def _calculate_bad_signal_rate(self, records: list[TradeRecord]) -> float | None:
+        if not records:
+            return None
+        bad_signal_count = sum(
+            1
+            for item in records
+            if item.open_signal is None or item.open_signal == "not_matching_open_signal"
+        )
+        return bad_signal_count / len(records)
+
+    def _get_net_pnl(self, record: TradeRecord) -> Decimal:
+        return (record.actual_pnl or Decimal("0")) - record.fee
+
+    def _safe_float(self, numerator: int | Decimal, denominator: int) -> float | None:
+        if denominator <= 0:
+            return None
+        return float(numerator / denominator)
+
+    def _get_period_bounds(self, current_date: date, period_type: str) -> tuple[date, date]:
+        if period_type == "day":
+            return current_date, current_date
+        if period_type == "week":
+            start = current_date - timedelta(days=current_date.weekday())
+            return start, start + timedelta(days=6)
+        if period_type == "half_month":
+            if current_date.day <= 14:
+                return current_date.replace(day=1), current_date.replace(day=14)
+            last_day = monthrange(current_date.year, current_date.month)[1]
+            return current_date.replace(day=15), current_date.replace(day=last_day)
+        if period_type == "month":
+            last_day = monthrange(current_date.year, current_date.month)[1]
+            return current_date.replace(day=1), current_date.replace(day=last_day)
+        raise ValueError(f"Unsupported period type: {period_type}")
+
+    def _format_period_label(self, period_start: date, period_end: date, period_type: str) -> str:
+        if period_type == "day":
+            return period_start.isoformat()
+        if period_type == "week":
+            return f"{period_start.isoformat()} ~ {period_end.isoformat()}"
+        if period_type == "half_month":
+            half_label = "上半月" if period_start.day == 1 else "下半月"
+            return f"{period_start:%Y-%m} {half_label}"
+        if period_type == "month":
+            return f"{period_start:%Y-%m}"
+        return f"{period_start.isoformat()} ~ {period_end.isoformat()}"
+
+    def _format_open_direction(self, value: str | None) -> str:
+        return {"long": "多单", "short": "空单"}.get(value or "", "未填写")
+
+    def _format_segment_type(self, value: str | None) -> str:
+        return {
+            "trend_push": "趋势推动段",
+            "trend_pullback": "趋势回调段",
+            "range_internal": "区间内部段",
+            "false_break_range_transition": "假突破转区间段",
+        }.get(value or "", "未填写")
+
+    def _format_open_signal(self, value: str | None) -> str:
+        return {
+            "ema20_resistance_key_level_confirmed": "EMA20阻力+站稳关键位",
+            "ema120_resistance_head_shoulders": "EMA120阻力+头肩顶/头肩底",
+            "ema120_resistance_three_push_wedge": "EMA120阻力+三推楔形",
+            "ema120_resistance_range_break_pullback": "EMA120阻力+突破交易区间然后回拉",
+            "range_edge_multiple_breakout_failures": "区间上下轨附近+两次以上尝试突破受阻",
+            "not_matching_open_signal": "不符合开仓信号",
+        }.get(value or "", "未填写")
 
     def _sync_import_trade_records(self) -> int:
         fill_records = list(self.session.exec(select(TradeFillRecord).order_by(TradeFillRecord.trade_time)).all())
