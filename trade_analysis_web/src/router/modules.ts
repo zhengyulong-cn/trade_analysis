@@ -3,7 +3,11 @@ import { type RouteRecordRaw } from "vue-router"
 export const RouterModules: RouteRecordRaw[] = [
   {
     path: "/",
-    redirect: "/market_conditions",
+    meta: {
+      icon: "HomeFilled",
+      title: "主页",
+    },
+    component: () => import("@/views/Home.vue"),
   },
   {
     path: "/market_conditions",
@@ -26,6 +30,14 @@ export const RouterModules: RouteRecordRaw[] = [
         component: () => import("@/views/futures/open_opportunity_analysis/OpenOpportunityAnalysis.vue"),
         meta: {
           title: "开仓机会分析",
+        },
+      },
+      {
+        path: "/reports/fundamental-analysis",
+        component: () => import("@/views/reports/future_fundamental_analysis/FutureFundamentalAnalysis.vue"),
+        meta: {
+          icon: "",
+          title: "基本面分析",
         },
       },
       {
@@ -75,14 +87,6 @@ export const RouterModules: RouteRecordRaw[] = [
         meta: {
           icon: "",
           title: "期货K线管理",
-        },
-      },
-      {
-        path: "/reports/fundamental-analysis",
-        component: () => import("@/views/reports/future_fundamental_analysis/FutureFundamentalAnalysis.vue"),
-        meta: {
-          icon: "",
-          title: "基本面分析",
         },
       },
     ],

@@ -270,8 +270,8 @@ const validateMergeSelection = (items: TradeRecord[]) => {
     return '请至少选择 2 条交易记录'
   }
 
-  const contract = items[0].contract
-  const openDirection = items[0].open_direction
+  const contract = items[0]!.contract
+  const openDirection = items[0]!.open_direction
   for (const item of items) {
     if (item.contract !== contract) {
       return '仅支持合并相同合约的记录'
@@ -304,8 +304,8 @@ const openMergeDialog = () => {
     .sort()
 
   mergePreview.value = {
-    contract: selectedRecords.value[0].contract,
-    openDirectionLabel: formatOpenDirection(selectedRecords.value[0].open_direction),
+    contract: selectedRecords.value[0]!.contract,
+    openDirectionLabel: formatOpenDirection(selectedRecords.value[0]!.open_direction),
     recordCount: selectedRecords.value.length,
     totalLots,
     earliestOpenTime: formatDateTime(openTimes[0]),
@@ -381,6 +381,7 @@ void loadTradeRecords()
         <p class="subtitle">维护交易记录、导入成交数据、补充截图与复盘评价</p>
       </div>
       <div class="toolbar-actions">
+        <el-button type="warning" :disabled="!canMerge" @click="openMergeDialog">合并选中记录</el-button>
         <el-upload
           accept=".xlsx,.xls"
           :show-file-list="false"
@@ -390,7 +391,6 @@ void loadTradeRecords()
         >
           <el-button :loading="importing">上传交易记录</el-button>
         </el-upload>
-        <el-button type="warning" :disabled="!canMerge" @click="openMergeDialog">合并选中记录</el-button>
         <el-button type="primary" @click="openCreateDialog">新增交易记录</el-button>
       </div>
     </div>
@@ -461,7 +461,7 @@ void loadTradeRecords()
       border
       row-key="trade_record_id"
       empty-text="暂无交易记录"
-      max-height="80rem"
+      max-height="35rem"
       @selection-change="handleSelectionChange"
     >
       <el-table-column type="selection" width="52" />
