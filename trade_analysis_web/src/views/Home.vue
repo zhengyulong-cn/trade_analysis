@@ -28,7 +28,7 @@
             </div>
           </template>
         </el-popover>
-        <p>③亏损能否接受？</p>
+        <p>③设置的止损位能否接受？</p>
       </section>
       <section class="section-box">
         <div class="title">操作警醒</div>
