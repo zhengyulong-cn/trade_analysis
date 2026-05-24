@@ -6,6 +6,7 @@ import { ElMessage } from 'element-plus'
 import type { ChartOptions, DeepPartial } from 'lightweight-charts'
 import { storeToRefs } from 'pinia'
 import { computed, ref, watch } from 'vue'
+import { useRoute, useRouter } from 'vue-router'
 
 const DEFAULT_PERIOD = 60 * 5
 const CONTRACT_PLACEHOLDER = '请选择合约'
@@ -31,6 +32,8 @@ const createEmptyChartData = (): FutureKlineData => ({
 
 const contractsStore = useContractsStore()
 const { contracts, loading: contractsLoading, loadError } = storeToRefs(contractsStore)
+const route = useRoute()
+const router = useRouter()
 
 const selectedSymbol = ref('')
 const selectedPeriod = ref(DEFAULT_PERIOD)
@@ -88,6 +91,68 @@ const chartOptions = computed<DeepPartial<ChartOptions>>(() => ({
 
 let latestRequestId = 0
 
+const getQueryValue = (value: unknown) => {
+  if (Array.isArray(value)) {
+    return String(value[0] ?? '').trim()
+  }
+  return String(value ?? '').trim()
+}
+
+const getSymbolFromRoute = () => {
+  return getQueryValue(route.query.symbol || route.query.contract)
+}
+
+const getPeriodFromRoute = () => {
+  const rawPeriod = getQueryValue(route.query.period || route.query.interval)
+  const period = Number(rawPeriod)
+  if (!Number.isFinite(period) || period <= 0) {
+    return DEFAULT_PERIOD
+  }
+  return period
+}
+
+const resolveContractSymbol = (symbol: string) => {
+  if (!symbol) {
+    return ''
+  }
+
+  const normalizedSymbol = symbol.toLowerCase()
+  return contracts.value.find((contract) => contract.symbol.toLowerCase() === normalizedSymbol)?.symbol ?? ''
+}
+
+const applyRouteSelection = () => {
+  const routeSymbol = getSymbolFromRoute()
+  const matchedSymbol = resolveContractSymbol(routeSymbol)
+  if (matchedSymbol) {
+    selectedSymbol.value = matchedSymbol
+  } else if (!selectedSymbol.value && contracts.value.length) {
+    selectedSymbol.value = contracts.value[0]?.symbol ?? ''
+  }
+
+  selectedPeriod.value = getPeriodFromRoute()
+}
+
+const syncRouteQuery = async () => {
+  if (!selectedSymbol.value) {
+    return
+  }
+
+  const nextQuery = {
+    ...route.query,
+    symbol: selectedSymbol.value,
+    period: String(selectedPeriod.value),
+  }
+
+  if (route.query.symbol === nextQuery.symbol && route.query.period === nextQuery.period) {
+    return
+  }
+
+  await router.replace({
+    path: route.path,
+    query: nextQuery,
+  })
+}
+
 const handleToggleFavorite = async (symbol: string) => {
   const contract = contracts.value.find((item) => item.symbol === symbol)
   if (!contract) {
@@ -141,6 +206,7 @@ const loadKLineData = async () => {
 }
 
 watch([selectedSymbol, selectedPeriod], () => {
+  void syncRouteQuery()
   void loadKLineData()
 })
 
@@ -153,12 +219,26 @@ watch(
       return
     }
 
+    const routeSymbol = resolveContractSymbol(getSymbolFromRoute())
+    if (routeSymbol && routeSymbol !== selectedSymbol.value) {
+      selectedSymbol.value = routeSymbol
+      selectedPeriod.value = getPeriodFromRoute()
+      return
+    }
+
     const currentSymbolExists = items.some((item) => item.symbol === selectedSymbol.value)
     if (!currentSymbolExists) {
       selectedSymbol.value = items[0]?.symbol ?? ''
     }
   },
   { immediate: true },
+)
+
+watch(
+  () => [route.query.symbol, route.query.contract, route.query.period, route.query.interval],
+  () => {
+    applyRouteSelection()
+  },
 )
 
 watch(

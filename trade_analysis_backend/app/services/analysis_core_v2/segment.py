@@ -3,7 +3,7 @@ from dataclasses import dataclass, field
 from .types import AnalysisBar, BaseSegment, SegmentPoint
 
 
-MIN_REVERSAL_PCT = 0.002
+MIN_REVERSAL_PCT = 0.004
 
 
 @dataclass
@@ -56,7 +56,7 @@ def _price_move_enough(active: BaseSegment, bar: AnalysisBar, min_reversal_pct: 
         return True
     if active.direction == "down":
         return (bar.high - base_price) / base_price >= min_reversal_pct
-    return (base_price - bar.low) / base_price >= min_reversal_pct
+    return (base_price - bar.low) / base_price > min_reversal_pct
 
 
 def _has_higher_kline(active: BaseSegment, bar: AnalysisBar, bars: list[AnalysisBar]) -> bool:

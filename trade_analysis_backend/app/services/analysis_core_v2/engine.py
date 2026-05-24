@@ -17,23 +17,24 @@ def analyze(
     return {
         "bar_count": len(bars),
         "fractals": [],
-        "segments": [
-            {
-                "direction": segment.direction,
-                "start": {
-                    "index": segment.start.index,
-                    "time": segment.start.time,
-                    "price": segment.start.price,
-                },
-                "end": {
-                    "index": segment.end.index,
-                    "time": segment.end.time,
-                    "price": segment.end.price,
-                },
-                "is_momentum_exhaustion_segment": False,
-            }
-            for segment in final_segments
-        ],
+        # "segments": [
+        #     {
+        #         "direction": segment.direction,
+        #         "start": {
+        #             "index": segment.start.index,
+        #             "time": segment.start.time,
+        #             "price": segment.start.price,
+        #         },
+        #         "end": {
+        #             "index": segment.end.index,
+        #             "time": segment.end.time,
+        #             "price": segment.end.price,
+        #         },
+        #         "is_momentum_exhaustion_segment": False,
+        #     }
+        #     for segment in final_segments
+        # ],
+        "segments": [],
         "higher_segments": [],
         "trading_ranges": [],
         "momentum_exhaustions": [],
