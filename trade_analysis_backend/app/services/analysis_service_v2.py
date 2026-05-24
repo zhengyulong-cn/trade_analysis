@@ -23,8 +23,8 @@ class AnalysisServiceV2:
         3. 其他周期暂时也保持 engine 默认值。
         """
         if interval_seconds == THIRTY_MINUTES_SECONDS:
-            return 8, 3
-        return 10, 4
+            return 1, 5
+        return 1, 5
 
     def build_analysis_bars(self, items) -> list[AnalysisBar]:
         bars: list[AnalysisBar] = []

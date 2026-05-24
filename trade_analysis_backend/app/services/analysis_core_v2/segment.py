@@ -43,7 +43,7 @@ def _make_segment(direction: str, start: SegmentPoint, end: SegmentPoint) -> Bas
 
 
 def _distance_enough(active: BaseSegment, bar: MergedBar, min_distance: int) -> bool:
-    return bar.index - active.end.merged_index > min_distance
+    return bar.index - active.end.merged_index + 1 >= min_distance
 
 
 def _has_higher_kline(active: BaseSegment, bar: MergedBar, merged_bars: list[MergedBar]) -> bool:
@@ -112,7 +112,7 @@ def _try_seed_segment(state: SegmentState, bars: list[MergedBar], bar: MergedBar
         return
 
     for start_bar in bars[: bar.index]:
-        if bar.index - start_bar.index <= min_distance:
+        if bar.index - start_bar.index + 1 < min_distance:
             continue
         if bar.high > bar.ema20:
             state.active = _make_segment("up", _low_point(start_bar), _high_point(bar))
@@ -140,6 +140,22 @@ def _bar_signature(bar: MergedBar) -> tuple[int, int, float, float]:
         bar.high,
         bar.low,
     )
+
+def _is_active_segment_broken(active: BaseSegment, bar: MergedBar) -> bool:
+    if active.direction == "up":
+        return active.start.price > bar.low
+    return active.start.price < bar.high
+
+
+def _rollback_active_segment(state: SegmentState, bar: MergedBar) -> bool:
+    if len(state.historical) == 0:
+        return False
+    last_confirmed_seg = state.historical.pop()
+    if last_confirmed_seg.direction == "up":
+        state.active = _make_segment("up", last_confirmed_seg.start, _high_point(bar))
+        return True
+    state.active = _make_segment("down", last_confirmed_seg.start, _low_point(bar))
+    return True
 
 
 def advance_segment(
@@ -172,6 +188,13 @@ def advance_segment(
             state.processed_merged_count = bar_index + 1
             state.last_processed_bar_signature = _bar_signature(bar)
             continue
+
+        if _is_active_segment_broken(active, bar):
+            op_res = _rollback_active_segment(state, bar)
+            if op_res:
+                state.processed_merged_count = bar_index + 1
+                state.last_processed_bar_signature = _bar_signature(bar)
+                continue
 
         if active.direction == "down" and _can_reverse_to_up(active, bar, merged_bars, min_distance):
             completed = _reverse_segment(state, "up", bar)
