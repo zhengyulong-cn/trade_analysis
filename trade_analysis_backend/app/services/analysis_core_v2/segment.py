@@ -60,16 +60,22 @@ def _price_move_enough(active: BaseSegment, bar: AnalysisBar, min_reversal_pct: 
 
 
 def _has_higher_kline(active: BaseSegment, bar: AnalysisBar, bars: list[AnalysisBar]) -> bool:
+    higher_count = 0
     for item_k in bars[active.end.merged_index : bar.index + 1]:
         if item_k.high > bar.high:
-            return True
+            higher_count += 1
+            if higher_count >= 2:
+                return True
     return False
 
 
 def _has_lower_kline(active: BaseSegment, bar: AnalysisBar, bars: list[AnalysisBar]) -> bool:
+    lower_count = 0
     for item_k in bars[active.end.merged_index : bar.index + 1]:
         if item_k.low < bar.low:
-            return True
+            lower_count += 1
+            if lower_count >= 2:
+                return True
     return False
 
 
@@ -200,17 +206,16 @@ def advance_segment(
             state.last_processed_bar_signature = _bar_signature(bar)
             continue
 
-        if _is_active_segment_broken(active, bar):
+        if active.direction == "down" and _can_reverse_to_up(active, bar, bars, min_distance):
+            completed = _reverse_segment(state, "up", bar)
+        elif active.direction == "up" and _can_reverse_to_down(active, bar, bars, min_distance):
+            completed = _reverse_segment(state, "down", bar)
+        elif _is_active_segment_broken(active, bar):
             op_res = _rollback_active_segment(state, bar)
             if op_res:
                 state.processed_merged_count = bar_index + 1
                 state.last_processed_bar_signature = _bar_signature(bar)
                 continue
-
-        if active.direction == "down" and _can_reverse_to_up(active, bar, bars, min_distance):
-            completed = _reverse_segment(state, "up", bar)
-        elif active.direction == "up" and _can_reverse_to_down(active, bar, bars, min_distance):
-            completed = _reverse_segment(state, "down", bar)
 
         state.processed_merged_count = bar_index + 1
         state.last_processed_bar_signature = _bar_signature(bar)
