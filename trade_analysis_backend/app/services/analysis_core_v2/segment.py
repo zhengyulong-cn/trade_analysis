@@ -2,7 +2,6 @@ from dataclasses import dataclass, field
 
 from .types import BaseSegment, MergedBar, SegmentPoint
 
-
 @dataclass
 class SegmentState:
     historical: list[BaseSegment] = field(default_factory=list)
@@ -47,20 +46,52 @@ def _distance_enough(active: BaseSegment, bar: MergedBar, min_distance: int) -> 
     return bar.index - active.end.merged_index > min_distance
 
 
-def _can_reverse_to_up(active: BaseSegment, bar: MergedBar, min_distance: int) -> bool:
-    if bar.ema20 is None:
-        return False
-    if bar.high > active.start.price:
-        return True
-    return bar.high > bar.ema20 and _distance_enough(active, bar, min_distance)
+def _has_higher_kline(active: BaseSegment, bar: MergedBar, merged_bars: list[MergedBar]) -> bool:
+    for item_k in merged_bars[active.end.merged_index : bar.index + 1]:
+        if item_k.high > bar.high:
+            return True
+    return False
 
 
-def _can_reverse_to_down(active: BaseSegment, bar: MergedBar, min_distance: int) -> bool:
+def _has_lower_kline(active: BaseSegment, bar: MergedBar, merged_bars: list[MergedBar]) -> bool:
+    for item_k in merged_bars[active.end.merged_index : bar.index + 1]:
+        if item_k.low < bar.low:
+            return True
+    return False
+
+
+def _can_reverse_to_up(
+    active: BaseSegment,
+    bar: MergedBar,
+    merged_bars: list[MergedBar],
+    min_distance: int,
+) -> bool:
     if bar.ema20 is None:
         return False
-    if bar.low < active.start.price:
-        return True
-    return bar.low < bar.ema20 and _distance_enough(active, bar, min_distance)
+    # if bar.high > active.start.price:
+    #     return True
+    return (
+        bar.high > bar.ema20
+        and not _has_higher_kline(active, bar, merged_bars)
+        and _distance_enough(active, bar, min_distance)
+    )
+
+
+def _can_reverse_to_down(
+    active: BaseSegment,
+    bar: MergedBar,
+    merged_bars: list[MergedBar],
+    min_distance: int,
+) -> bool:
+    if bar.ema20 is None:
+        return False
+    # if bar.low < active.start.price:
+    #     return True
+    return (
+        bar.low < bar.ema20
+        and not _has_lower_kline(active, bar, merged_bars)
+        and _distance_enough(active, bar, min_distance)
+    )
 
 
 def _extend_active_segment(state: SegmentState, bar: MergedBar) -> None:
@@ -142,9 +173,9 @@ def advance_segment(
             state.last_processed_bar_signature = _bar_signature(bar)
             continue
 
-        if active.direction == "down" and _can_reverse_to_up(active, bar, min_distance):
+        if active.direction == "down" and _can_reverse_to_up(active, bar, merged_bars, min_distance):
             completed = _reverse_segment(state, "up", bar)
-        elif active.direction == "up" and _can_reverse_to_down(active, bar, min_distance):
+        elif active.direction == "up" and _can_reverse_to_down(active, bar, merged_bars, min_distance):
             completed = _reverse_segment(state, "down", bar)
 
         state.processed_merged_count = bar_index + 1
