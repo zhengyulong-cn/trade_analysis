@@ -508,7 +508,8 @@ class TradeRecordService:
             "trend_push": "趋势推动段",
             "trend_pullback": "趋势回调段",
             "range_internal": "区间内部段",
-            "false_break_range_transition": "假突破转区间段",
+            "false_break_range_transition": "（假突破）回调转区间段",
+            "true_break_trend_push_transition": "（真突破）区间转推动段",
         }.get(value or "", "未填写")
 
     def _format_open_signal(self, value: str | None) -> str:

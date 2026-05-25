@@ -5,6 +5,7 @@ export type TradeRecordSegmentType =
   | "trend_pullback"
   | "range_internal"
   | "false_break_range_transition"
+  | "true_break_trend_push_transition"
 export type TradeRecordOpenSignal =
   | "ema20_resistance_key_level_confirmed"
   | "ema120_resistance_head_shoulders"

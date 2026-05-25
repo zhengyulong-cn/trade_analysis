@@ -5,7 +5,7 @@ from typing import Literal
 from pydantic import ConfigDict, Field, model_validator
 from sqlmodel import SQLModel
 
-SegmentType = Literal["trend_push", "trend_pullback", "range_internal", "false_break_range_transition"]
+SegmentType = Literal["trend_push", "trend_pullback", "range_internal", "false_break_range_transition", "true_break_trend_push_transition"]
 OpenSignalType = Literal[
     "ema20_resistance_key_level_confirmed",
     "ema120_resistance_head_shoulders",

@@ -58,7 +58,8 @@ const segmentTypeOptions: Array<{ label: string; value: TradeRecordSegmentType }
   { label: '趋势推动段', value: 'trend_push' },
   { label: '趋势回调段', value: 'trend_pullback' },
   { label: '区间内部段', value: 'range_internal' },
-  { label: '假突破转区间段', value: 'false_break_range_transition' },
+  { label: '（假突破）回调转区间段', value: 'false_break_range_transition' },
+  { label: '（真突破）区间转推动段', value: 'true_break_trend_push_transition' },
 ]
 
 const openDirectionOptions: Array<{ label: string; value: TradeRecordOpenDirection }> = [
