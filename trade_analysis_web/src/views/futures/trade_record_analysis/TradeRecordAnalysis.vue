@@ -46,7 +46,6 @@ const openSignalOptions: Array<{ label: string; value: TradeRecordOpenSignal }> 
 ]
 
 const riskFlagLabelMap: Record<string, { label: string; type: 'info' | 'warning' | 'danger' }> = {
-  sample_low: { label: '样本偏少', type: 'info' },
   loss_period: { label: '亏损周期', type: 'danger' },
   high_frequency: { label: '高频周期', type: 'warning' },
   frequency_up: { label: '频率升高', type: 'warning' },

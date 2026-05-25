@@ -433,8 +433,6 @@ class TradeRecordService:
         previous_bad_signal_rate: float | None,
     ) -> list[str]:
         risk_flags: list[str] = []
-        if metrics["trade_count"] < 3:
-            risk_flags.append("sample_low")
         if metrics["net_pnl"] < 0:
             risk_flags.append("loss_period")
         if metrics["trade_count"] >= 5:
