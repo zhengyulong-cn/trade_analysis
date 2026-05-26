@@ -13,6 +13,7 @@ from app.models.trade_fill_record import TradeFillRecord
 from app.models.trade_record import TradeRecord
 from app.schemas.trade_record import (
     TradeRecordAnalysisBreakdownItem,
+    TradeRecordAnalysisLossStreakItem,
     TradeRecordAnalysisPeriodItem,
     TradeRecordAnalysisQuery,
     TradeRecordAnalysisResult,
@@ -95,7 +96,7 @@ class TradeRecordService:
             by_direction=self._build_breakdown(records, lambda item: item.open_direction, self._format_open_direction),
             by_segment_type=self._build_breakdown(records, lambda item: item.segment_type, self._format_segment_type),
             by_open_signal=self._build_breakdown(records, lambda item: item.open_signal, self._format_open_signal),
-            loss_periods=[item for item in period_series if "loss_period" in item.risk_flags],
+            continuous_loss_periods=[] if query.period_type != "day" else self._build_continuous_loss_periods(period_series),
             high_frequency_periods=[
                 item
                 for item in period_series
@@ -433,8 +434,6 @@ class TradeRecordService:
         previous_bad_signal_rate: float | None,
     ) -> list[str]:
         risk_flags: list[str] = []
-        if metrics["net_pnl"] < 0:
-            risk_flags.append("loss_period")
         if metrics["trade_count"] >= 5:
             risk_flags.append("high_frequency")
 
@@ -461,6 +460,51 @@ class TradeRecordService:
             if item.open_signal is None or item.open_signal == "not_matching_open_signal"
         )
         return bad_signal_count / len(records)
+
+    def _build_continuous_loss_periods(
+        self,
+        period_series: list[TradeRecordAnalysisPeriodItem],
+    ) -> list[TradeRecordAnalysisLossStreakItem]:
+        streaks: list[TradeRecordAnalysisLossStreakItem] = []
+        current_streak: list[TradeRecordAnalysisPeriodItem] = []
+
+        for item in period_series:
+            if item.net_pnl < 0:
+                current_streak.append(item)
+            elif current_streak:
+                streaks.append(self._build_loss_streak_item(current_streak))
+                current_streak = []
+
+        if current_streak:
+            streaks.append(self._build_loss_streak_item(current_streak))
+
+        return streaks
+
+    def _build_loss_streak_item(
+        self,
+        streak_items: list[TradeRecordAnalysisPeriodItem],
+    ) -> TradeRecordAnalysisLossStreakItem:
+        trade_count = sum(item.trade_count for item in streak_items)
+        gross_pnl = sum((item.gross_pnl for item in streak_items), Decimal("0"))
+        total_fee = sum((item.total_fee for item in streak_items), Decimal("0"))
+        net_pnl = sum((item.net_pnl for item in streak_items), Decimal("0"))
+        win_count = sum(item.win_count for item in streak_items)
+        loss_count = sum(item.loss_count for item in streak_items)
+
+        return TradeRecordAnalysisLossStreakItem(
+            streak_length=len(streak_items),
+            start_period_label=streak_items[0].period_label,
+            end_period_label=streak_items[-1].period_label,
+            start_period_start=streak_items[0].period_start,
+            end_period_end=streak_items[-1].period_end,
+            trade_count=trade_count,
+            gross_pnl=gross_pnl,
+            total_fee=total_fee,
+            net_pnl=net_pnl,
+            win_count=win_count,
+            loss_count=loss_count,
+            win_rate=self._safe_float(win_count, trade_count),
+        )
 
     def _get_net_pnl(self, record: TradeRecord) -> Decimal:
         return (record.actual_pnl or Decimal("0")) - record.fee
@@ -506,8 +550,8 @@ class TradeRecordService:
             "trend_push": "趋势推动段",
             "trend_pullback": "趋势回调段",
             "range_internal": "区间内部段",
-            "false_break_range_transition": "（假突破）回调转区间段",
-            "true_break_trend_push_transition": "（真突破）区间转推动段",
+            "false_break_range_transition": "假突破转区间段",
+            "true_break_trend_push_transition": "真突破区间转推动段",
         }.get(value or "", "未填写")
 
     def _format_open_signal(self, value: str | None) -> str:
@@ -759,7 +803,7 @@ class TradeRecordService:
     def _clean_sheet_rows(self, dataframe: pd.DataFrame) -> pd.DataFrame:
         cleaned = dataframe.copy()
         cleaned = cleaned[cleaned[TRADE_DETAIL_CONTRACT].notna()]
-        cleaned = cleaned[cleaned[TRADE_DETAIL_CONTRACT] != "合计"]
+        cleaned = cleaned[cleaned[TRADE_DETAIL_CONTRACT] != "鍚堣"]
         return cleaned
 
     def _extract_trade_no(self, value: object) -> str | None:

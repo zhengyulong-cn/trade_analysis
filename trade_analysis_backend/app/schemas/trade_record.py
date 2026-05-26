@@ -165,6 +165,21 @@ class TradeRecordAnalysisPeriodItem(SQLModel):
     risk_flags: list[str]
 
 
+class TradeRecordAnalysisLossStreakItem(SQLModel):
+    streak_length: int
+    start_period_label: str
+    end_period_label: str
+    start_period_start: date
+    end_period_end: date
+    trade_count: int
+    gross_pnl: Decimal
+    total_fee: Decimal
+    net_pnl: Decimal
+    win_count: int
+    loss_count: int
+    win_rate: float | None
+
+
 class TradeRecordAnalysisBreakdownItem(SQLModel):
     key: str | None
     label: str
@@ -188,6 +203,6 @@ class TradeRecordAnalysisResult(SQLModel):
     by_direction: list[TradeRecordAnalysisBreakdownItem]
     by_segment_type: list[TradeRecordAnalysisBreakdownItem]
     by_open_signal: list[TradeRecordAnalysisBreakdownItem]
-    loss_periods: list[TradeRecordAnalysisPeriodItem]
+    continuous_loss_periods: list[TradeRecordAnalysisLossStreakItem]
     high_frequency_periods: list[TradeRecordAnalysisPeriodItem]
     execution_worse_periods: list[TradeRecordAnalysisPeriodItem]

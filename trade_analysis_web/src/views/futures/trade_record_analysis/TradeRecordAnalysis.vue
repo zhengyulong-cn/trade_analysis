@@ -7,6 +7,7 @@ import {
   type TradeRecordAnalysisPeriod,
   type TradeRecordAnalysisPeriodItem,
   type TradeRecordAnalysisResult,
+  type TradeRecordAnalysisLossStreakItem,
   type TradeRecordOpenDirection,
   type TradeRecordOpenSignal,
   type TradeRecordSegmentType,
@@ -46,7 +47,6 @@ const openSignalOptions: Array<{ label: string; value: TradeRecordOpenSignal }> 
 ]
 
 const riskFlagLabelMap: Record<string, { label: string; type: 'info' | 'warning' | 'danger' }> = {
-  loss_period: { label: '亏损周期', type: 'danger' },
   high_frequency: { label: '高频周期', type: 'warning' },
   frequency_up: { label: '频率升高', type: 'warning' },
   win_rate_down: { label: '胜率下降', type: 'warning' },
@@ -176,6 +176,13 @@ const getCurrentBreakdownData = () => {
     return analysis.value.by_segment_type
   }
   return analysis.value.by_open_signal
+}
+
+const formatLossStreakRange = (row: TradeRecordAnalysisLossStreakItem) => {
+  if (row.start_period_label === row.end_period_label) {
+    return row.start_period_label
+  }
+  return `${row.start_period_label} ~ ${row.end_period_label}`
 }
 
 void loadContracts()
@@ -340,7 +347,7 @@ void loadAnalysis()
         </el-table>
       </section>
 
-      <section class="analysis-section">
+      <section v-if="filters.period_type === 'day'" class="analysis-section">
         <div class="section-header">
           <h3>分组归因</h3>
           <el-tabs v-model="activeBreakdownTab" class="breakdown-tabs">
@@ -376,13 +383,18 @@ void loadAnalysis()
 
       <section class="analysis-section">
         <div class="section-header">
-          <h3>风险周期</h3>
+          <h3>连续亏损</h3>
         </div>
         <div class="risk-grid">
           <div>
-            <h4>亏损周期</h4>
-            <el-table :data="analysis.loss_periods" border size="small" max-height="18rem">
-              <el-table-column prop="period_label" label="周期" min-width="140" />
+            <h4>连续亏损段</h4>
+            <el-table :data="analysis.continuous_loss_periods" border size="small" max-height="18rem">
+              <el-table-column label="区间" min-width="180">
+                <template #default="{ row }">
+                  {{ formatLossStreakRange(row) }}
+                </template>
+              </el-table-column>
+              <el-table-column prop="streak_length" label="连续数" width="90" align="right" />
               <el-table-column prop="net_pnl" label="净盈亏" width="110" align="right">
                 <template #default="{ row }">{{ formatNumber(row.net_pnl) }}</template>
               </el-table-column>

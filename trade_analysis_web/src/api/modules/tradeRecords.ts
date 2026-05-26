@@ -140,6 +140,21 @@ export interface TradeRecordAnalysisPeriodItem {
   risk_flags: string[]
 }
 
+export interface TradeRecordAnalysisLossStreakItem {
+  streak_length: number
+  start_period_label: string
+  end_period_label: string
+  start_period_start: string
+  end_period_end: string
+  trade_count: number
+  gross_pnl: number | string
+  total_fee: number | string
+  net_pnl: number | string
+  win_count: number
+  loss_count: number
+  win_rate: number | null
+}
+
 export interface TradeRecordAnalysisBreakdownItem {
   key: string | null
   label: string
@@ -163,7 +178,7 @@ export interface TradeRecordAnalysisResult {
   by_direction: TradeRecordAnalysisBreakdownItem[]
   by_segment_type: TradeRecordAnalysisBreakdownItem[]
   by_open_signal: TradeRecordAnalysisBreakdownItem[]
-  loss_periods: TradeRecordAnalysisPeriodItem[]
+  continuous_loss_periods: TradeRecordAnalysisLossStreakItem[]
   high_frequency_periods: TradeRecordAnalysisPeriodItem[]
   execution_worse_periods: TradeRecordAnalysisPeriodItem[]
 }
