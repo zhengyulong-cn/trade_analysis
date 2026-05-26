@@ -257,6 +257,7 @@ class TradeRecordService:
             close_time=max(item.close_time for item in records if item.close_time is not None),
             close_price=self._weighted_average_price(records, "close_price"),
             segment_type=self._merge_segment_type(records),
+            tags=self._merge_tags(records),
             fee=sum((item.fee for item in records), Decimal("0")),
             actual_pnl=sum((item.actual_pnl or Decimal("0") for item in records), Decimal("0")),
             screenshots=self._merge_screenshots(records),
@@ -607,6 +608,7 @@ class TradeRecordService:
                         close_time=close_fill.trade_time,
                         close_price=close_fill.price,
                         segment_type=None,
+                        tags=[],
                         fee=Decimal("0"),
                         actual_pnl=close_fill.close_pnl,
                         import_open_trade_no=open_fill.trade_no,
@@ -622,6 +624,7 @@ class TradeRecordService:
                 trade_record.open_price = open_fill.price
                 trade_record.close_time = close_fill.trade_time
                 trade_record.close_price = close_fill.price
+                trade_record.tags = []
                 trade_record.fee = self._allocate_fee(open_fill.fee, close_fill.lots, open_fill.lots) + close_fill.fee
                 trade_record.actual_pnl = close_fill.close_pnl
                 trade_record.import_open_trade_no = open_fill.trade_no
@@ -646,6 +649,7 @@ class TradeRecordService:
                         close_time=None,
                         close_price=None,
                         segment_type=None,
+                        tags=[],
                         fee=Decimal("0"),
                         actual_pnl=None,
                         import_open_trade_no=open_fill.trade_no,
@@ -661,6 +665,7 @@ class TradeRecordService:
                 trade_record.open_price = open_fill.price
                 trade_record.close_time = None
                 trade_record.close_price = None
+                trade_record.tags = []
                 trade_record.fee = self._allocate_fee(open_fill.fee, remaining_lots, open_fill.lots)
                 trade_record.actual_pnl = None
                 trade_record.import_open_trade_no = open_fill.trade_no
@@ -755,6 +760,16 @@ class TradeRecordService:
                     screenshots.append(item)
                     seen_paths.add(path)
         return screenshots
+
+    def _merge_tags(self, records: list[TradeRecord]) -> list[str]:
+        tags: list[str] = []
+        seen_tags: set[str] = set()
+        for record in records:
+            for item in record.tags or []:
+                if item not in seen_tags:
+                    tags.append(item)
+                    seen_tags.add(item)
+        return tags
 
     def _merge_comments(self, records: list[TradeRecord]) -> str | None:
         comments = [item.comment.strip() for item in records if item.comment and item.comment.strip()]

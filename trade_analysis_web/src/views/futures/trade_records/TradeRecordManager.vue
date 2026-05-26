@@ -1,4 +1,4 @@
-<script lang="ts" setup>
+﻿<script lang="ts" setup>
 import {
   createTradeRecordApi,
   deleteTradeRecordApi,
@@ -14,6 +14,7 @@ import {
   type TradeRecordOpenDirection,
   type TradeRecordOpenSignal,
   type TradeRecordSegmentType,
+  type TradeRecordTag,
   type TradeRecordUpdateParams,
 } from '@/api/modules'
 import { formatDateTime } from '@/utils/date'
@@ -21,6 +22,16 @@ import { ElMessage, ElMessageBox, type TableInstance, type UploadRequestOptions 
 import { computed, reactive, ref } from 'vue'
 import MergeTradeRecordsDialog from './MergeTradeRecordsDialog.vue'
 import TradeRecordFormDialog from './TradeRecordFormDialog.vue'
+import {
+  OPEN_DIRECTION_LONG,
+  openDirectionLabelMap,
+  openDirectionOptions,
+  openSignalLabelMap,
+  openSignalOptions,
+  segmentTypeLabelMap,
+  segmentTypeOptions,
+  tagLabelMap,
+} from './tradeRecordOptions'
 
 interface TradeRecordFilters {
   contract: string
@@ -41,6 +52,7 @@ interface TradeRecordFormModel {
   close_price: number | null
   segment_type: TradeRecordSegmentType
   open_signal: TradeRecordOpenSignal | null
+  tags: TradeRecordTag[]
   fee: number
   actual_pnl: number | null
   screenshots: Array<{
@@ -63,58 +75,11 @@ interface MergePreview {
   totalPnlText: string
 }
 
-const SEGMENT_PUSH = 'trend_push' as const
-const OPEN_DIRECTION_LONG = 'long' as const
-
-const segmentTypeOptions: Array<{ label: string; value: TradeRecordSegmentType }> = [
-  { label: '趋势推动段', value: 'trend_push' },
-  { label: '趋势回调段', value: 'trend_pullback' },
-  { label: '区间内部段', value: 'range_internal' },
-  { label: '（假突破）回调转区间段', value: 'false_break_range_transition' },
-  { label: '（真突破）区间转推动段', value: 'true_break_trend_push_transition' },
-]
-
-const segmentTypeLabelMap: Record<TradeRecordSegmentType, string> = {
-  trend_push: '趋势推动段',
-  trend_pullback: '趋势回调段',
-  range_internal: '区间内部段',
-  false_break_range_transition: '（假突破）回调转区间段',
-  true_break_trend_push_transition: '（真突破）区间转推动段',
-}
-
-const openSignalOptions: Array<{ label: string; value: TradeRecordOpenSignal }> = [
-  { label: 'EMA20阻力+站稳关键位', value: 'ema20_resistance_key_level_confirmed' },
-  { label: 'EMA120阻力+头肩顶/头肩底', value: 'ema120_resistance_head_shoulders' },
-  { label: 'EMA120阻力+三推楔形', value: 'ema120_resistance_three_push_wedge' },
-  { label: 'EMA120阻力+突破交易区间然后回拉', value: 'ema120_resistance_range_break_pullback' },
-  { label: '区间边界附近+两次以上尝试突破受阻', value: 'range_edge_multiple_breakout_failures' },
-  { label: '不符合开仓信号', value: 'not_matching_open_signal' },
-]
-
-const openSignalLabelMap: Record<TradeRecordOpenSignal, string> = {
-  ema20_resistance_key_level_confirmed: 'EMA20阻力+站稳关键位',
-  ema120_resistance_head_shoulders: 'EMA120阻力+头肩顶/头肩底',
-  ema120_resistance_three_push_wedge: 'EMA120阻力+三推楔形',
-  ema120_resistance_range_break_pullback: 'EMA120阻力+突破交易区间然后回拉',
-  range_edge_multiple_breakout_failures: '区间边界附近+两次以上尝试突破受阻',
-  not_matching_open_signal: '不符合开仓信号',
-}
-
-const openDirectionOptions: Array<{ label: string; value: TradeRecordOpenDirection }> = [
-  { label: '多单', value: 'long' },
-  { label: '空单', value: 'short' },
-]
-
-const openDirectionLabelMap: Record<TradeRecordOpenDirection, string> = {
-  long: '多单',
-  short: '空单',
-}
-
+const SEGMENT_PUSH: TradeRecordSegmentType = 'trend_push'
 const sourceLabelMap: Record<TradeRecord['source'], string> = {
   manual: '手动',
   import: '导入',
 }
-
 const loading = ref(false)
 const submitting = ref(false)
 const importing = ref(false)
@@ -146,6 +111,7 @@ const emptyFormModel = (): TradeRecordFormModel => ({
   close_price: null,
   segment_type: SEGMENT_PUSH,
   open_signal: null,
+  tags: [],
   fee: 0,
   actual_pnl: null,
   screenshots: [],
@@ -153,7 +119,6 @@ const emptyFormModel = (): TradeRecordFormModel => ({
 })
 
 const dialogInitialValue = ref<TradeRecordFormModel>(emptyFormModel())
-
 const canMerge = computed(() => selectedRecords.value.length >= 2)
 
 const buildListParams = () => ({
@@ -175,45 +140,23 @@ const toUploadError = (message: string, options: UploadRequestOptions): Paramete
 })
 
 const formatCurrency = (value?: number | string | null, fractionDigits = 2) => {
-  if (value === null || value === undefined || value === '') {
-    return '-'
-  }
-
+  if (value === null || value === undefined || value === '') return '-'
   return Number(value).toLocaleString('zh-CN', {
     minimumFractionDigits: fractionDigits,
     maximumFractionDigits: fractionDigits,
   })
 }
 
-const formatSegmentType = (segmentType: TradeRecordSegmentType | null) => {
-  if (!segmentType) {
-    return '-'
-  }
-  return segmentTypeLabelMap[segmentType] ?? segmentType
-}
+const formatSegmentType = (value: TradeRecordSegmentType | null) => (value ? segmentTypeLabelMap[value] : '-')
+const formatOpenSignal = (value: TradeRecordOpenSignal | null) => (value ? openSignalLabelMap[value] : '-')
+const formatOpenDirection = (value: TradeRecordOpenDirection) => openDirectionLabelMap[value] ?? value
+const formatSource = (value: TradeRecord['source']) => sourceLabelMap[value] ?? value
+const formatStatus = (record: TradeRecord) => (record.close_time ? '已平仓' : '未平仓')
 
-const formatOpenSignal = (openSignal: TradeRecordOpenSignal | null) => {
-  if (!openSignal) {
-    return '-'
-  }
-  return openSignalLabelMap[openSignal] ?? openSignal
-}
+const getTagMeta = (tag: TradeRecordTag) => tagLabelMap[tag]
 
-const formatOpenDirection = (openDirection: TradeRecordOpenDirection) => {
-  return openDirectionLabelMap[openDirection] ?? openDirection
-}
-
-const formatSource = (source: TradeRecord['source']) => {
-  return sourceLabelMap[source] ?? source
-}
-
-const formatStatus = (record: TradeRecord) => {
-  return record.close_time ? '已平仓' : '未平仓'
-}
-
-const getPreviewScreenshotUrls = (screenshots: TradeRecord['screenshots']) => {
-  return screenshots.map((item) => resolveTradeRecordScreenshotUrl(item.path))
-}
+const getPreviewScreenshotUrls = (screenshots: TradeRecord['screenshots']) =>
+  screenshots.map((item) => resolveTradeRecordScreenshotUrl(item.path))
 
 const loadTradeRecords = async () => {
   loading.value = true
@@ -255,6 +198,7 @@ const openEditDialog = (record: TradeRecord) => {
     close_price: record.close_price === null ? null : Number(record.close_price),
     segment_type: record.segment_type ?? SEGMENT_PUSH,
     open_signal: record.open_signal,
+    tags: [...(record.tags ?? [])],
     fee: Number(record.fee),
     actual_pnl: record.actual_pnl === null ? null : Number(record.actual_pnl),
     screenshots: [...record.screenshots],
@@ -284,39 +228,25 @@ const submitTradeRecord = async (payload: TradeRecordCreateParams | TradeRecordU
 
 const handleDelete = async (record: TradeRecord) => {
   try {
-    await ElMessageBox.confirm(`确认删除 ${record.contract} 的这条交易记录吗？`, '删除确认', {
-      type: 'warning',
-    })
+    await ElMessageBox.confirm(`确认删除 ${record.contract} 的这条交易记录吗？`, '删除确认', { type: 'warning' })
     await deleteTradeRecordApi(record.trade_record_id)
     ElMessage.success('删除交易记录成功')
     await loadTradeRecords()
   } catch (error) {
-    if (error === 'cancel' || error === 'close') {
-      return
-    }
+    if (error === 'cancel' || error === 'close') return
     ElMessage.error('删除交易记录失败')
   }
 }
 
 const validateMergeSelection = (items: TradeRecord[]) => {
-  if (items.length < 2) {
-    return '请至少选择 2 条交易记录'
-  }
-
+  if (items.length < 2) return '请至少选择 2 条交易记录'
   const contract = items[0]!.contract
   const openDirection = items[0]!.open_direction
   for (const item of items) {
-    if (item.contract !== contract) {
-      return '仅支持合并相同合约的记录'
-    }
-    if (item.open_direction !== openDirection) {
-      return '仅支持合并相同开仓方向的记录'
-    }
-    if (!item.close_time || item.close_price === null) {
-      return '仅支持合并已平仓的记录'
-    }
+    if (item.contract !== contract) return '仅支持合并相同合约的记录'
+    if (item.open_direction !== openDirection) return '仅支持合并相同开仓方向的记录'
+    if (!item.close_time || item.close_price === null) return '仅支持合并已平仓的记录'
   }
-
   return ''
 }
 
@@ -331,10 +261,7 @@ const openMergeDialog = () => {
   const totalFee = selectedRecords.value.reduce((sum, item) => sum + Number(item.fee), 0)
   const totalPnl = selectedRecords.value.reduce((sum, item) => sum + Number(item.actual_pnl ?? 0), 0)
   const openTimes = selectedRecords.value.map((item) => item.open_time).sort()
-  const closeTimes = selectedRecords.value
-    .map((item) => item.close_time)
-    .filter((value): value is string => Boolean(value))
-    .sort()
+  const closeTimes = selectedRecords.value.map((item) => item.close_time).filter((value): value is string => Boolean(value)).sort()
 
   mergePreview.value = {
     contract: selectedRecords.value[0]!.contract,
@@ -350,10 +277,7 @@ const openMergeDialog = () => {
 }
 
 const confirmMergeRecords = async () => {
-  if (!mergePreview.value) {
-    return
-  }
-
+  if (!mergePreview.value) return
   merging.value = true
   try {
     await mergeTradeRecordsApi({
@@ -410,18 +334,12 @@ void loadTradeRecords()
   <div class="pageBox trade-record-manager">
     <div class="toolbar">
       <div>
-        <h2 class="title">交易记录</h2>
+        <h2 class="title">交易记录管理</h2>
         <p class="subtitle">维护交易记录、导入成交数据、补充截图与复盘评价</p>
       </div>
       <div class="toolbar-actions">
         <el-button type="warning" :disabled="!canMerge" @click="openMergeDialog">合并选中记录</el-button>
-        <el-upload
-          accept=".xlsx,.xls"
-          :show-file-list="false"
-          :auto-upload="true"
-          :http-request="handleImportTradeRecords"
-          :disabled="importing"
-        >
+        <el-upload accept=".xlsx,.xls" :show-file-list="false" :auto-upload="true" :http-request="handleImportTradeRecords" :disabled="importing">
           <el-button :loading="importing">上传交易记录</el-button>
         </el-upload>
         <el-button type="primary" @click="openCreateDialog">新增交易记录</el-button>
@@ -432,53 +350,24 @@ void loadTradeRecords()
       <el-form :inline="true" class="filter-form">
         <el-form-item label="合约">
           <el-select v-model="filters.contract" filterable clearable placeholder="请选择合约" style="width: 180px">
-            <el-option
-              v-for="contractItem in contracts"
-              :key="contractItem.contract_id"
-              :label="contractItem.symbol"
-              :value="contractItem.symbol"
-            />
+            <el-option v-for="contractItem in contracts" :key="contractItem.contract_id" :label="contractItem.symbol" :value="contractItem.symbol" />
           </el-select>
         </el-form-item>
         <el-form-item label="开仓方向">
           <el-select v-model="filters.open_direction" placeholder="全部" clearable style="width: 140px">
-            <el-option
-              v-for="option in openDirectionOptions"
-              :key="option.value"
-              :label="option.label"
-              :value="option.value"
-            />
+            <el-option v-for="option in openDirectionOptions" :key="option.value" :label="option.label" :value="option.value" />
           </el-select>
         </el-form-item>
         <el-form-item label="30F线段类型">
           <el-select v-model="filters.segment_type" placeholder="全部" clearable style="width: 180px">
-            <el-option
-              v-for="option in segmentTypeOptions"
-              :key="option.value"
-              :label="option.label"
-              :value="option.value"
-            />
+            <el-option v-for="option in segmentTypeOptions" :key="option.value" :label="option.label" :value="option.value" />
           </el-select>
         </el-form-item>
         <el-form-item label="开仓时间">
-          <el-date-picker
-            v-model="filters.open_time_range"
-            type="datetimerange"
-            range-separator="至"
-            start-placeholder="开始时间"
-            end-placeholder="结束时间"
-            value-format="YYYY-MM-DD HH:mm:ss"
-          />
+          <el-date-picker v-model="filters.open_time_range" type="datetimerange" range-separator="至" start-placeholder="开始时间" end-placeholder="结束时间" value-format="YYYY-MM-DD HH:mm:ss" />
         </el-form-item>
         <el-form-item label="平仓时间">
-          <el-date-picker
-            v-model="filters.close_time_range"
-            type="datetimerange"
-            range-separator="至"
-            start-placeholder="开始时间"
-            end-placeholder="结束时间"
-            value-format="YYYY-MM-DD HH:mm:ss"
-          />
+          <el-date-picker v-model="filters.close_time_range" type="datetimerange" range-separator="至" start-placeholder="开始时间" end-placeholder="结束时间" value-format="YYYY-MM-DD HH:mm:ss" />
         </el-form-item>
         <el-form-item>
           <el-button type="primary" @click="handleSearch">查询</el-button>
@@ -498,40 +387,45 @@ void loadTradeRecords()
       @selection-change="handleSelectionChange"
     >
       <el-table-column type="selection" width="52" />
-      <el-table-column prop="trade_record_id" label="ID" width="50" fixed="left" />
-      <el-table-column prop="contract" label="合约" min-width="80" fixed="left" />
-      <el-table-column prop="open_direction" label="开仓方向" width="100">
+      <el-table-column prop="trade_record_id" label="ID" width="70" fixed="left" />
+      <el-table-column prop="contract" label="合约" min-width="90" fixed="left" />
+      <el-table-column prop="open_direction" label="开仓方向" width="90">
         <template #default="{ row }">{{ formatOpenDirection(row.open_direction) }}</template>
       </el-table-column>
-      <el-table-column label="状态" width="100">
+      <el-table-column label="状态" width="90">
         <template #default="{ row }">{{ formatStatus(row) }}</template>
       </el-table-column>
       <el-table-column prop="source" label="来源" width="90">
         <template #default="{ row }">{{ formatSource(row.source) }}</template>
       </el-table-column>
-      <el-table-column prop="lots" label="手数" width="90" />
+      <el-table-column prop="lots" label="手数" width="80" />
       <el-table-column prop="open_time" label="开仓时间" min-width="170">
         <template #default="{ row }">{{ formatDateTime(row.open_time) }}</template>
       </el-table-column>
-      <el-table-column prop="open_price" label="开仓价格" min-width="120" align="right">
+      <el-table-column prop="open_price" label="开仓价格" min-width="100" align="right">
         <template #default="{ row }">{{ formatCurrency(row.open_price, 1) }}</template>
       </el-table-column>
       <el-table-column prop="close_time" label="平仓时间" min-width="170">
         <template #default="{ row }">{{ row.close_time ? formatDateTime(row.close_time) : '-' }}</template>
       </el-table-column>
-      <el-table-column prop="close_price" label="平仓价格" min-width="120" align="right">
+      <el-table-column prop="close_price" label="平仓价格" min-width="100" align="right">
         <template #default="{ row }">{{ formatCurrency(row.close_price, 1) }}</template>
       </el-table-column>
-      <el-table-column prop="segment_type" label="30F线段类型" min-width="140">
+      <el-table-column prop="segment_type" label="30F线段类型" min-width="130">
         <template #default="{ row }">{{ formatSegmentType(row.segment_type) }}</template>
       </el-table-column>
       <el-table-column prop="open_signal" label="开仓信号" min-width="220">
         <template #default="{ row }">{{ formatOpenSignal(row.open_signal) }}</template>
       </el-table-column>
-      <el-table-column prop="fee" label="手续费" min-width="110" align="right">
+      <el-table-column prop="tags" label="标签" min-width="180">
+        <template #default="{ row }">
+          <el-tag v-for="tag in row.tags" :type="getTagMeta(tag).type">{{ getTagMeta(tag).label }}</el-tag>
+        </template>
+      </el-table-column>
+      <el-table-column prop="fee" label="手续费" min-width="100" align="right">
         <template #default="{ row }">{{ formatCurrency(row.fee) }}</template>
       </el-table-column>
-      <el-table-column prop="actual_pnl" label="实际盈亏" min-width="120" align="right">
+      <el-table-column prop="actual_pnl" label="实际盈亏" min-width="110" align="right">
         <template #default="{ row }">
           <span v-if="row.actual_pnl !== null" :class="Number(row.actual_pnl) >= 0 ? 'pnl-positive' : 'pnl-negative'">
             {{ formatCurrency(row.actual_pnl) }}
@@ -591,87 +485,20 @@ void loadTradeRecords()
 .trade-record-manager {
   padding: 16px;
 }
-
-.toolbar {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 16px;
-  margin-bottom: 16px;
-}
-
-.toolbar-actions {
-  display: flex;
-  align-items: center;
-  flex-wrap: wrap;
-  gap: 12px;
-}
-
-.title {
-  margin: 0;
-  font-size: 20px;
-  font-weight: 600;
-}
-
-.subtitle {
-  margin: 6px 0 0;
-  color: #909399;
-  font-size: 13px;
-}
-
-.filter-card {
-  margin-bottom: 16px;
-  padding: 16px 16px 0;
-  background: #fff;
-  border: 1px solid #ebeef5;
-  border-radius: 8px;
-}
-
-.filter-form {
-  display: flex;
-  flex-wrap: wrap;
-}
-
-.screenshot-list {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  flex-wrap: wrap;
-}
-
-.screenshot-thumb {
-  width: 56px;
-  height: 56px;
-  border-radius: 6px;
-}
-
-.screenshot-more {
-  color: #909399;
-  font-size: 12px;
-}
-
-.empty-text {
-  color: #c0c4cc;
-}
-
-.pnl-positive {
-  color: #f56c6c;
-  font-weight: 600;
-}
-
-.pnl-negative {
-  color: #67c23a;
-  font-weight: 600;
-}
-
-@media (max-width: 960px) {
-  .toolbar {
-    flex-direction: column;
-    align-items: flex-start;
-  }
-
-  .toolbar-actions {
-    width: 100%;
-  }
+.toolbar { display:flex; align-items:center; justify-content:space-between; gap:16px; margin-bottom:16px; }
+.toolbar-actions { display:flex; align-items:center; flex-wrap:wrap; gap:12px; }
+.title { margin:0; font-size:20px; font-weight:600; }
+.subtitle { margin:6px 0 0; color:#909399; font-size:13px; }
+.filter-card { margin-bottom:16px; padding:16px 16px 0; background:#fff; border:1px solid #ebeef5; border-radius:8px; }
+.filter-form { display:flex; flex-wrap:wrap; }
+.screenshot-list { display:flex; align-items:center; gap:8px; flex-wrap:wrap; }
+.screenshot-thumb { width:56px; height:56px; border-radius:6px; }
+.screenshot-more { color:#909399; font-size:12px; }
+.empty-text { color:#c0c4cc; }
+.pnl-positive { color:#f56c6c; font-weight:600; }
+.pnl-negative { color:#67c23a; font-weight:600; }
+@media (max-width:960px) {
+  .toolbar { flex-direction:column; align-items:flex-start; }
+  .toolbar-actions { width:100%; }
 }
 </style>

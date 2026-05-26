@@ -15,6 +15,7 @@ export type TradeRecordOpenSignal =
   | "not_matching_open_signal"
 export type TradeRecordOpenDirection = "long" | "short"
 export type TradeRecordAnalysisPeriod = "day" | "week" | "half_month" | "month"
+export type TradeRecordTag = "hold_and_hope" | "revenge_trade" | "perfect_trade" | "large_profit_giveback" | "holiday_hold"
 
 export interface TradeRecordScreenshot {
   path: string
@@ -35,6 +36,7 @@ export interface TradeRecord {
   close_price: number | string | null
   segment_type: TradeRecordSegmentType | null
   open_signal: TradeRecordOpenSignal | null
+  tags: TradeRecordTag[]
   fee: number | string
   actual_pnl: number | string | null
   screenshots: TradeRecordScreenshot[]
@@ -53,6 +55,7 @@ export interface TradeRecordCreateParams {
   close_price?: number | null
   segment_type: TradeRecordSegmentType
   open_signal?: TradeRecordOpenSignal | null
+  tags?: TradeRecordTag[]
   fee: number
   actual_pnl?: number | null
   screenshots: TradeRecordScreenshot[]
@@ -95,6 +98,7 @@ export interface TradeRecordAnalysisParams {
   open_direction?: TradeRecordOpenDirection
   segment_type?: TradeRecordSegmentType
   open_signal?: TradeRecordOpenSignal
+  tags?: TradeRecordTag[]
   open_time_start?: string
   open_time_end?: string
 }

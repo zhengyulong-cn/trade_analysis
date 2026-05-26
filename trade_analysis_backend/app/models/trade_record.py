@@ -23,6 +23,10 @@ class TradeRecord(SQLModel, table=True):
     close_price: Decimal | None = Field(default=None, max_digits=20, decimal_places=2)
     segment_type: str | None = Field(default=None, index=True, max_length=32)
     open_signal: str | None = Field(default=None, index=True, max_length=64)
+    tags: list[str] = Field(
+        default_factory=list,
+        sa_column=Column(JSON, nullable=False),
+    )
     fee: Decimal = Field(default=0, max_digits=20, decimal_places=2)
     actual_pnl: Decimal | None = Field(default=None, max_digits=20, decimal_places=2)
     import_open_trade_no: str | None = Field(default=None, index=True, max_length=32)

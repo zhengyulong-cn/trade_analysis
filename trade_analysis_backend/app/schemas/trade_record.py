@@ -1,4 +1,4 @@
-from datetime import date, datetime
+﻿from datetime import date, datetime
 from decimal import Decimal
 from typing import Literal
 
@@ -17,6 +17,13 @@ OpenSignalType = Literal[
 TradeRecordOpenDirection = Literal["long", "short"]
 TradeRecordSource = Literal["manual", "import"]
 TradeRecordAnalysisPeriod = Literal["day", "week", "half_month", "month"]
+TradeRecordTag = Literal[
+    "hold_and_hope",
+    "revenge_trade",
+    "perfect_trade",
+    "large_profit_giveback",
+    "holiday_hold",
+]
 
 
 class TradeRecordScreenshot(SQLModel):
@@ -36,6 +43,7 @@ class TradeRecordBase(SQLModel):
     close_price: Decimal | None = None
     segment_type: SegmentType | None = None
     open_signal: OpenSignalType | None = None
+    tags: list[TradeRecordTag] = Field(default_factory=list)
     fee: Decimal = 0
     actual_pnl: Decimal | None = None
     screenshots: list[TradeRecordScreenshot] = Field(default_factory=list)
@@ -67,6 +75,7 @@ class TradeRecordUpdate(SQLModel):
     close_price: Decimal | None = None
     segment_type: SegmentType | None = None
     open_signal: OpenSignalType | None = None
+    tags: list[TradeRecordTag] | None = None
     fee: Decimal | None = None
     actual_pnl: Decimal | None = None
     screenshots: list[TradeRecordScreenshot] | None = None
@@ -88,6 +97,7 @@ class TradeRecordRead(TradeRecordBase):
     source: TradeRecordSource
     import_open_trade_no: str | None = None
     import_close_trade_no: str | None = None
+    tags: list[TradeRecordTag] = Field(default_factory=list)
     created_at: datetime
     updated_at: datetime
 
@@ -206,3 +216,4 @@ class TradeRecordAnalysisResult(SQLModel):
     continuous_loss_periods: list[TradeRecordAnalysisLossStreakItem]
     high_frequency_periods: list[TradeRecordAnalysisPeriodItem]
     execution_worse_periods: list[TradeRecordAnalysisPeriodItem]
+

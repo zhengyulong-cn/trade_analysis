@@ -9,6 +9,7 @@ import {
   type TradeRecordScreenshot,
   type TradeRecordScreenshotUploadResult,
   type TradeRecordSegmentType,
+  type TradeRecordTag,
   type TradeRecordUpdateParams,
 } from '@/api/modules'
 import { Plus } from '@element-plus/icons-vue'
@@ -22,6 +23,7 @@ import {
   type UploadRequestOptions,
 } from 'element-plus'
 import { onBeforeUnmount, reactive, ref, watch } from 'vue'
+import { OPEN_DIRECTION_LONG, openDirectionOptions, openSignalOptions, segmentTypeOptions, tagOptions } from './tradeRecordOptions'
 
 interface TradeRecordFormModel {
   trade_record_id?: number
@@ -34,6 +36,7 @@ interface TradeRecordFormModel {
   close_price: number | null
   segment_type: TradeRecordSegmentType
   open_signal: TradeRecordOpenSignal | null
+  tags: TradeRecordTag[]
   fee: number
   actual_pnl: number | null
   screenshots: TradeRecordScreenshot[]
@@ -54,26 +57,13 @@ const emit = defineEmits<{
   (e: 'submit', payload: TradeRecordCreateParams | TradeRecordUpdateParams): void
 }>()
 
-const segmentTypeOptions: Array<{ label: string; value: TradeRecordSegmentType }> = [
-  { label: '趋势推动段', value: 'trend_push' },
-  { label: '趋势回调段', value: 'trend_pullback' },
-  { label: '区间内部段', value: 'range_internal' },
-  { label: '（假突破）回调转区间段', value: 'false_break_range_transition' },
-  { label: '（真突破）区间转推动段', value: 'true_break_trend_push_transition' },
-]
-
-const openDirectionOptions: Array<{ label: string; value: TradeRecordOpenDirection }> = [
-  { label: '多单', value: 'long' },
-  { label: '空单', value: 'short' },
-]
-
 const formRef = ref<FormInstance>()
 const uploadFileList = ref<UploadFile[]>([])
 let uploadUidSeed = 1
 
 const form = reactive<TradeRecordFormModel>({
   contract: '',
-  open_direction: 'long',
+  open_direction: OPEN_DIRECTION_LONG,
   lots: 1,
   open_time: '',
   open_price: 0,
@@ -81,6 +71,7 @@ const form = reactive<TradeRecordFormModel>({
   close_price: null,
   segment_type: 'trend_push',
   open_signal: null,
+  tags: [],
   fee: 0,
   actual_pnl: null,
   screenshots: [],
@@ -98,9 +89,7 @@ const rules = reactive<FormRules<TradeRecordFormModel>>({
 })
 
 const nextUploadUid = () => uploadUidSeed++
-
 const dialogTitle = () => (props.mode === 'create' ? '新增交易记录' : '修改交易记录')
-
 const disableFutureDateTime = (date: Date) => date.getTime() > Date.now()
 
 const syncFromProps = () => {
@@ -114,6 +103,7 @@ const syncFromProps = () => {
   form.close_price = props.initialValue.close_price
   form.segment_type = props.initialValue.segment_type
   form.open_signal = props.initialValue.open_signal
+  form.tags = [...props.initialValue.tags]
   form.fee = props.initialValue.fee
   form.actual_pnl = props.initialValue.actual_pnl
   form.screenshots = [...props.initialValue.screenshots]
@@ -140,13 +130,10 @@ const validateScreenshotFile = (rawFile: Pick<UploadRawFile, 'type' | 'size'>) =
     ElMessage.error('仅支持 JPG、PNG、WEBP、GIF 图片')
     return false
   }
-
-  const isLt10Mb = rawFile.size / 1024 / 1024 < 10
-  if (!isLt10Mb) {
+  if (rawFile.size / 1024 / 1024 >= 10) {
     ElMessage.error('图片大小不能超过 10MB')
     return false
   }
-
   return true
 }
 
@@ -194,12 +181,8 @@ const handleUploadRequest = async (options: UploadRequestOptions) => {
 
 const resolveUploadPath = (uploadFile: UploadFile) => {
   const response = uploadFile.response as TradeRecordScreenshotUploadResult | TradeRecordScreenshot | undefined
-  if (response?.path) {
-    return response.path
-  }
-  if (!uploadFile.url) {
-    return ''
-  }
+  if (response?.path) return response.path
+  if (!uploadFile.url) return ''
   return uploadFile.url.replace(/^.*\/storage\//, '')
 }
 
@@ -210,27 +193,17 @@ const handleUploadRemove: UploadProps['onRemove'] = (uploadFile, uploadFiles) =>
 }
 
 const handlePasteScreenshot = async (event: ClipboardEvent) => {
-  if (!props.visible) {
-    return
-  }
-
+  if (!props.visible) return
   const items = Array.from(event.clipboardData?.items ?? [])
   const imageFiles = items
     .filter((item) => item.kind === 'file' && item.type.startsWith('image/'))
     .map((item) => item.getAsFile())
     .filter((file): file is File => file !== null)
-
-  if (!imageFiles.length) {
-    return
-  }
+  if (!imageFiles.length) return
 
   event.preventDefault()
-
   for (const file of imageFiles) {
-    if (!validateScreenshotFile(file)) {
-      continue
-    }
-
+    if (!validateScreenshotFile(file)) continue
     try {
       const result = await uploadTradeRecordScreenshotApi(file)
       applyUploadedScreenshot(result)
@@ -242,19 +215,14 @@ const handlePasteScreenshot = async (event: ClipboardEvent) => {
 }
 
 const submitForm = async () => {
-  if (!formRef.value) {
-    return
-  }
-
+  if (!formRef.value) return
   const valid = await formRef.value.validate().catch(() => false)
-  if (!valid) {
-    return
-  }
+  if (!valid) return
 
   const hasCloseTime = Boolean(form.close_time)
   const hasClosePrice = form.close_price !== null
   if (hasCloseTime !== hasClosePrice) {
-    ElMessage.error('平仓时间和平仓价格需要同时填写，或同时留空')
+    ElMessage.error('平仓时间和价格需要同时填写，或者同时留空')
     return
   }
   if (hasCloseTime && new Date(form.close_time).getTime() < new Date(form.open_time).getTime()) {
@@ -272,6 +240,7 @@ const submitForm = async () => {
     close_price: hasClosePrice ? form.close_price : null,
     segment_type: form.segment_type,
     open_signal: form.open_signal,
+    tags: [...form.tags],
     fee: form.fee,
     actual_pnl: form.actual_pnl,
     screenshots: [...form.screenshots],
@@ -282,7 +251,6 @@ const submitForm = async () => {
     emit('submit', basePayload)
     return
   }
-
   emit('submit', {
     trade_record_id: form.trade_record_id!,
     ...basePayload,
@@ -307,89 +275,47 @@ onBeforeUnmount(() => {
 </script>
 
 <template>
-  <el-dialog
-    :model-value="visible"
-    :title="dialogTitle()"
-    width="48rem"
-    @update:model-value="emit('update:visible', $event)"
-  >
+  <el-dialog :model-value="visible" :title="dialogTitle()" width="48rem" @update:model-value="emit('update:visible', $event)">
     <el-form ref="formRef" :model="form" :rules="rules" label-width="8rem" class="trade-form">
       <div class="form-grid">
         <el-form-item label="合约" prop="contract">
           <el-select v-model="form.contract" filterable placeholder="请选择合约" style="width: 100%">
-            <el-option
-              v-for="contractItem in contracts"
-              :key="contractItem.contract_id"
-              :label="contractItem.symbol"
-              :value="contractItem.symbol"
-            />
+            <el-option v-for="contractItem in contracts" :key="contractItem.contract_id" :label="contractItem.symbol" :value="contractItem.symbol" />
           </el-select>
         </el-form-item>
         <el-form-item label="开仓方向" prop="open_direction">
           <el-select v-model="form.open_direction" placeholder="请选择开仓方向" style="width: 100%">
-            <el-option
-              v-for="option in openDirectionOptions"
-              :key="option.value"
-              :label="option.label"
-              :value="option.value"
-            />
+            <el-option v-for="option in openDirectionOptions" :key="option.value" :label="option.label" :value="option.value" />
           </el-select>
         </el-form-item>
         <el-form-item label="手数" prop="lots">
           <el-input-number v-model="form.lots" :min="1" :step="1" :precision="0" style="width: 100%" />
         </el-form-item>
         <el-form-item label="开仓时间" prop="open_time">
-          <el-date-picker
-            v-model="form.open_time"
-            type="datetime"
-            placeholder="请选择开仓时间"
-            value-format="YYYY-MM-DD HH:mm:ss"
-            :disabled-date="disableFutureDateTime"
-            style="width: 100%"
-          />
+          <el-date-picker v-model="form.open_time" type="datetime" placeholder="请选择开仓时间" value-format="YYYY-MM-DD HH:mm:ss" :disabled-date="disableFutureDateTime" style="width: 100%" />
         </el-form-item>
         <el-form-item label="开仓价格" prop="open_price">
           <el-input-number v-model="form.open_price" :min="0" :precision="1" :step="0.5" style="width: 100%" />
         </el-form-item>
         <el-form-item label="平仓时间">
-          <el-date-picker
-            v-model="form.close_time"
-            type="datetime"
-            placeholder="未平仓可留空"
-            value-format="YYYY-MM-DD HH:mm:ss"
-            :disabled-date="disableFutureDateTime"
-            clearable
-            style="width: 100%"
-          />
+          <el-date-picker v-model="form.close_time" type="datetime" placeholder="未平仓可留空" value-format="YYYY-MM-DD HH:mm:ss" :disabled-date="disableFutureDateTime" clearable style="width: 100%" />
         </el-form-item>
         <el-form-item label="平仓价格">
-          <el-input-number
-            v-model="form.close_price"
-            :min="0"
-            :precision="1"
-            :step="0.5"
-            controls-position="right"
-            style="width: 100%"
-          />
+          <el-input-number v-model="form.close_price" :min="0" :precision="1" :step="0.5" style="width: 100%" />
         </el-form-item>
         <el-form-item label="30F线段类型" prop="segment_type">
           <el-select v-model="form.segment_type" placeholder="请选择30F线段类型" style="width: 100%">
-            <el-option
-              v-for="option in segmentTypeOptions"
-              :key="option.value"
-              :label="option.label"
-              :value="option.value"
-            />
+            <el-option v-for="option in segmentTypeOptions" :key="option.value" :label="option.label" :value="option.value" />
           </el-select>
         </el-form-item>
         <el-form-item label="开仓信号">
           <el-select v-model="form.open_signal" clearable placeholder="可留空" style="width: 100%">
-            <el-option
-              v-for="option in openSignalOptions"
-              :key="option.value"
-              :label="option.label"
-              :value="option.value"
-            />
+            <el-option v-for="option in openSignalOptions" :key="option.value" :label="option.label" :value="option.value" />
+          </el-select>
+        </el-form-item>
+        <el-form-item label="标签">
+          <el-select v-model="form.tags" multiple clearable placeholder="可多选，留空也可以" style="width: 100%">
+            <el-option v-for="option in tagOptions" :key="option.value" :label="option.label" :value="option.value" />
           </el-select>
         </el-form-item>
         <el-form-item label="手续费" prop="fee">
@@ -413,18 +339,11 @@ onBeforeUnmount(() => {
         >
           <el-icon><Plus /></el-icon>
         </el-upload>
-        <div class="upload-tip">支持点击上传，也支持在弹窗打开时按 Ctrl+V 粘贴截图</div>
+        <div class="upload-tip">支持点击上传，也支持在弹窗内按 Ctrl+V 粘贴截图</div>
       </el-form-item>
 
       <el-form-item label="操作评价">
-        <el-input
-          v-model="form.comment"
-          type="textarea"
-          :rows="4"
-          maxlength="2000"
-          show-word-limit
-          placeholder="请输入操作评价"
-        />
+        <el-input v-model="form.comment" type="textarea" :rows="4" maxlength="2000" show-word-limit placeholder="请输入操作评价" />
       </el-form-item>
     </el-form>
     <template #footer>
@@ -435,25 +354,8 @@ onBeforeUnmount(() => {
 </template>
 
 <style lang="less" scoped>
-.trade-form {
-  padding-right: 12px;
-}
-
-.form-grid {
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 0 16px;
-}
-
-.upload-tip {
-  font-size: 12px;
-  line-height: 1.5;
-  color: #909399;
-}
-
-@media (max-width: 960px) {
-  .form-grid {
-    grid-template-columns: 1fr;
-  }
-}
+.trade-form { padding-right: 12px; }
+.form-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 0 16px; }
+.upload-tip { font-size: 12px; line-height: 1.5; color: #909399; }
+@media (max-width: 960px) { .form-grid { grid-template-columns: 1fr; } }
 </style>
