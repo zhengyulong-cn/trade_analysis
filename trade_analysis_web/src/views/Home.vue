@@ -24,16 +24,17 @@
               <p>EMA120阻力+头肩顶/头肩底</p>
               <p>EMA120阻力+三推楔形</p>
               <p>EMA120阻力+突破交易区间然后回拉</p>
-              <p>区间边界附近+两次以上尝试突破受阻不符合开仓信号</p>
+              <p>区间边界附近+两次以上尝试突破受阻</p>
             </div>
           </template>
         </el-popover>
-        <p>③设置的止损位能否接受？</p>
+        <p>③是否有同板块其他品种买点共振？</p>
+        <p>④设置的止损位能否接受？</p>
       </section>
       <section class="section-box">
         <div class="title">操作警醒</div>
         <div>①不要做垃圾机会，交易系统外似是而非的机会都不要操作！</div>
-        <div>②不要随随便便拉止损，更不能删除止损！</div>
+        <div>②<span class="highlight">不要拉硬止损</span>，更不能删除止损！亏损不要有侥幸念想扛单！</div>
         <div>③回撤时候看持仓方向是否受到阻力，没有受阻就是普通回调而已</div>
       </section>
     </div>
@@ -60,12 +61,17 @@
   padding: 1rem;
   border-radius: .5rem;
   font-size: 1.5rem;
+  font-family: 'kaiti';
   .section-box {
     .title {
       font-size: 2rem;
     }
     .content {
       width: fit-content;
+    }
+    .highlight {
+      color: red;
+      font-weight: bolder;
     }
   }
 }

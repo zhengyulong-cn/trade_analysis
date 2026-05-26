@@ -100,7 +100,7 @@ class TradeRecordService:
             high_frequency_periods=[
                 item
                 for item in period_series
-                if "high_frequency" in item.risk_flags or "frequency_up" in item.risk_flags
+                if "high_frequency" in item.risk_flags
             ],
             execution_worse_periods=[item for item in period_series if "execution_worse" in item.risk_flags],
         )
@@ -436,12 +436,8 @@ class TradeRecordService:
         risk_flags: list[str] = []
         if metrics["trade_count"] >= 5:
             risk_flags.append("high_frequency")
-
         if previous_item is None:
             return risk_flags
-
-        if previous_item.trade_count > 0 and metrics["trade_count"] > previous_item.trade_count * 1.5:
-            risk_flags.append("frequency_up")
         if metrics["win_rate"] is not None and previous_item.win_rate is not None:
             if metrics["win_rate"] - previous_item.win_rate <= -0.2:
                 risk_flags.append("win_rate_down")
@@ -550,8 +546,8 @@ class TradeRecordService:
             "trend_push": "趋势推动段",
             "trend_pullback": "趋势回调段",
             "range_internal": "区间内部段",
-            "false_break_range_transition": "假突破转区间段",
-            "true_break_trend_push_transition": "真突破区间转推动段",
+            "false_break_range_transition": "（假突破）回调转区间段",
+            "true_break_trend_push_transition": "（真突破）区间转推动段",
         }.get(value or "", "未填写")
 
     def _format_open_signal(self, value: str | None) -> str:

@@ -1,4 +1,4 @@
-<script lang="ts" setup>
+﻿<script lang="ts" setup>
 import {
   getFutureContractList,
   getTradeRecordAnalysisApi,
@@ -47,8 +47,7 @@ const openSignalOptions: Array<{ label: string; value: TradeRecordOpenSignal }> 
 ]
 
 const riskFlagLabelMap: Record<string, { label: string; type: 'info' | 'warning' | 'danger' }> = {
-  high_frequency: { label: '高频周期', type: 'warning' },
-  frequency_up: { label: '频率升高', type: 'warning' },
+  high_frequency: { label: '高频交易', type: 'danger' },
   win_rate_down: { label: '胜率下降', type: 'warning' },
   execution_worse: { label: '执行变差', type: 'danger' },
 }
@@ -387,7 +386,7 @@ void loadAnalysis()
         </div>
         <div class="risk-grid">
           <div>
-            <h4>连续亏损段</h4>
+            <h4>连续亏损时间区间</h4>
             <el-table :data="analysis.continuous_loss_periods" border size="small" max-height="18rem">
               <el-table-column label="区间" min-width="180">
                 <template #default="{ row }">
@@ -401,7 +400,7 @@ void loadAnalysis()
             </el-table>
           </div>
           <div>
-            <h4>高频周期</h4>
+            <h4>高频交易周期</h4>
             <el-table :data="analysis.high_frequency_periods" border size="small" max-height="18rem">
               <el-table-column prop="period_label" label="周期" min-width="140" />
               <el-table-column prop="trade_count" label="交易数" width="90" align="right" />
