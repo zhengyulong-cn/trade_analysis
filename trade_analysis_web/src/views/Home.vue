@@ -1,44 +1,86 @@
 <script lang="ts" setup>
+const tradePatternDisplayList = [
+  {
+    title: '趋势推动段',
+    subText: '开仓信号：EMA20阻力+对基准位反向突破',
+    urlList: [
+      "/assets/images/trade_pattern/模式一例子.png"
+    ]
+  },
+  {
+    title: '趋势回调段',
+    subText: '开仓信号：EMA120阻力+反转结构',
+    urlList: [
+      "/assets/images/trade_pattern/模式二例子1.png",
+      "/assets/images/trade_pattern/模式二例子2.png",
+    ]
+  },
+  {
+    title: '区间内部段或（假突破）趋势回调段转区间内部段',
+    subText: '开仓信号：区间上下轨附近+两次以上尝试突破受阻',
+    urlList: [
+      "/assets/images/trade_pattern/模式三例子.png"
+    ]
+  },
+  {
+    title: '（真突破）区间内部段转趋势推动段',
+    subText: '开仓信号：阻力位附近+受阻失败出现K线反包',
+    urlList: [
+      "/assets/images/trade_pattern/模式四例子.png"
+    ]
+  }
+]
 </script>
 
 <template>
   <div class="pageBox home-page">
-    <div class="center-box">
-      <section class="section-box">
-        <div class="title">开仓检查</div>
-        <el-popover trigger="hover" placement="bottom-end" width="60vw">
-          <template #reference>
-            <p class="content">①30F段类型及交易视角</p>
-          </template>
-          <template #default>
-            <el-image src="/assets/images/操作视角的确定.svg" fit="fill" />
-          </template>
-        </el-popover>
-        <el-popover trigger="hover" placement="bottom-start" width="fit-content">
-          <template #reference>
-            <p class="content">②开仓信号类型</p>
-          </template>
-          <template #default>
-            <div>
-              <p>EMA20阻力+站稳关键位</p>
-              <p>EMA120阻力+头肩顶/头肩底</p>
-              <p>EMA120阻力+三推楔形</p>
-              <p>EMA120阻力+突破交易区间然后回拉</p>
-              <p>区间边界附近+两次以上尝试突破受阻</p>
-            </div>
-          </template>
-        </el-popover>
-        <p>③是否有同板块其他品种买点共振？</p>
-        <p>④设置的止损位能否接受？</p>
-      </section>
-      <section class="section-box">
-        <div class="title">操作警醒</div>
-        <div>①不要做垃圾机会，交易系统外似是而非的机会都不要操作！</div>
-        <div>②<span class="highlight">不要拉硬止损</span>，更不能删除止损！亏损不要有侥幸念想扛单！</div>
-        <div>③回撤时候看持仓方向是否受到阻力，没有受阻就是普通回调而已</div>
-      </section>
+    <header class="header-box">
+      <div class="left-box">
+        <section class="section-box">
+          <div class="title">开仓检查</div>
+          <p class="content">①30F段类型及交易视角</p>
+          <el-popover trigger="hover" placement="bottom-start" width="fit-content">
+            <template #reference>
+              <p class="content">②开仓信号类型</p>
+            </template>
+            <template #default>
+              <div>
+                <p>EMA20阻力+站稳关键位</p>
+                <p>EMA120阻力+头肩顶/头肩底</p>
+                <p>EMA120阻力+三推楔形</p>
+                <p>EMA120阻力+突破交易区间然后回拉</p>
+                <p>区间边界附近+两次以上尝试突破受阻</p>
+                <p>区间边界附近+受阻失败K线反包</p>
+              </div>
+            </template>
+          </el-popover>
+          <p>③是否有同板块其他品种买点共振？</p>
+          <p>④设置的止损位能否接受？</p>
+        </section>
+        <section class="section-box">
+          <div class="title">操作警醒</div>
+          <div>①不要做垃圾机会，交易系统外似是而非的机会都不要操作！</div>
+          <div>②<span class="highlight">不要拉硬止损</span>，更不能删除止损！亏损不要有侥幸念想扛单！</div>
+          <div>③回撤时候看持仓方向是否受到阻力，没有受阻就是普通回调而已</div>
+        </section>
+      </div>
+      <div class="right-box">
+        <el-image src="/assets/images/操作视角的确定.svg" fit="contain" />
+      </div>
+    </header>
+    <div class="trade-pattern-display">
+      <div class="trade-pattern-item" v-for="tradePatternDisplayItem in tradePatternDisplayList">
+        <header>
+          <div class="title">{{ tradePatternDisplayItem.title }}</div>
+          <div class="sub-text">{{ tradePatternDisplayItem.subText }}</div>
+        </header>
+        <el-carousel indicator-position="none" height="29rem">
+          <el-carousel-item v-for="url in tradePatternDisplayItem.urlList" :key="url">
+            <el-image :src="url" fit="contain" />
+          </el-carousel-item>
+        </el-carousel>
+      </div>
     </div>
-    <el-image class="page-el-image" src="/assets/images/remind.png" fit="fill" />
   </div>
 </template>
 
@@ -50,28 +92,58 @@
   width: 100%;
   height: 100%;
 }
-.center-box {
-  position: fixed;
-  background-color: rgba(161, 17, 161, 0.4);
-  color: white;
-  top: 50%;
-  left: 50%;
-  transform: translate(-50%, -50%);
-  z-index: 100;
-  padding: 1rem;
-  border-radius: .5rem;
-  font-size: 1.5rem;
-  font-family: 'kaiti';
-  .section-box {
-    .title {
-      font-size: 2rem;
+.header-box {
+  margin: .5rem;
+  display: flex;
+  flex-direction: row;
+  column-gap: .5rem;
+  .left-box {
+    background-color: rgba(161, 17, 161, 0.4);
+    color: white;
+    padding: 1rem;
+    border-radius: .5rem;
+    font-size: 1.5rem;
+    font-family: 'kaiti';
+    .section-box {
+      .title {
+        font-size: 2rem;
+      }
+      .content {
+        width: fit-content;
+      }
+      .highlight {
+        color: red;
+        font-weight: bolder;
+      }
     }
-    .content {
-      width: fit-content;
+  }
+}
+.trade-pattern-display {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: .5rem;
+  margin: .5rem;
+  .trade-pattern-item {
+    background-color: rgba(255, 255, 255, 0.9);
+    border: 1px solid #e2e2e3;
+    border-radius: .5rem;
+    header {
+      background-color: #f6f6f7;
+      padding: .5rem;
+      border-top-left-radius: .5rem;
+      border-top-right-radius: .5rem;
+      .title {
+        font-weight: bold;
+      }
+      .sub-text {
+        font-size: .75rem;
+        color: #67676c;
+      }
     }
-    .highlight {
-      color: red;
-      font-weight: bolder;
+    :el-image {
+      display: block;
+      width: 100%;
+      height: 100%;
     }
   }
 }
