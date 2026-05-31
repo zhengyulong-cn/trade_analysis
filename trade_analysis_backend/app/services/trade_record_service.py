@@ -577,16 +577,23 @@ class TradeRecordService:
         existing_import_records = list(
             self.session.exec(select(TradeRecord).where(TradeRecord.source == SOURCE_IMPORT)).all()
         )
-        existing_record_map = {
-            self._build_import_record_key(item.import_open_trade_no, item.import_close_trade_no): item
-            for item in existing_import_records
-        }
+        existing_records_by_key: dict[tuple[str, str], list[TradeRecord]] = defaultdict(list)
+        existing_records_by_open_key: dict[str, list[TradeRecord]] = defaultdict(list)
+        for item in existing_import_records:
+            record_key = self._build_import_record_key(item.import_open_trade_no, item.import_close_trade_no)
+            open_key = self._normalize_trade_no(item.import_open_trade_no) or ""
+            existing_records_by_key[record_key].append(item)
+            existing_records_by_open_key[open_key].append(item)
+
         generated_keys: set[tuple[str, str]] = set()
+        deleted_record_ids: set[int] = set()
 
         for open_fill in open_fills:
             if not open_fill.trade_no:
                 continue
 
+            open_key = self._normalize_trade_no(open_fill.trade_no) or ""
+            current_keys_for_open: set[tuple[str, str]] = set()
             all_related_close_fills = close_fill_map.get(open_fill.trade_no, [])
             related_close_fills = [item for item in all_related_close_fills if not item.is_excluded_from_sync]
             matched_close_lots = 0
@@ -595,8 +602,15 @@ class TradeRecordService:
             for close_fill in related_close_fills:
                 matched_close_lots += close_fill.lots
                 record_key = self._build_import_record_key(open_fill.trade_no, close_fill.trade_no)
+                current_keys_for_open.add(record_key)
                 generated_keys.add(record_key)
-                trade_record = existing_record_map.get(record_key)
+                matching_records = existing_records_by_key.get(record_key, [])
+                trade_record = matching_records[0] if matching_records else None
+                for duplicate_record in matching_records[1:]:
+                    duplicate_id = duplicate_record.trade_record_id
+                    if duplicate_id is not None and duplicate_id not in deleted_record_ids:
+                        self.session.delete(duplicate_record)
+                        deleted_record_ids.add(duplicate_id)
                 if trade_record is None:
                     trade_record = TradeRecord(
                         contract=open_fill.contract,
@@ -636,8 +650,15 @@ class TradeRecordService:
             remaining_lots = max(open_fill.lots - consumed_close_lots, 0)
             if remaining_lots > 0:
                 record_key = self._build_import_record_key(open_fill.trade_no, None)
+                current_keys_for_open.add(record_key)
                 generated_keys.add(record_key)
-                trade_record = existing_record_map.get(record_key)
+                matching_records = existing_records_by_key.get(record_key, [])
+                trade_record = matching_records[0] if matching_records else None
+                for duplicate_record in matching_records[1:]:
+                    duplicate_id = duplicate_record.trade_record_id
+                    if duplicate_id is not None and duplicate_id not in deleted_record_ids:
+                        self.session.delete(duplicate_record)
+                        deleted_record_ids.add(duplicate_id)
                 if trade_record is None:
                     trade_record = TradeRecord(
                         contract=open_fill.contract,
@@ -673,7 +694,25 @@ class TradeRecordService:
                 trade_record.updated_at = datetime.now(timezone.utc)
                 self.session.add(trade_record)
 
-        stale_records = [item for key, item in existing_record_map.items() if key not in generated_keys]
+            for existing_record in existing_records_by_open_key.get(open_key, []):
+                existing_id = existing_record.trade_record_id
+                if existing_id is not None and existing_id in deleted_record_ids:
+                    continue
+                existing_key = self._build_import_record_key(
+                    existing_record.import_open_trade_no,
+                    existing_record.import_close_trade_no,
+                )
+                if existing_key not in current_keys_for_open:
+                    self.session.delete(existing_record)
+                    if existing_id is not None:
+                        deleted_record_ids.add(existing_id)
+
+        stale_records = [
+            item
+            for item in existing_import_records
+            if self._build_import_record_key(item.import_open_trade_no, item.import_close_trade_no) not in generated_keys
+            and (item.trade_record_id is None or item.trade_record_id not in deleted_record_ids)
+        ]
         for stale_record in stale_records:
             self.session.delete(stale_record)
 
