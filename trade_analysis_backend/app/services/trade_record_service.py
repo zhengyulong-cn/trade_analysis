@@ -639,7 +639,8 @@ class TradeRecordService:
                 trade_record.open_price = open_fill.price
                 trade_record.close_time = close_fill.trade_time
                 trade_record.close_price = close_fill.price
-                trade_record.tags = []
+                if trade_record.trade_record_id is None:
+                    trade_record.tags = []
                 trade_record.fee = self._allocate_fee(open_fill.fee, close_fill.lots, open_fill.lots) + close_fill.fee
                 trade_record.actual_pnl = close_fill.close_pnl
                 trade_record.import_open_trade_no = open_fill.trade_no
@@ -687,7 +688,8 @@ class TradeRecordService:
                 trade_record.open_price = open_fill.price
                 trade_record.close_time = None
                 trade_record.close_price = None
-                trade_record.tags = []
+                if trade_record.trade_record_id is None:
+                    trade_record.tags = []
                 trade_record.fee = self._allocate_fee(open_fill.fee, remaining_lots, open_fill.lots)
                 trade_record.actual_pnl = None
                 trade_record.import_open_trade_no = open_fill.trade_no
