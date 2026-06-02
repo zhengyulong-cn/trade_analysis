@@ -43,6 +43,7 @@ const openSignalOptions: Array<{ label: string; value: TradeRecordOpenSignal }> 
   { label: 'EMA120阻力+三推楔形', value: 'ema120_resistance_three_push_wedge' },
   { label: 'EMA120阻力+突破交易区间然后回拉', value: 'ema120_resistance_range_break_pullback' },
   { label: '区间上下轨附近+两次以上尝试突破受阻', value: 'range_edge_multiple_breakout_failures' },
+  { label: '真突破+反包', value: 'real_breakout_with_engulfing' },
   { label: '不符合开仓信号', value: 'not_matching_open_signal' },
 ]
 

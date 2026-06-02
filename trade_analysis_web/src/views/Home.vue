@@ -58,10 +58,16 @@ const tradePatternDisplayList = [
           <p>④设置的止损位能否接受？</p>
         </section>
         <section class="section-box">
-          <div class="title">操作警醒</div>
-          <div>①不要做垃圾机会，交易系统外似是而非的机会都不要操作！</div>
-          <div>②<span class="highlight">不要拉硬止损</span>，更不能删除止损！亏损不要有侥幸念想扛单！</div>
-          <div>③回撤时候看持仓方向是否受到阻力，没有受阻就是普通回调而已</div>
+          <div class="title">持仓</div>
+          <div>①已较大幅度盈利单子拉止损超过成本线，<span class="highlight">浮盈就不能转化为亏损。</span></div>
+          <div>②回撤时候看持仓方向是否受到阻力，没有受阻就是普通回调而已。</div>
+          <!-- <div>②<span class="highlight">不要拉硬止损</span>，更不能删除止损！亏损不要有侥幸念想扛单！</div> -->
+          <!-- <div>③回撤时候看持仓方向是否受到阻力，没有受阻就是普通回调而已</div> -->
+        </section>
+        <section class="section-box">
+          <div class="title">操作红线</div>
+          <div>①<span class="highlight">不要让硬止损扩大</span>，更不能删除止损！亏损不要有侥幸念想扛单！</div>
+          <div>②如果今天做的不顺，就休息吧！</div>
         </section>
       </div>
       <div class="right-box">
@@ -107,6 +113,9 @@ const tradePatternDisplayList = [
     .section-box {
       .title {
         font-size: 2rem;
+        font-weight: bolder;
+        color: yellow;
+        text-decoration-line: underline;
       }
       .content {
         width: fit-content;

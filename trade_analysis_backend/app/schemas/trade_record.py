@@ -12,6 +12,7 @@ OpenSignalType = Literal[
     "ema120_resistance_three_push_wedge",
     "ema120_resistance_range_break_pullback",
     "range_edge_multiple_breakout_failures",
+    "real_breakout_with_engulfing",
     "not_matching_open_signal",
 ]
 TradeRecordOpenDirection = Literal["long", "short"]
@@ -20,8 +21,9 @@ TradeRecordAnalysisPeriod = Literal["day", "week", "half_month", "month"]
 TradeRecordTag = Literal[
     "hold_and_hope",
     "revenge_trade",
-    "perfect_trade",
-    "large_profit_giveback",
+    "correct_trade",
+    "close_late_profit_retreat",
+    "close_early_miss_opportunity",
     "holiday_hold",
 ]
 

@@ -558,6 +558,7 @@ class TradeRecordService:
             "ema120_resistance_three_push_wedge": "EMA120阻力+三推楔形",
             "ema120_resistance_range_break_pullback": "EMA120阻力+突破交易区间然后回拉",
             "range_edge_multiple_breakout_failures": "区间上下轨附近+两次以上尝试突破受阻",
+            "real_breakout_with_engulfing": "真突破+反包",
             "not_matching_open_signal": "不符合开仓信号",
         }.get(value or "", "未填写")
 
