@@ -8,6 +8,8 @@ from app.models.future_product import FutureProduct  # noqa: F401
 from app.models.future_report_document import FutureReportDocument  # noqa: F401
 from app.models.kline_data import KlineData  # noqa: F401
 from app.models.trade_account import TradeAccount  # noqa: F401
+from app.models.trade_record_column import TradeRecordColumn  # noqa: F401
+from app.models.trade_record import TradeRecord  # noqa: F401
 from app.models.trade_thought import TradeThought  # noqa: F401
 
 metadata = SQLModel.metadata

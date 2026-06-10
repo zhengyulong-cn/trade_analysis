@@ -20,6 +20,8 @@ from app.services.market_data import (
 )
 from app.services.opportunity_analysis_service_v2 import OpportunityAnalysisServiceV2
 from app.services.realtime_bar_service import RealtimeBarService
+from app.services.trade_record_service import TradeRecordService
+from app.services.trade_record_column_service import TradeRecordColumnService
 from app.services.trade_account_service import TradeAccountService
 # from app.services.analysis_service import AnalysisService
 from app.services.analysis_service_v2 import AnalysisServiceV2
@@ -86,6 +88,14 @@ def get_trade_account_service(session: SessionDep) -> TradeAccountService:
     return TradeAccountService(session)
 
 
+def get_trade_record_column_service(session: SessionDep) -> TradeRecordColumnService:
+    return TradeRecordColumnService(session)
+
+
+def get_trade_record_service(session: SessionDep) -> TradeRecordService:
+    return TradeRecordService(session)
+
+
 def get_trade_thought_storage_service() -> TradeThoughtStorageService:
     return TradeThoughtStorageService()
 
@@ -137,6 +147,12 @@ ChartPersistenceServiceDep = Annotated[
 ]
 TradeAccountServiceDep = Annotated[
     TradeAccountService, Depends(get_trade_account_service)
+]
+TradeRecordColumnServiceDep = Annotated[
+    TradeRecordColumnService, Depends(get_trade_record_column_service)
+]
+TradeRecordServiceDep = Annotated[
+    TradeRecordService, Depends(get_trade_record_service)
 ]
 KlineServiceDep = Annotated[KlineService, Depends(get_kline_service)]
 RealtimeBarServiceDep = Annotated[

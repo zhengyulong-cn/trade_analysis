@@ -10,6 +10,8 @@ from app.api.routes.health import router as health_router
 from app.api.routes.klines import router as kline_router
 from app.api.routes.realtime_bars import router as realtime_bar_router
 from app.api.routes.trade_accounts import router as trade_account_router
+from app.api.routes.trade_record_columns import router as trade_record_column_router
+from app.api.routes.trade_records import router as trade_record_router
 from app.api.routes.trade_thoughts import router as trade_thought_router
 
 api_router = APIRouter()
@@ -40,6 +42,16 @@ api_router.include_router(
     trade_account_router,
     prefix="/trade-accounts",
     tags=["trade-accounts"],
+)
+api_router.include_router(
+    trade_record_column_router,
+    prefix="/trade-record-columns",
+    tags=["trade-record-columns"],
+)
+api_router.include_router(
+    trade_record_router,
+    prefix="/trade-records",
+    tags=["trade-records"],
 )
 api_router.include_router(
     trade_thought_router,
