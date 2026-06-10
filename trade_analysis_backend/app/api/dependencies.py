@@ -20,6 +20,7 @@ from app.services.market_data import (
 )
 from app.services.opportunity_analysis_service_v2 import OpportunityAnalysisServiceV2
 from app.services.realtime_bar_service import RealtimeBarService
+from app.services.trade_account_service import TradeAccountService
 # from app.services.analysis_service import AnalysisService
 from app.services.analysis_service_v2 import AnalysisServiceV2
 from app.services.redis_client import redis_client_manager
@@ -81,6 +82,10 @@ def get_chart_persistence_service(session: SessionDep) -> ChartPersistenceServic
     return ChartPersistenceService(session)
 
 
+def get_trade_account_service(session: SessionDep) -> TradeAccountService:
+    return TradeAccountService(session)
+
+
 def get_trade_thought_storage_service() -> TradeThoughtStorageService:
     return TradeThoughtStorageService()
 
@@ -129,6 +134,9 @@ FutureFundamentalAnalysisServiceDep = Annotated[
 ]
 ChartPersistenceServiceDep = Annotated[
     ChartPersistenceService, Depends(get_chart_persistence_service)
+]
+TradeAccountServiceDep = Annotated[
+    TradeAccountService, Depends(get_trade_account_service)
 ]
 KlineServiceDep = Annotated[KlineService, Depends(get_kline_service)]
 RealtimeBarServiceDep = Annotated[
