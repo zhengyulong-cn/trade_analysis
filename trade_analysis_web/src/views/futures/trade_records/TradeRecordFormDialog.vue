@@ -20,7 +20,7 @@ import {
   type UploadRawFile,
   type UploadRequestOptions,
 } from "element-plus"
-import { computed, reactive, ref, watch } from "vue"
+import { computed, onBeforeUnmount, reactive, ref, watch } from "vue"
 
 type DialogMode = "create" | "edit"
 type TradeRecordFormValue = string | number | boolean | null | string[] | TradeRecordImage[]
@@ -45,6 +45,7 @@ const submitting = ref(false)
 const formRef = ref<FormInstance>()
 const formData = reactive<TradeRecordFormData>({})
 const uploadFileMap = reactive<Record<string, UploadFile[]>>({})
+const activeImageColumnKey = ref<string | null>(null)
 let uploadUidSeed = 1
 
 const dialogVisible = computed({
@@ -59,6 +60,8 @@ const enabledColumns = computed(() =>
     .filter((item) => item.is_enabled)
     .sort((a, b) => a.sort_order - b.sort_order || a.column_id - b.column_id),
 )
+
+const imageColumns = computed(() => enabledColumns.value.filter((item) => item.data_type === "images"))
 
 const nextUploadUid = () => `trade-record-upload-${uploadUidSeed++}`
 
@@ -132,6 +135,25 @@ const resolveUploadPath = (uploadFile: UploadFile) => {
   return uploadFile.url.replace(/^.*\/storage\//, "")
 }
 
+const setActiveImageColumn = (columnKey: string) => {
+  activeImageColumnKey.value = columnKey
+}
+
+const resolveTargetImageColumnKey = () => {
+  if (
+    activeImageColumnKey.value &&
+    imageColumns.value.some((column) => column.column_key === activeImageColumnKey.value)
+  ) {
+    return activeImageColumnKey.value
+  }
+
+  if (imageColumns.value.length === 1) {
+    return imageColumns.value[0].column_key
+  }
+
+  return imageColumns.value[0]?.column_key ?? null
+}
+
 const createEmptyFormData = () => {
   for (const key of Object.keys(formData)) {
     delete formData[key]
@@ -160,6 +182,8 @@ const createEmptyFormData = () => {
 
     formData[column.column_key] = null
   }
+
+  activeImageColumnKey.value = imageColumns.value[0]?.column_key ?? null
 }
 
 const fillFormData = (record: TradeRecord) => {
@@ -232,11 +256,28 @@ const beforeImageUpload = (rawFile: UploadRawFile) => {
   return true
 }
 
+const appendUploadedImage = (columnKey: string, image: TradeRecordImage) => {
+  const normalizedImage = normalizeImageItem(image)
+  const current = Array.isArray(formData[columnKey]) ? [...(formData[columnKey] as TradeRecordImage[])] : []
+  formData[columnKey] = [...current, normalizedImage]
+  uploadFileMap[columnKey] = [...(uploadFileMap[columnKey] ?? []), toUploadFile(normalizedImage)]
+}
+
+const uploadImageForColumn = async (columnKey: string, file: File) => {
+  const current = Array.isArray(formData[columnKey]) ? (formData[columnKey] as TradeRecordImage[]) : []
+  if (current.length >= MAX_IMAGE_COUNT) {
+    ElMessage.warning(`当前图片字段最多上传 ${MAX_IMAGE_COUNT} 张`)
+    return
+  }
+
+  const result = await uploadTradeRecordImageApi(file)
+  appendUploadedImage(columnKey, result)
+}
+
 const handleUploadRequest = (columnKey: string) => async (options: UploadRequestOptions) => {
   try {
     const result = await uploadTradeRecordImageApi(options.file)
-    const current = Array.isArray(formData[columnKey]) ? [...(formData[columnKey] as TradeRecordImage[])] : []
-    formData[columnKey] = [...current, normalizeImageItem(result)]
+    appendUploadedImage(columnKey, result)
     options.onSuccess?.(result)
   } catch {
     options.onError?.(toUploadError("截图上传失败"))
@@ -248,6 +289,38 @@ const handleUploadRemove = (columnKey: string): UploadProps["onRemove"] => (uplo
   const current = Array.isArray(formData[columnKey]) ? (formData[columnKey] as TradeRecordImage[]) : []
   formData[columnKey] = current.filter((item) => item.path !== removedPath)
   uploadFileMap[columnKey] = [...uploadFiles]
+}
+
+const handlePaste = async (event: ClipboardEvent) => {
+  if (!dialogVisible.value || !imageColumns.value.length) {
+    return
+  }
+
+  const clipboardItems = event.clipboardData?.items
+  if (!clipboardItems?.length) {
+    return
+  }
+
+  const imageItem = Array.from(clipboardItems).find((item) => item.type.startsWith("image/"))
+  if (!imageItem) {
+    return
+  }
+
+  const file = imageItem.getAsFile()
+  const columnKey = resolveTargetImageColumnKey()
+  if (!file || !columnKey) {
+    ElMessage.warning("当前没有可粘贴图片的字段")
+    return
+  }
+
+  event.preventDefault()
+
+  try {
+    await uploadImageForColumn(columnKey, file)
+    ElMessage.success("图片已粘贴上传")
+  } catch {
+    ElMessage.error("截图上传失败")
+  }
 }
 
 const buildPayload = () => {
@@ -329,6 +402,12 @@ const submitForm = async () => {
 watch(
   () => props.modelValue,
   (visible) => {
+    if (visible) {
+      window.addEventListener("paste", handlePaste)
+    } else {
+      window.removeEventListener("paste", handlePaste)
+    }
+
     if (!visible) {
       return
     }
@@ -341,6 +420,10 @@ watch(
     createEmptyFormData()
   },
 )
+
+onBeforeUnmount(() => {
+  window.removeEventListener("paste", handlePaste)
+})
 </script>
 
 <template>
@@ -417,19 +500,25 @@ watch(
           </el-form-item>
 
           <el-form-item v-else :label="column.column_label" :prop="column.column_key" class="full-row">
-            <el-upload
-              v-model:file-list="uploadFileMap[column.column_key]"
-              list-type="picture-card"
-              :auto-upload="true"
-              :limit="MAX_IMAGE_COUNT"
-              :before-upload="beforeImageUpload"
-              :http-request="handleUploadRequest(column.column_key)"
-              :on-remove="handleUploadRemove(column.column_key)"
-              accept="image/jpeg,image/png,image/webp,image/gif"
+            <div
+              class="image-upload-field"
+              :class="{ active: activeImageColumnKey === column.column_key }"
+              @click="setActiveImageColumn(column.column_key)"
             >
-              <el-icon><Plus /></el-icon>
-            </el-upload>
-            <div class="upload-tip">图片保存到 `storage/trade_records_v2`，最多 {{ MAX_IMAGE_COUNT }} 张</div>
+              <el-upload
+                v-model:file-list="uploadFileMap[column.column_key]"
+                list-type="picture-card"
+                :auto-upload="true"
+                :limit="MAX_IMAGE_COUNT"
+                :before-upload="beforeImageUpload"
+                :http-request="handleUploadRequest(column.column_key)"
+                :on-remove="handleUploadRemove(column.column_key)"
+                accept="image/jpeg,image/png,image/webp,image/gif"
+              >
+                <el-icon><Plus /></el-icon>
+              </el-upload>
+            </div>
+            <div class="upload-tip">图片保存到 `storage/trade_records_v2`，最多 {{ MAX_IMAGE_COUNT }} 张，支持 `Ctrl+V` 粘贴截图</div>
           </el-form-item>
         </template>
       </div>
@@ -469,6 +558,19 @@ watch(
   margin-top: 8px;
   color: #8c98aa;
   font-size: 12px;
+}
+
+.image-upload-field {
+  display: inline-block;
+  padding: 6px;
+  border: 1px solid transparent;
+  border-radius: 10px;
+  transition: border-color 0.2s ease, background-color 0.2s ease;
+}
+
+.image-upload-field.active {
+  border-color: #409eff;
+  background: #f0f7ff;
 }
 
 .dialog-footer {

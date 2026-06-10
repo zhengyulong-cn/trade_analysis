@@ -297,7 +297,7 @@ const handleClosed = () => {
           <el-button text @click="resetColumnForm">重置</el-button>
         </div>
 
-        <el-form ref="columnFormRef" :model="columnForm" :rules="columnRules" label-position="top" class="column-form">
+        <el-form ref="columnFormRef" :model="columnForm" :rules="columnRules" label-position="right" label-width="80" class="column-form">
           <div class="column-form-grid">
             <el-form-item label="列标识" prop="column_key">
               <el-input v-model="columnForm.column_key" placeholder="例如：open_price" />
@@ -347,7 +347,7 @@ const handleClosed = () => {
               <el-switch v-model="columnForm.is_enabled" />
             </el-form-item>
 
-            <el-form-item v-if="requiresOptionsJson" label="options_json" class="full-row">
+            <el-form-item v-if="requiresOptionsJson" label="options_json" class="full-row" label-position="top">
               <el-input
                 v-model="columnForm.options_json_text"
                 type="textarea"
@@ -356,7 +356,7 @@ const handleClosed = () => {
               />
             </el-form-item>
 
-            <el-form-item v-if="requiresSourceConfig" label="option_source_config" class="full-row">
+            <el-form-item v-if="requiresSourceConfig" label="option_source_config" class="full-row" label-position="top">
               <el-input
                 v-model="columnForm.option_source_config_text"
                 type="textarea"
