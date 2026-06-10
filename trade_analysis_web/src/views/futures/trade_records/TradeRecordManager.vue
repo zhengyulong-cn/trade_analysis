@@ -49,6 +49,10 @@ const uploadFileMap = reactive<Record<string, UploadFile[]>>({})
 const editingRecordId = ref<number | null>(null)
 let uploadUidSeed = 1
 
+defineProps<{
+  handleModeChange: (mode: string | number | boolean) => void
+}>()
+
 const enabledColumns = computed(() =>
   [...columns.value]
     .filter((item) => item.is_enabled)
@@ -439,26 +443,20 @@ onMounted(async () => {
 
 <template>
   <section class="trade-record-page">
-    <el-card shadow="never" class="manager-card">
-      <template #header>
-        <div class="toolbar">
-          <div class="toolbar-left">
-            <div class="toolbar-title">交易记录</div>
-            <div class="toolbar-subtitle">每条交易记录对应一行，字段由 `trade_record_columns` 动态驱动</div>
-          </div>
-
-          <div class="toolbar-right">
-            <div class="summary">{{ records.length }} 条记录</div>
-            <el-button @click="loadPageData">刷新</el-button>
-            <el-button type="primary" @click="openCreateDialog">新增交易记录</el-button>
-            <el-button type="warning" @click="openColumnDialog">列配置</el-button>
-          </div>
+    <div class="manager-card">
+      <header class="toolbar">
+        <div class="toolbar-left">
+          <div class="toolbar-title">交易记录<el-icon class="icon" @click="handleModeChange('analysis')"><Switch /></el-icon></div>
         </div>
-      </template>
-
+        <div class="toolbar-right">
+          <div class="summary">{{ records.length }} 条记录</div>
+          <el-button @click="loadPageData">刷新</el-button>
+          <el-button type="primary" @click="openCreateDialog">新增交易记录</el-button>
+          <el-button type="warning" @click="openColumnDialog">列配置</el-button>
+        </div>
+      </header>
       <el-empty v-if="!loading && !records.length" description="暂无交易记录" />
-
-      <el-table v-else v-loading="loading" :data="records" border stripe class="record-table">
+      <el-table v-else v-loading="loading" :data="records" border stripe class="record-table" height="45rem">
         <el-table-column prop="trade_record_id" label="ID" width="90" fixed="left" />
         <el-table-column
           v-for="column in enabledColumns"
@@ -546,7 +544,7 @@ onMounted(async () => {
           </template>
         </el-table-column>
       </el-table>
-    </el-card>
+    </div>
 
     <el-dialog v-model="dialogVisible" :title="dialogTitle" width="880px" destroy-on-close @closed="resetDialog">
       <el-form ref="formRef" :model="formData" :rules="buildRules" label-position="right" class="record-form">
@@ -659,8 +657,9 @@ onMounted(async () => {
 }
 
 .manager-card {
-  border: none;
-  border-radius: 18px;
+  display: flex;
+  flex-direction: column;
+  row-gap: 12px;
 }
 
 .toolbar {
@@ -675,9 +674,18 @@ onMounted(async () => {
 }
 
 .toolbar-title {
+  display: flex;
+  align-items: center;
+  column-gap: 4px;
   color: #1a2233;
   font-size: 20px;
   font-weight: 700;
+  .icon {
+    cursor: pointer;
+    &:hover {
+        color: #409eff;
+    }
+  }
 }
 
 .toolbar-subtitle {

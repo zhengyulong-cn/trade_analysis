@@ -26,18 +26,18 @@ export const RouterModules: RouteRecordRaw[] = [
     },
     children: [
       {
+        path: "/futures/trade-records",
+        component: () => import("@/views/futures/trade_records/TradeRecordSwitcher.vue"),
+        meta: {
+          icon: "",
+          title: "交易记录",
+        },
+      },
+      {
         path: "/futures/open_opportunity_analysis",
         component: () => import("@/views/futures/open_opportunity_analysis/OpenOpportunityAnalysis.vue"),
         meta: {
           title: "开仓机会分析",
-        },
-      },
-      {
-        path: "/futures/trade-records",
-        component: () => import("@/views/futures/trade_records/TradeRecordManager.vue"),
-        meta: {
-          icon: "",
-          title: "交易记录",
         },
       },
       {
