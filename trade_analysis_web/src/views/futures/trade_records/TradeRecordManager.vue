@@ -16,6 +16,7 @@ import {
   type TradeRecordImageUploadResult,
 } from "@/api/modules"
 import { formatDateTime } from "@/utils/date"
+import TradeRecordColumnConfigDialog from "./TradeRecordColumnConfigDialog.vue"
 import {
   ElMessage,
   ElMessageBox,
@@ -32,10 +33,12 @@ type TradeRecordFormValue = string | number | boolean | null | string[] | TradeR
 type TradeRecordFormData = Record<string, TradeRecordFormValue>
 
 const MAX_IMAGE_COUNT = 12
+const DEFAULT_TABLE_MIN_WIDTH = 160
 
 const loading = ref(false)
 const submitting = ref(false)
 const dialogVisible = ref(false)
+const columnDialogVisible = ref(false)
 const dialogMode = ref<"create" | "edit">("create")
 const columns = ref<TradeRecordColumn[]>([])
 const accounts = ref<TradeAccount[]>([])
@@ -79,21 +82,25 @@ const createEmptyFormData = () => {
       formData[column.column_key] = []
       continue
     }
+
     if (column.data_type === "images") {
       formData[column.column_key] = []
       uploadFileMap[column.column_key] = []
       continue
     }
+
     if (column.data_type === "bool") {
       formData[column.column_key] = false
       continue
     }
+
     formData[column.column_key] = null
   }
 }
 
 const buildRules = computed<FormRules>(() => {
   const rules: FormRules = {}
+
   for (const column of enabledColumns.value) {
     if (!column.is_required) {
       continue
@@ -121,6 +128,7 @@ const buildRules = computed<FormRules>(() => {
       },
     ]
   }
+
   return rules
 })
 
@@ -136,12 +144,34 @@ const getColumnOptions = (column: TradeRecordColumn): TradeRecordColumnOption[] 
     return []
   }
 
-  return column.options_json ?? []
+  return (column.options_json ?? []) as TradeRecordColumnOption[]
+}
+
+const getColumnOptionMeta = (column: TradeRecordColumn, value: unknown) => {
+  const normalizedValue = String(value ?? "")
+  return getColumnOptions(column).find((item) => item.value === normalizedValue)
+}
+
+const getTagProps = (option?: TradeRecordColumnOption) => ({
+  type: option?.tag_type || "info",
+  effect: option?.effect || "dark",
+})
+
+const getTagStyle = (option?: TradeRecordColumnOption) => {
+  if (!option?.color && !option?.text_color && !option?.border_color) {
+    return undefined
+  }
+
+  return {
+    backgroundColor: option.color || undefined,
+    borderColor: option.border_color || option.color || undefined,
+    color: option.text_color || undefined,
+  }
 }
 
 const getNumberPrecision = (column: TradeRecordColumn) => {
   const option = Array.isArray(column.options_json) ? column.options_json[0] : undefined
-  const precision = option && "precision" in option ? Number((option as unknown as Record<string, unknown>).precision) : NaN
+  const precision = option && "precision" in option ? Number((option as Record<string, unknown>).precision) : NaN
   if (Number.isFinite(precision) && precision >= 0) {
     return precision
   }
@@ -226,8 +256,7 @@ const formatCellValue = (column: TradeRecordColumn, value: unknown) => {
   }
 
   if (column.data_type === "single_select") {
-    const options = getColumnOptions(column)
-    const matched = options.find((item) => item.value === String(value))
+    const matched = getColumnOptions(column).find((item) => item.value === String(value))
     return matched?.label ?? String(value)
   }
 
@@ -321,6 +350,7 @@ const openEditDialog = (record: TradeRecord) => {
 
   for (const column of enabledColumns.value) {
     const value = record.data_json[column.column_key]
+
     if (column.data_type === "images") {
       const images = Array.isArray(value) ? (value as TradeRecordImage[]) : []
       formData[column.column_key] = images.map(normalizeImageItem)
@@ -342,6 +372,10 @@ const openEditDialog = (record: TradeRecord) => {
   }
 
   dialogVisible.value = true
+}
+
+const openColumnDialog = () => {
+  columnDialogVisible.value = true
 }
 
 const submitForm = async () => {
@@ -417,6 +451,7 @@ onMounted(async () => {
             <div class="summary">{{ records.length }} 条记录</div>
             <el-button @click="loadPageData">刷新</el-button>
             <el-button type="primary" @click="openCreateDialog">新增交易记录</el-button>
+            <el-button type="warning" @click="openColumnDialog">列配置</el-button>
           </div>
         </div>
       </template>
@@ -430,21 +465,67 @@ onMounted(async () => {
           :key="column.column_id"
           :label="column.column_label"
           :width="column.table_column_width || undefined"
-          :min-width="column.table_column_width ? undefined : 160"
+          :min-width="column.table_column_width ? undefined : DEFAULT_TABLE_MIN_WIDTH"
           show-overflow-tooltip
         >
           <template #default="{ row }">
             <template v-if="column.data_type === 'images'">
-              <div v-if="Array.isArray(row.data_json[column.column_key]) && row.data_json[column.column_key].length" class="image-list">
+              <div
+                v-if="Array.isArray(row.data_json[column.column_key]) && row.data_json[column.column_key].length"
+                class="image-list"
+              >
                 <el-image
                   v-for="item in row.data_json[column.column_key]"
                   :key="item.path"
                   :src="resolveTradeRecordImageUrl(item.path)"
-                  :preview-src-list="row.data_json[column.column_key].map((image: TradeRecordImage) => resolveTradeRecordImageUrl(image.path))"
+                  :preview-src-list="
+                    row.data_json[column.column_key].map((image: TradeRecordImage) => resolveTradeRecordImageUrl(image.path))
+                  "
                   class="image-thumb"
                   fit="cover"
                   preview-teleported
                 />
+              </div>
+              <span v-else>-</span>
+            </template>
+            <template
+              v-else-if="
+                column.data_type === 'single_select' &&
+                row.data_json[column.column_key] !== null &&
+                row.data_json[column.column_key] !== undefined &&
+                row.data_json[column.column_key] !== ''
+              "
+            >
+              <el-tag
+                v-if="getColumnOptionMeta(column, row.data_json[column.column_key])"
+                size="small"
+                class="record-tag"
+                v-bind="getTagProps(getColumnOptionMeta(column, row.data_json[column.column_key]))"
+                :style="getTagStyle(getColumnOptionMeta(column, row.data_json[column.column_key]))"
+                round
+              >
+                {{ getColumnOptionMeta(column, row.data_json[column.column_key])?.label }}
+              </el-tag>
+              <span v-else>{{ String(row.data_json[column.column_key]) }}</span>
+            </template>
+            <template v-else-if="column.data_type === 'multi_select'">
+              <div
+                v-if="Array.isArray(row.data_json[column.column_key]) && row.data_json[column.column_key].length"
+                class="tag-list"
+              >
+                <template v-for="item in row.data_json[column.column_key]" :key="String(item)">
+                  <el-tag
+                    v-if="getColumnOptionMeta(column, item)"
+                    size="small"
+                    class="record-tag"
+                    v-bind="getTagProps(getColumnOptionMeta(column, item))"
+                    :style="getTagStyle(getColumnOptionMeta(column, item))"
+                    round
+                  >
+                    {{ getColumnOptionMeta(column, item)?.label }}
+                  </el-tag>
+                  <span v-else class="tag-fallback">{{ String(item) }}</span>
+                </template>
               </div>
               <span v-else>-</span>
             </template>
@@ -467,18 +548,13 @@ onMounted(async () => {
       </el-table>
     </el-card>
 
-    <el-dialog
-      v-model="dialogVisible"
-      :title="dialogTitle"
-      width="880px"
-      destroy-on-close
-      @closed="resetDialog"
-    >
-      <el-form ref="formRef" :model="formData" :rules="buildRules" label-position="top" class="record-form">
+    <el-dialog v-model="dialogVisible" :title="dialogTitle" width="880px" destroy-on-close @closed="resetDialog">
+      <el-form ref="formRef" :model="formData" :rules="buildRules" label-position="right" class="record-form">
         <div class="form-grid">
           <template v-for="column in enabledColumns" :key="column.column_id">
             <el-form-item
               v-if="column.data_type !== 'images'"
+              label-width="80"
               :label="column.column_label"
               :prop="column.column_key"
               :class="{ 'full-row': column.data_type === 'multi_select' }"
@@ -572,6 +648,8 @@ onMounted(async () => {
         </div>
       </template>
     </el-dialog>
+
+    <TradeRecordColumnConfigDialog v-model="columnDialogVisible" :columns="columns" @changed="loadPageData" />
   </section>
 </template>
 
@@ -611,7 +689,6 @@ onMounted(async () => {
 .toolbar-right {
   display: flex;
   align-items: center;
-  gap: 12px;
   flex-wrap: wrap;
 }
 
@@ -619,6 +696,7 @@ onMounted(async () => {
   color: #5f6b7c;
   font-size: 13px;
   white-space: nowrap;
+  margin-right: 12px;
 }
 
 .record-table {
@@ -637,6 +715,23 @@ onMounted(async () => {
   overflow: hidden;
   border-radius: 10px;
   background: #f3f5f9;
+}
+
+.tag-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.record-tag {
+  margin: 2px 0;
+  border-width: 1px;
+  border-style: solid;
+}
+
+.tag-fallback {
+  color: #445066;
+  font-size: 13px;
 }
 
 .record-form {
@@ -666,6 +761,7 @@ onMounted(async () => {
 .dialog-footer {
   display: flex;
   justify-content: flex-end;
+  gap: 12px;
 }
 
 @media (max-width: 900px) {

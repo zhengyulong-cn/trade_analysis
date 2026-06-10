@@ -15,6 +15,11 @@ export type TradeAccountType = "real" | "simulated"
 export interface TradeRecordColumnOption {
   label: string
   value: string
+  color?: string
+  text_color?: string
+  border_color?: string
+  tag_type?: "" | "success" | "info" | "warning" | "danger" | "primary"
+  effect?: "dark" | "light" | "plain"
 }
 
 export interface TradeRecordColumn {
@@ -31,6 +36,23 @@ export interface TradeRecordColumn {
   option_source_config: Record<string, unknown>
   created_at: string
   updated_at: string
+}
+
+export interface TradeRecordColumnCreateParams {
+  column_key: string
+  column_label: string
+  data_type: TradeRecordColumnDataType
+  table_column_width?: number | null
+  option_source_type?: TradeRecordColumnOptionSourceType
+  is_required?: boolean
+  is_enabled?: boolean
+  sort_order?: number
+  options_json?: Array<Record<string, unknown>>
+  option_source_config?: Record<string, unknown>
+}
+
+export interface TradeRecordColumnUpdateParams extends Partial<TradeRecordColumnCreateParams> {
+  column_id: number
 }
 
 export interface TradeAccount {
@@ -72,6 +94,18 @@ export interface TradeRecordUpdateParams {
 
 export const getTradeRecordColumnListApi = () => {
   return axios.get<TradeRecordColumn[]>("/trade-record-columns") as unknown as Promise<TradeRecordColumn[]>
+}
+
+export const createTradeRecordColumnApi = (params: TradeRecordColumnCreateParams) => {
+  return axios.post<TradeRecordColumn>("/trade-record-columns/create", params) as unknown as Promise<TradeRecordColumn>
+}
+
+export const updateTradeRecordColumnApi = (params: TradeRecordColumnUpdateParams) => {
+  return axios.post<TradeRecordColumn>("/trade-record-columns/update", params) as unknown as Promise<TradeRecordColumn>
+}
+
+export const deleteTradeRecordColumnApi = (columnId: number) => {
+  return axios.post<void>("/trade-record-columns/delete", { column_id: columnId }) as unknown as Promise<void>
 }
 
 export const getTradeAccountListApi = () => {
