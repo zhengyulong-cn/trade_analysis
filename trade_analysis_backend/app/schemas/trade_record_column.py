@@ -20,6 +20,7 @@ class TradeRecordColumnBase(SQLModel):
     column_key: str = Field(min_length=1, max_length=100)
     column_label: str = Field(min_length=1, max_length=100)
     data_type: TradeRecordColumnDataType
+    table_column_width: int | None = Field(default=None)
     option_source_type: TradeRecordColumnOptionSourceType = "static"
     is_required: bool = False
     is_enabled: bool = True
@@ -61,6 +62,7 @@ class TradeRecordColumnUpdate(SQLModel):
     column_key: str | None = Field(default=None, min_length=1, max_length=100)
     column_label: str | None = Field(default=None, min_length=1, max_length=100)
     data_type: TradeRecordColumnDataType | None = None
+    table_column_width: int | None = Field(default=None)
     option_source_type: TradeRecordColumnOptionSourceType | None = None
     is_required: bool | None = None
     is_enabled: bool | None = None

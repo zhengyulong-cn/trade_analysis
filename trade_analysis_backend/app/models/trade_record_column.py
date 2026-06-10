@@ -15,6 +15,7 @@ class TradeRecordColumn(SQLModel, table=True):
     column_key: str = Field(min_length=1, max_length=100, nullable=False, index=True, unique=True)
     column_label: str = Field(min_length=1, max_length=100, nullable=False)
     data_type: str = Field(min_length=1, max_length=30, nullable=False, index=True)
+    table_column_width: int | None = Field(default=None)
     option_source_type: str = Field(default="static", min_length=1, max_length=20, nullable=False, index=True)
     is_required: bool = Field(default=False, nullable=False)
     is_enabled: bool = Field(default=True, nullable=False, index=True)

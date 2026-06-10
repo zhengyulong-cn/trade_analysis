@@ -429,7 +429,8 @@ onMounted(async () => {
           v-for="column in enabledColumns"
           :key="column.column_id"
           :label="column.column_label"
-          min-width="160"
+          :width="column.table_column_width || undefined"
+          :min-width="column.table_column_width ? undefined : 160"
           show-overflow-tooltip
         >
           <template #default="{ row }">

@@ -22,6 +22,7 @@ export interface TradeRecordColumn {
   column_key: string
   column_label: string
   data_type: TradeRecordColumnDataType
+  table_column_width: number | null
   option_source_type: TradeRecordColumnOptionSourceType
   is_required: boolean
   is_enabled: boolean
