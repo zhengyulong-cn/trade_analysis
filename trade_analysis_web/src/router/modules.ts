@@ -33,6 +33,14 @@ export const RouterModules: RouteRecordRaw[] = [
         },
       },
       {
+        path: "/futures/trade-records",
+        component: () => import("@/views/futures/trade_records/TradeRecordManager.vue"),
+        meta: {
+          icon: "",
+          title: "交易记录",
+        },
+      },
+      {
         path: "/reports/fundamental-analysis",
         component: () => import("@/views/reports/future_fundamental_analysis/FutureFundamentalAnalysis.vue"),
         meta: {

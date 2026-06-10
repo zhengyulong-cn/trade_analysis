@@ -46,3 +46,14 @@ class TradeRecordRead(TradeRecordBase):
     trade_record_id: int
     created_at: datetime
     updated_at: datetime
+
+
+class TradeRecordImage(SQLModel):
+    path: str = Field(min_length=1, max_length=255)
+    original_name: str = Field(min_length=1, max_length=255)
+    content_type: str = Field(min_length=1, max_length=100)
+    size: int = Field(ge=0)
+
+
+class TradeRecordImageUploadResult(TradeRecordImage):
+    url: str

@@ -1,9 +1,10 @@
-from fastapi import APIRouter, status
+from fastapi import APIRouter, File, UploadFile, status
 
-from app.api.dependencies import TradeRecordServiceDep
+from app.api.dependencies import TradeRecordServiceDep, TradeRecordStorageServiceDep
 from app.schemas.trade_record import (
     TradeRecordCreate,
     TradeRecordDeleteRequest,
+    TradeRecordImageUploadResult,
     TradeRecordRead,
     TradeRecordUpdate,
 )
@@ -38,3 +39,12 @@ def delete_trade_record(
     service: TradeRecordServiceDep,
 ) -> None:
     service.delete_trade_record(payload.trade_record_id)
+
+
+@router.post("/upload-image", response_model=TradeRecordImageUploadResult)
+async def upload_trade_record_image(
+    storage_service: TradeRecordStorageServiceDep,
+    file: UploadFile = File(...),
+) -> TradeRecordImageUploadResult:
+    result = await storage_service.save_image(file)
+    return TradeRecordImageUploadResult(**result)

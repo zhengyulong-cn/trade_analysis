@@ -16,17 +16,6 @@ TradeRecordColumnDataType = Literal[
 ]
 TradeRecordColumnOptionSourceType = Literal["static", "outer"]
 
-
-class TradeRecordColumnOption(SQLModel):
-    label: str = Field(min_length=1, max_length=100)
-    value: str = Field(min_length=1, max_length=100)
-
-    @field_validator("label", "value", mode="before")
-    @classmethod
-    def strip_string_value(cls, value: str):
-        return value.strip() if isinstance(value, str) else value
-
-
 class TradeRecordColumnBase(SQLModel):
     column_key: str = Field(min_length=1, max_length=100)
     column_label: str = Field(min_length=1, max_length=100)
@@ -35,7 +24,7 @@ class TradeRecordColumnBase(SQLModel):
     is_required: bool = False
     is_enabled: bool = True
     sort_order: int = 0
-    options_json: list[TradeRecordColumnOption] = Field(default_factory=list)
+    options_json: list[dict[str, Any]] = Field(default_factory=list)
     option_source_config: dict[str, Any] = Field(default_factory=dict)
 
     @field_validator("column_key", "column_label", mode="before")
@@ -76,7 +65,7 @@ class TradeRecordColumnUpdate(SQLModel):
     is_required: bool | None = None
     is_enabled: bool | None = None
     sort_order: int | None = None
-    options_json: list[TradeRecordColumnOption] | None = None
+    options_json: list[dict[str, Any]] | None = None
     option_source_config: dict[str, Any] | None = None
 
     @field_validator("column_key", "column_label", mode="before")
