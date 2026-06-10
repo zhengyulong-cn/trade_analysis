@@ -23,8 +23,6 @@ from app.services.realtime_bar_service import RealtimeBarService
 # from app.services.analysis_service import AnalysisService
 from app.services.analysis_service_v2 import AnalysisServiceV2
 from app.services.redis_client import redis_client_manager
-from app.services.trade_record_service import TradeRecordService
-from app.services.trade_record_storage import TradeRecordStorageService
 from app.services.trade_thought_service import TradeThoughtService
 from app.services.trade_thought_storage import TradeThoughtStorageService
 
@@ -83,22 +81,6 @@ def get_chart_persistence_service(session: SessionDep) -> ChartPersistenceServic
     return ChartPersistenceService(session)
 
 
-def get_trade_record_storage_service() -> TradeRecordStorageService:
-    return TradeRecordStorageService()
-
-
-TradeRecordStorageServiceDep = Annotated[
-    TradeRecordStorageService, Depends(get_trade_record_storage_service)
-]
-
-
-def get_trade_record_service(
-    session: SessionDep,
-    storage_service: TradeRecordStorageServiceDep,
-) -> TradeRecordService:
-    return TradeRecordService(session=session, storage_service=storage_service)
-
-
 def get_trade_thought_storage_service() -> TradeThoughtStorageService:
     return TradeThoughtStorageService()
 
@@ -151,9 +133,6 @@ ChartPersistenceServiceDep = Annotated[
 KlineServiceDep = Annotated[KlineService, Depends(get_kline_service)]
 RealtimeBarServiceDep = Annotated[
     RealtimeBarService, Depends(get_realtime_bar_service)
-]
-TradeRecordServiceDep = Annotated[
-    TradeRecordService, Depends(get_trade_record_service)
 ]
 TradeThoughtServiceDep = Annotated[
     TradeThoughtService, Depends(get_trade_thought_service)

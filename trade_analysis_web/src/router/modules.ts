@@ -5,7 +5,7 @@ export const RouterModules: RouteRecordRaw[] = [
     path: "/",
     meta: {
       icon: "HomeFilled",
-      title: "主页",
+      title: "首页",
     },
     component: () => import("@/views/Home.vue"),
   },
@@ -38,22 +38,6 @@ export const RouterModules: RouteRecordRaw[] = [
         meta: {
           icon: "",
           title: "基本面分析",
-        },
-      },
-      {
-        path: "/futures/trade-records",
-        component: () => import("@/views/futures/trade_records/TradeRecordManager.vue"),
-        meta: {
-          icon: "",
-          title: "交易记录",
-        },
-      },
-      {
-        path: "/futures/trade-record-analysis",
-        component: () => import("@/views/futures/trade_record_analysis/TradeRecordAnalysis.vue"),
-        meta: {
-          icon: "",
-          title: "交易分析",
         },
       },
       {
