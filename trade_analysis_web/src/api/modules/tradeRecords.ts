@@ -65,6 +65,17 @@ export interface TradeAccount {
   updated_at: string
 }
 
+export interface TradeAccountCreateParams {
+  account_name: string
+  account_type: TradeAccountType
+  account_no: string
+  password: string
+}
+
+export interface TradeAccountUpdateParams extends Partial<TradeAccountCreateParams> {
+  account_id: number
+}
+
 export interface TradeRecordImage {
   path: string
   original_name: string
@@ -110,6 +121,18 @@ export const deleteTradeRecordColumnApi = (columnId: number) => {
 
 export const getTradeAccountListApi = () => {
   return axios.get<TradeAccount[]>("/trade-accounts") as unknown as Promise<TradeAccount[]>
+}
+
+export const createTradeAccountApi = (params: TradeAccountCreateParams) => {
+  return axios.post<TradeAccount>("/trade-accounts/create", params) as unknown as Promise<TradeAccount>
+}
+
+export const updateTradeAccountApi = (params: TradeAccountUpdateParams) => {
+  return axios.post<TradeAccount>("/trade-accounts/update", params) as unknown as Promise<TradeAccount>
+}
+
+export const deleteTradeAccountApi = (accountId: number) => {
+  return axios.post<void>("/trade-accounts/delete", { account_id: accountId }) as unknown as Promise<void>
 }
 
 export const getTradeRecordListApi = () => {

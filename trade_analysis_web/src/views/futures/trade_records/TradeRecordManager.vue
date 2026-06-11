@@ -15,6 +15,7 @@ import {
 import { formatDateTime } from "@/utils/date"
 import { ElMessage, ElMessageBox } from "element-plus"
 import { computed, onMounted, ref, watch } from "vue"
+import TradeAccountConfigDialog from "./TradeAccountConfigDialog.vue"
 import TradeRecordColumnConfigDialog from "./TradeRecordColumnConfigDialog.vue"
 import TradeRecordFormDialog from "./TradeRecordFormDialog.vue"
 import TradeRecordSortPopover from "./toolbars/TradeRecordSortPopover.vue"
@@ -32,6 +33,7 @@ type DialogMode = "create" | "edit"
 const DEFAULT_TABLE_MIN_WIDTH = 160
 
 const loading = ref(false)
+const accountDialogVisible = ref(false)
 const dialogVisible = ref(false)
 const columnDialogVisible = ref(false)
 const dialogMode = ref<DialogMode>("create")
@@ -199,6 +201,10 @@ const openColumnDialog = () => {
   columnDialogVisible.value = true
 }
 
+const openAccountDialog = () => {
+  accountDialogVisible.value = true
+}
+
 const handleFormSaved = async () => {
   editingRecord.value = null
   await loadPageData()
@@ -286,6 +292,7 @@ watch(
           <el-button @click="loadPageData">刷新</el-button>
           <el-button type="primary" @click="openCreateDialog">新增交易记录</el-button>
           <el-button type="warning" @click="openColumnDialog">列配置</el-button>
+          <el-button type="warning" @click="openAccountDialog">账户配置</el-button>
         </div>
       </header>
 
@@ -367,7 +374,7 @@ watch(
             </template>
           </template>
         </el-table-column>
-        <el-table-column label="操作" width="150" fixed="right">
+        <el-table-column label="操作" width="180" fixed="right">
           <template #default="{ row }">
             <el-button link type="warning" @click="handleCopy(row)">复制</el-button>
             <el-button link type="primary" @click="openEditDialog(row)">编辑</el-button>
@@ -387,6 +394,7 @@ watch(
     />
 
     <TradeRecordColumnConfigDialog v-model="columnDialogVisible" :columns="columns" @changed="loadPageData" />
+    <TradeAccountConfigDialog v-model="accountDialogVisible" :accounts="accounts" @changed="loadPageData" />
   </section>
 </template>
 
