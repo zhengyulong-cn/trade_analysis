@@ -1,5 +1,6 @@
 <script lang="ts" setup>
 import {
+  createTradeRecordApi,
   deleteTradeRecordApi,
   getTradeAccountListApi,
   getTradeRecordColumnListApi,
@@ -203,6 +204,17 @@ const handleFormSaved = async () => {
   await loadPageData()
 }
 
+const handleCopy = async (record: TradeRecord) => {
+  try {
+    const clonedDataJson = JSON.parse(JSON.stringify(record.data_json)) as Record<string, unknown>
+    await createTradeRecordApi({ data_json: clonedDataJson })
+    ElMessage.success("交易记录已复制")
+    await loadPageData()
+  } catch {
+    ElMessage.error("复制交易记录失败")
+  }
+}
+
 const handleDelete = async (record: TradeRecord) => {
   try {
     await ElMessageBox.confirm("删除后无法恢复，确认继续吗？", "删除交易记录", {
@@ -263,10 +275,6 @@ watch(
           </div>
         </div>
         <div class="toolbar-right">
-          <div class="summary">{{ sortedRecords.length }} 条记录</div>
-          <el-button @click="loadPageData">刷新</el-button>
-          <el-button type="primary" @click="openCreateDialog">新增交易记录</el-button>
-          <el-button type="warning" @click="openColumnDialog">列配置</el-button>
           <TradeRecordSortPopover
             :sortable-columns="sortableColumns"
             :sort-enabled="sortEnabled"
@@ -274,6 +282,10 @@ watch(
             @update:sort-enabled="sortEnabled = $event"
             @update:sort-conditions="sortConditions = $event"
           />
+          <div class="summary">{{ sortedRecords.length }} 条记录</div>
+          <el-button @click="loadPageData">刷新</el-button>
+          <el-button type="primary" @click="openCreateDialog">新增交易记录</el-button>
+          <el-button type="warning" @click="openColumnDialog">列配置</el-button>
         </div>
       </header>
 
@@ -357,6 +369,7 @@ watch(
         </el-table-column>
         <el-table-column label="操作" width="150" fixed="right">
           <template #default="{ row }">
+            <el-button link type="warning" @click="handleCopy(row)">复制</el-button>
             <el-button link type="primary" @click="openEditDialog(row)">编辑</el-button>
             <el-button link type="danger" @click="handleDelete(row)">删除</el-button>
           </template>
@@ -426,7 +439,7 @@ watch(
   color: #5f6b7c;
   font-size: 13px;
   white-space: nowrap;
-  margin-right: 12px;
+  margin: 0 12px;
 }
 
 .record-table {
