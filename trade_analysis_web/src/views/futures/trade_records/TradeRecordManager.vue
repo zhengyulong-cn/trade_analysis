@@ -12,10 +12,19 @@ import {
   type TradeRecordImage,
 } from "@/api/modules"
 import { formatDateTime } from "@/utils/date"
+import { ElMessage, ElMessageBox } from "element-plus"
+import { computed, onMounted, ref, watch } from "vue"
 import TradeRecordColumnConfigDialog from "./TradeRecordColumnConfigDialog.vue"
 import TradeRecordFormDialog from "./TradeRecordFormDialog.vue"
-import { ElMessage, ElMessageBox } from "element-plus"
-import { computed, onMounted, ref } from "vue"
+import TradeRecordSortPopover from "./toolbars/TradeRecordSortPopover.vue"
+import {
+  getSortableColumns,
+  normalizeSortConditions,
+  readTradeRecordViewState,
+  saveTradeRecordViewState,
+  sortTradeRecords,
+  type SortCondition,
+} from "./toolbars/tradeRecordSort"
 
 type DialogMode = "create" | "edit"
 
@@ -29,6 +38,8 @@ const editingRecord = ref<TradeRecord | null>(null)
 const columns = ref<TradeRecordColumn[]>([])
 const accounts = ref<TradeAccount[]>([])
 const records = ref<TradeRecord[]>([])
+const sortEnabled = ref(false)
+const sortConditions = ref<SortCondition[]>([])
 
 defineProps<{
   handleModeChange: (mode: string | number | boolean) => void
@@ -38,6 +49,16 @@ const enabledColumns = computed(() =>
   [...columns.value]
     .filter((item) => item.is_enabled)
     .sort((a, b) => a.sort_order - b.sort_order || a.column_id - b.column_id),
+)
+
+const sortableColumns = computed(() => getSortableColumns(enabledColumns.value))
+
+const effectiveSortConditions = computed(() =>
+  normalizeSortConditions(sortConditions.value, sortableColumns.value),
+)
+
+const sortedRecords = computed(() =>
+  sortTradeRecords(records.value, sortableColumns.value, sortEnabled.value, effectiveSortConditions.value),
 )
 
 const getColumnOptions = (column: TradeRecordColumn): TradeRecordColumnOption[] => {
@@ -94,6 +115,21 @@ const formatNumberCellValue = (column: TradeRecordColumn, value: unknown) => {
   return numericValue.toFixed(getNumberPrecision(column))
 }
 
+const isSameSortConditions = (first: SortCondition[], second: SortCondition[]) => {
+  if (first.length !== second.length) {
+    return false
+  }
+
+  return first.every((item, index) => {
+    const target = second[index]
+    return (
+      item.id === target?.id &&
+      item.column_key === target?.column_key &&
+      item.direction === target?.direction
+    )
+  })
+}
+
 const formatCellValue = (column: TradeRecordColumn, value: unknown) => {
   if (value === null || value === undefined || value === "") {
     return "-"
@@ -134,6 +170,16 @@ const loadPageData = async () => {
   } finally {
     loading.value = false
   }
+}
+
+const loadViewState = () => {
+  const viewState = readTradeRecordViewState()
+  if (!viewState) {
+    return
+  }
+
+  sortEnabled.value = viewState.sort_enabled
+  sortConditions.value = viewState.sort_conditions
 }
 
 const openCreateDialog = () => {
@@ -179,7 +225,29 @@ const handleDelete = async (record: TradeRecord) => {
 
 onMounted(async () => {
   await loadPageData()
+  loadViewState()
 })
+
+watch(sortableColumns, () => {
+  const normalizedConditions = effectiveSortConditions.value
+  if (!isSameSortConditions(sortConditions.value, normalizedConditions)) {
+    sortConditions.value = normalizedConditions
+  }
+  if (!normalizedConditions.length) {
+    sortEnabled.value = false
+  }
+})
+
+watch(
+  [sortEnabled, sortConditions],
+  () => {
+    saveTradeRecordViewState({
+      sort_enabled: sortEnabled.value,
+      sort_conditions: effectiveSortConditions.value,
+    })
+  },
+  { deep: true },
+)
 </script>
 
 <template>
@@ -195,16 +263,23 @@ onMounted(async () => {
           </div>
         </div>
         <div class="toolbar-right">
-          <div class="summary">{{ records.length }} 条记录</div>
+          <div class="summary">{{ sortedRecords.length }} 条记录</div>
           <el-button @click="loadPageData">刷新</el-button>
           <el-button type="primary" @click="openCreateDialog">新增交易记录</el-button>
           <el-button type="warning" @click="openColumnDialog">列配置</el-button>
+          <TradeRecordSortPopover
+            :sortable-columns="sortableColumns"
+            :sort-enabled="sortEnabled"
+            :sort-conditions="sortConditions"
+            @update:sort-enabled="sortEnabled = $event"
+            @update:sort-conditions="sortConditions = $event"
+          />
         </div>
       </header>
 
       <el-empty v-if="!loading && !records.length" description="暂无交易记录" />
 
-      <el-table v-else v-loading="loading" :data="records" border stripe class="record-table" height="45rem">
+      <el-table v-else v-loading="loading" :data="sortedRecords" border stripe class="record-table" height="45rem">
         <el-table-column prop="trade_record_id" label="ID" width="60" fixed="left" />
         <el-table-column
           v-for="column in enabledColumns"
