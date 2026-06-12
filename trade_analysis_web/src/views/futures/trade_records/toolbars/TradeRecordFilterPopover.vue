@@ -104,6 +104,14 @@ const handleValueChange = (conditionId: string, value: unknown) => {
 
 const requiresValue = (operator: FilterCondition["operator"]) =>
   !["true", "false", "empty", "not_empty"].includes(operator)
+
+const usesMultiValueSelect = (columnKey: string, operator: FilterCondition["operator"]) => {
+  const dataType = getColumn(columnKey)?.data_type
+  return (
+    (dataType === "single_select" || dataType === "multi_select") &&
+    (operator === "contains" || operator === "not_contains")
+  )
+}
 </script>
 
 <template>
@@ -206,10 +214,21 @@ const requiresValue = (operator: FilterCondition["operator"]) =>
 
               <el-select
                 v-else-if="getColumn(condition.column_key)?.data_type === 'single_select'"
-                :model-value="condition.value as string"
+                :model-value="
+                  usesMultiValueSelect(condition.column_key, condition.operator)
+                    ? Array.isArray(condition.value)
+                      ? condition.value
+                      : []
+                    : typeof condition.value === 'string'
+                      ? condition.value
+                      : ''
+                "
                 class="value-input full-width"
                 clearable
                 filterable
+                :multiple="usesMultiValueSelect(condition.column_key, condition.operator)"
+                collapse-tags
+                collapse-tags-tooltip
                 @update:model-value="handleValueChange(condition.id, $event)"
                 :teleported="false"
               >

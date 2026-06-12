@@ -82,8 +82,6 @@ const OPERATOR_OPTIONS: Record<TradeRecordColumn["data_type"], FilterOperatorOpt
     { label: "不为空", value: "not_empty" },
   ],
   multi_select: [
-    { label: "等于", value: "eq" },
-    { label: "不等于", value: "ne" },
     { label: "包含", value: "contains" },
     { label: "不包含", value: "not_contains" },
     { label: "为空", value: "empty" },
@@ -130,6 +128,10 @@ export const getDefaultFilterValue = (
 
   if (dataType === "number") {
     return null
+  }
+
+  if (dataType === "single_select" && (operator === "contains" || operator === "not_contains")) {
+    return []
   }
 
   if (dataType === "multi_select") {
@@ -204,6 +206,10 @@ export const normalizeFilterConditions = (
 
 const normalizeFilterValue = (dataType: TradeRecordColumn["data_type"], value: unknown) => {
   if (dataType === "multi_select") {
+    return Array.isArray(value) ? value.map((item) => String(item)) : []
+  }
+
+  if (dataType === "single_select" && (Array.isArray(value) || value === null || value === undefined)) {
     return Array.isArray(value) ? value.map((item) => String(item)) : []
   }
 
@@ -304,23 +310,25 @@ const isRecordValueEmpty = (dataType: TradeRecordColumn["data_type"], value: unk
 
 const compareString = (rowValue: unknown, operator: FilterOperator, targetValue: unknown) => {
   const left = String(rowValue ?? "").trim().toLowerCase()
-  const right = String(targetValue ?? "").trim().toLowerCase()
+  const rightValues = Array.isArray(targetValue)
+    ? targetValue.map((item) => String(item).trim().toLowerCase()).filter(Boolean)
+    : [String(targetValue ?? "").trim().toLowerCase()].filter(Boolean)
 
-  if (!right) {
+  if (!rightValues.length) {
     return false
   }
 
   if (operator === "eq") {
-    return left === right
+    return left === rightValues[0]
   }
   if (operator === "ne") {
-    return left !== right
+    return left !== rightValues[0]
   }
   if (operator === "contains") {
-    return left.includes(right)
+    return rightValues.some((item) => left.includes(item))
   }
   if (operator === "not_contains") {
-    return !left.includes(right)
+    return rightValues.every((item) => !left.includes(item))
   }
   return false
 }
@@ -385,22 +393,10 @@ const compareMultiSelect = (rowValue: unknown, operator: FilterOperator, targetV
   }
 
   if (operator === "contains") {
-    return targetValues.every((item) => rowValues.includes(item))
+    return targetValues.some((item) => rowValues.includes(item))
   }
   if (operator === "not_contains") {
     return targetValues.every((item) => !rowValues.includes(item))
-  }
-  if (operator === "eq") {
-    if (rowValues.length !== targetValues.length) {
-      return false
-    }
-    return targetValues.every((item) => rowValues.includes(item))
-  }
-  if (operator === "ne") {
-    if (rowValues.length !== targetValues.length) {
-      return true
-    }
-    return !targetValues.every((item) => rowValues.includes(item))
   }
   return false
 }
