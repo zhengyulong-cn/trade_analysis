@@ -127,8 +127,13 @@ const getTagStyle = (option?: TradeRecordColumnOption) => {
   }
 }
 
-const getNumberPrecision = (column: TradeRecordColumn) => {
+const getNumberDisplayOption = (column: TradeRecordColumn) => {
   const option = Array.isArray(column.options_json) ? column.options_json[0] : undefined
+  return option && typeof option === "object" ? (option as Record<string, unknown>) : {}
+}
+
+const getNumberPrecision = (column: TradeRecordColumn) => {
+  const option = getNumberDisplayOption(column)
   const precision = option && "precision" in option ? Number((option as Record<string, unknown>).precision) : NaN
   if (Number.isFinite(precision) && precision >= 0) {
     return precision
@@ -141,7 +146,10 @@ const formatNumberCellValue = (column: TradeRecordColumn, value: unknown) => {
   if (!Number.isFinite(numericValue)) {
     return String(value)
   }
-  return numericValue.toFixed(getNumberPrecision(column))
+  const option = getNumberDisplayOption(column)
+  const prefix = typeof option.prefix === "string" ? option.prefix : ""
+  const suffix = typeof option.suffix === "string" ? option.suffix : ""
+  return `${prefix}${numericValue.toFixed(getNumberPrecision(column))}${suffix}`
 }
 
 const isSameSortConditions = (first: SortCondition[], second: SortCondition[]) => {
