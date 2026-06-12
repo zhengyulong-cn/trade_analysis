@@ -53,6 +53,22 @@ interface FactorRow extends Metrics {
   sampleWarning: boolean
 }
 
+interface LossStreakRow {
+  id: string
+  startTime: string
+  endTime: string
+  lossCount: number
+  totalLoss: number
+  avgLoss: number
+  maxLoss: number
+}
+
+interface HighFrequencyDayRow extends Metrics {
+  tradeDate: string
+  threshold: number
+  level: "偏高" | "过高"
+}
+
 interface AccountRow extends Metrics {
   accountId: string
   accountName: string
@@ -199,6 +215,9 @@ const selectedRecords = computed(() => {
 const overviewMetrics = computed(() => calculateMetrics(selectedRecords.value))
 const periodRows = computed(() => buildPeriodRows(selectedRecords.value, selectedPeriodType.value))
 const factorRows = computed(() => buildFactorRows(selectedRecords.value, selectedFactorColumn.value))
+const lossStreakRows = computed(() => buildLossStreakRows(selectedRecords.value))
+const isAllAccountsMode = computed(() => selectedAccountId.value === "all")
+const highFrequencyRows = computed(() => buildHighFrequencyRows(selectedRecords.value, selectedAccount.value))
 
 const accountRows = computed<AccountRow[]>(() => {
   const groups = groupBy(closedAnalysisRecords.value, (item) => item.accountId)
@@ -234,6 +253,8 @@ const selectedAccountLabel = computed(() => {
   }
   return accountMap.value.get(selectedAccountId.value)?.account_name ?? "未知账户"
 })
+
+const selectedAccount = computed(() => accountMap.value.get(selectedAccountId.value) ?? null)
 
 const loadData = async () => {
   loading.value = true
@@ -421,6 +442,70 @@ function calculateMaxConsecutiveLosses(items: AnalysisRecord[]) {
   return max
 }
 
+function buildLossStreakRows(items: AnalysisRecord[]): LossStreakRow[] {
+  const sortedItems = [...items].sort((a, b) => a.closeTime.getTime() - b.closeTime.getTime())
+  const rows: LossStreakRow[] = []
+  let currentItems: AnalysisRecord[] = []
+
+  const flush = () => {
+    if (!currentItems.length) {
+      return
+    }
+
+    const pnlValues = currentItems.map((item) => item.realPnl)
+    const totalLoss = pnlValues.reduce((sum, item) => sum + item, 0)
+    rows.push({
+      id: `${currentItems[0].record.trade_record_id}-${currentItems[currentItems.length - 1].record.trade_record_id}`,
+      startTime: formatDateTimeText(currentItems[0].closeTime),
+      endTime: formatDateTimeText(currentItems[currentItems.length - 1].closeTime),
+      lossCount: currentItems.length,
+      totalLoss,
+      avgLoss: totalLoss / currentItems.length,
+      maxLoss: Math.min(...pnlValues),
+    })
+    currentItems = []
+  }
+
+  for (const item of sortedItems) {
+    if (item.realPnl < 0) {
+      currentItems.push(item)
+      continue
+    }
+
+    flush()
+  }
+
+  flush()
+  return rows.sort((a, b) => b.lossCount - a.lossCount || a.startTime.localeCompare(b.startTime))
+}
+
+function buildHighFrequencyRows(items: AnalysisRecord[], account: TradeAccount | null): HighFrequencyDayRow[] {
+  if (!items.length) {
+    return []
+  }
+
+  const groups = groupBy(items, (item) => formatDateKey(item.closeTime))
+  const dayRows = [...groups.entries()]
+    .map(([tradeDate, groupItems]) => ({
+      tradeDate,
+      ...calculateMetrics(groupItems),
+    }))
+    .sort((a, b) => a.tradeDate.localeCompare(b.tradeDate))
+
+  const avgTradesPerDay = dayRows.reduce((sum, item) => sum + item.tradeCount, 0) / dayRows.length
+  const baseThreshold = account?.account_type === "simulated" ? 5 : 2
+  const threshold = Math.max(baseThreshold, Math.ceil(avgTradesPerDay * 1.5))
+
+  return dayRows
+    .filter((item) => item.tradeCount >= threshold)
+    .map((item) => ({
+      ...item,
+      threshold,
+      level: item.tradeCount >= threshold * 1.5 ? "过高" : "偏高",
+    }))
+    .sort((a, b) => b.tradeCount - a.tradeCount || a.tradeDate.localeCompare(b.tradeDate))
+}
+
 function buildPeriodRows(items: AnalysisRecord[], periodType: PeriodType): PeriodRow[] {
   const groups = groupBy(items, (item) => getPeriodInfo(item.closeTime, periodType).key)
   return [...groups.entries()]
@@ -430,6 +515,13 @@ function buildPeriodRows(items: AnalysisRecord[], periodType: PeriodType): Perio
       ...calculateMetrics(groupItems),
     }))
     .sort((a, b) => a.periodKey.localeCompare(b.periodKey))
+}
+
+function formatDateTimeText(date: Date) {
+  const dateText = formatDateKey(date)
+  const hour = String(date.getHours()).padStart(2, "0")
+  const minute = String(date.getMinutes()).padStart(2, "0")
+  return `${dateText} ${hour}:${minute}`
 }
 
 function buildFactorRows(items: AnalysisRecord[], column: TradeRecordColumn | null): FactorRow[] {
@@ -523,7 +615,9 @@ onMounted(loadData)
             :disabled="!openTimeColumn"
           />
           <el-button @click="loadData">刷新</el-button>
-          <div class="summary">{{ selectedRecords.length }} / {{ closedAnalysisRecords.length }} 笔已平仓</div>
+          <div class="summary">
+            {{ isAllAccountsMode ? closedAnalysisRecords.length : selectedRecords.length }} 笔已平仓
+          </div>
         </div>
       </header>
 
@@ -536,7 +630,7 @@ onMounted(loadData)
       />
 
       <template v-if="analysisReady">
-        <section v-loading="loading" class="metric-grid">
+        <section v-if="!isAllAccountsMode" v-loading="loading" class="metric-grid">
           <div class="metric-card metric-card-primary">
             <div class="metric-label">真实盈亏</div>
             <div class="metric-value" :class="{ profit: overviewMetrics.totalPnl > 0, loss: overviewMetrics.totalPnl < 0 }">
@@ -577,7 +671,7 @@ onMounted(loadData)
           </div>
         </section>
 
-        <section v-if="selectedAccountId === 'all'" class="analysis-section">
+        <section v-if="isAllAccountsMode" class="analysis-section">
           <div class="section-header">
             <div>
               <div class="section-title">账户对比</div>
@@ -607,8 +701,16 @@ onMounted(loadData)
             </el-table-column>
             <el-table-column prop="maxConsecutiveLosses" label="连续亏损" width="100" />
           </el-table>
+          <el-alert
+            class="account-mode-tip"
+            type="info"
+            show-icon
+            :closable="false"
+            title="全部账户只做账户对比。请选择具体账户查看概览、周期表现、连续亏损段和因子分析。"
+          />
         </section>
 
+        <template v-else>
         <section class="analysis-section">
           <div class="section-header">
             <div>
@@ -654,6 +756,76 @@ onMounted(loadData)
             <el-table-column prop="maxConsecutiveLosses" label="连续亏损" width="100" />
           </el-table>
         </section>
+        <div class="risk-section-row">
+          <section class="analysis-section risk-section">
+            <div class="section-header">
+              <div>
+                <div class="section-title">连续亏损段</div>
+                <div class="section-subtitle">{{ selectedAccountLabel }}，按平仓时间排序后计算</div>
+              </div>
+            </div>
+            <el-empty v-if="!lossStreakRows.length" description="暂无连续亏损段" />
+            <el-table v-else :data="lossStreakRows" border stripe height="280">
+              <el-table-column prop="startTime" label="开始时间" min-width="150" fixed="left" />
+              <el-table-column prop="endTime" label="结束时间" min-width="150" />
+              <el-table-column prop="lossCount" label="连亏次数" width="100" />
+              <el-table-column label="合计亏损" width="120">
+                <template #default="{ row }">
+                  <span class="loss">{{ formatMoney(row.totalLoss) }}</span>
+                </template>
+              </el-table-column>
+              <el-table-column label="平均亏损" width="120">
+                <template #default="{ row }">
+                  <span class="loss">{{ formatMoney(row.avgLoss) }}</span>
+                </template>
+              </el-table-column>
+              <el-table-column label="最大单笔亏损" width="130">
+                <template #default="{ row }">
+                  <span class="loss">{{ formatMoney(row.maxLoss) }}</span>
+                </template>
+              </el-table-column>
+            </el-table>
+          </section>
+
+          <section class="analysis-section risk-section">
+            <div class="section-header">
+              <div>
+                <div class="section-title">高频交易日</div>
+                <div class="section-subtitle">
+                  {{ selectedAccountLabel }}，实盘阈值 max(1.5)，模拟阈值 max(5, 日均次数 * 1.5)
+                </div>
+              </div>
+            </div>
+            <el-empty v-if="!highFrequencyRows.length" description="暂无高频交易日" />
+            <el-table v-else :data="highFrequencyRows" border stripe height="280">
+              <el-table-column prop="tradeDate" label="日期" min-width="120" fixed="left" />
+              <el-table-column prop="tradeCount" label="交易次数" width="100" />
+              <el-table-column prop="threshold" label="高频阈值" width="100" />
+              <el-table-column label="等级" width="90">
+                <template #default="{ row }">
+                  <el-tag :type="row.level === '过高' ? 'danger' : 'warning'" size="small">{{ row.level }}</el-tag>
+                </template>
+              </el-table-column>
+              <el-table-column label="胜率" width="100">
+                <template #default="{ row }">{{ formatRate(row.winRate) }}</template>
+              </el-table-column>
+              <el-table-column label="真实盈亏" width="120">
+                <template #default="{ row }">
+                  <span :class="{ profit: row.totalPnl > 0, loss: row.totalPnl < 0 }">{{ formatMoney(row.totalPnl) }}</span>
+                </template>
+              </el-table-column>
+              <el-table-column label="平均盈亏" width="120">
+                <template #default="{ row }">{{ formatMoney(row.avgPnl) }}</template>
+              </el-table-column>
+              <el-table-column prop="maxConsecutiveLosses" label="连续亏损" width="100" />
+              <el-table-column label="最大亏损" width="120">
+                <template #default="{ row }">
+                  <span class="loss">{{ formatMoney(row.maxLoss) }}</span>
+                </template>
+              </el-table-column>
+            </el-table>
+          </section>
+        </div>
 
         <section class="analysis-section">
           <div class="section-header">
@@ -707,6 +879,7 @@ onMounted(loadData)
             </el-table-column>
           </el-table>
         </section>
+        </template>
       </template>
     </div>
   </section>
@@ -847,6 +1020,18 @@ onMounted(loadData)
   padding-top: 4px;
 }
 
+.risk-section-row {
+  display: flex;
+  flex-direction: row;
+  gap: 12px;
+  align-items: stretch;
+}
+
+.risk-section {
+  flex: 1 1 0;
+  min-width: 0;
+}
+
 .section-header {
   display: flex;
   align-items: center;
@@ -865,6 +1050,10 @@ onMounted(loadData)
   margin-top: 3px;
   color: #7d8899;
   font-size: 12px;
+}
+
+.account-mode-tip {
+  margin-top: 12px;
 }
 
 .profit {
@@ -895,6 +1084,10 @@ onMounted(loadData)
   .section-header {
     flex-direction: column;
     align-items: flex-start;
+  }
+
+  .risk-section-row {
+    flex-direction: column;
   }
 
   .toolbar-right,
