@@ -107,7 +107,7 @@ const requiresValue = (operator: FilterCondition["operator"]) =>
 </script>
 
 <template>
-  <el-popover placement="bottom-end" :width="760" trigger="click" popper-class="trade-record-filter-popover">
+  <el-popover placement="bottom-end" :width="760" trigger="click" popper-class="trade-record-filter-popover" teleported>
     <template #reference>
       <el-button>
         筛选
@@ -141,6 +141,7 @@ const requiresValue = (operator: FilterCondition["operator"]) =>
               class="logic-select"
               size="small"
               @update:model-value="handleFilterLogicChange"
+              :teleported="false"
             >
               <el-option label="所有" value="all" />
               <el-option label="任一" value="any" />
@@ -152,6 +153,7 @@ const requiresValue = (operator: FilterCondition["operator"]) =>
               :model-value="condition.column_key"
               class="column-select"
               @update:model-value="handleColumnChange(condition.id, $event)"
+              :teleported="false"
             >
               <el-option
                 v-for="column in filterableColumns"
@@ -165,6 +167,7 @@ const requiresValue = (operator: FilterCondition["operator"]) =>
               :model-value="condition.operator"
               class="operator-select"
               @update:model-value="handleOperatorChange(condition.id, $event)"
+              :teleported="false"
             >
               <el-option
                 v-for="operator in getFilterOperatorOptions(getColumn(condition.column_key))"
@@ -208,6 +211,7 @@ const requiresValue = (operator: FilterCondition["operator"]) =>
                 clearable
                 filterable
                 @update:model-value="handleValueChange(condition.id, $event)"
+                :teleported="false"
               >
                 <el-option
                   v-for="option in getColumnOptions(getColumn(condition.column_key)!)"
@@ -227,6 +231,7 @@ const requiresValue = (operator: FilterCondition["operator"]) =>
                 collapse-tags
                 collapse-tags-tooltip
                 @update:model-value="handleValueChange(condition.id, $event)"
+                :teleported="false"
               >
                 <el-option
                   v-for="option in getColumnOptions(getColumn(condition.column_key)!)"

@@ -82,7 +82,7 @@ const updateConditionDirection = (conditionId: string, direction: SortDirection)
 </script>
 
 <template>
-  <el-popover v-model:visible="visible" placement="bottom-end" :width="520" trigger="click">
+  <el-popover v-model:visible="visible" placement="bottom-end" :width="520" trigger="click" teleported>
     <template #reference>
       <el-button>
         排序
@@ -111,6 +111,7 @@ const updateConditionDirection = (conditionId: string, direction: SortDirection)
             :model-value="condition.column_key"
             class="sort-column-select"
             @update:model-value="updateConditionColumn(condition.id, String($event))"
+            :teleported="false"
           >
             <el-option
               v-for="column in sortableColumns"
