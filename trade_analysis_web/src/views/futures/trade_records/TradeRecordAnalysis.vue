@@ -83,8 +83,10 @@ const accountColumn = computed(() =>
 
 const operatePnlColumn = computed(() => findColumn(["operate_pnl", "operation_pnl"], ["操作盈亏"]))
 const feeColumn = computed(() => findColumn(["fee"], ["手续费"]))
+const openTimeColumn = computed(() => findColumn(["open_time"], ["开仓时间"]))
 const closeTimeColumn = computed(() => findColumn(["close_time"], ["平仓时间"]))
 const closePriceColumn = computed(() => findColumn(["close_price"], ["平仓价格"]))
+const openDateRange = ref<[string, string] | null>(null)
 
 const accountOptions = computed(() => [
   { label: "全部账户", value: "all" },
@@ -109,6 +111,7 @@ const analysisReady = computed(
     Boolean(accountColumn.value) &&
     Boolean(operatePnlColumn.value) &&
     Boolean(feeColumn.value) &&
+    Boolean(openTimeColumn.value) &&
     Boolean(closeTimeColumn.value) &&
     Boolean(closePriceColumn.value),
 )
@@ -124,6 +127,9 @@ const missingMessages = computed(() => {
   if (!feeColumn.value) {
     messages.push("未配置手续费列")
   }
+  if (!openTimeColumn.value) {
+    messages.push("未配置开仓时间列")
+  }
   if (!closeTimeColumn.value) {
     messages.push("未配置平仓时间列")
   }
@@ -136,7 +142,15 @@ const missingMessages = computed(() => {
 const accountMap = computed(() => new Map(accounts.value.map((account) => [String(account.account_id), account])))
 
 const closedAnalysisRecords = computed<AnalysisRecord[]>(() => {
-  if (!analysisReady.value || !accountColumn.value || !operatePnlColumn.value || !feeColumn.value || !closeTimeColumn.value || !closePriceColumn.value) {
+  if (
+    !analysisReady.value ||
+    !accountColumn.value ||
+    !operatePnlColumn.value ||
+    !feeColumn.value ||
+    !openTimeColumn.value ||
+    !closeTimeColumn.value ||
+    !closePriceColumn.value
+  ) {
     return []
   }
 
@@ -149,8 +163,13 @@ const closedAnalysisRecords = computed<AnalysisRecord[]>(() => {
       }
 
       const closeTime = parseDate(closeTimeValue)
+      const openTime = parseDate(record.data_json[openTimeColumn.value!.column_key])
       const operatePnl = toNumber(record.data_json[operatePnlColumn.value!.column_key])
-      if (!closeTime || operatePnl === null) {
+      if (!closeTime || !openTime || operatePnl === null) {
+        return null
+      }
+
+      if (!isInOpenDateRange(openTime)) {
         return null
       }
 
@@ -262,6 +281,19 @@ function parseDate(value: unknown) {
   }
   const date = new Date(String(value))
   return Number.isFinite(date.getTime()) ? date : null
+}
+
+function isInOpenDateRange(openTime: Date) {
+  if (!openDateRange.value?.length) {
+    return true
+  }
+
+  const [startValue, endValue] = openDateRange.value
+  const startTime = startValue ? new Date(`${startValue} 00:00:00`).getTime() : Number.NEGATIVE_INFINITY
+  const endTime = endValue ? new Date(`${endValue} 23:59:59`).getTime() : Number.POSITIVE_INFINITY
+  const currentTime = openTime.getTime()
+
+  return currentTime >= startTime && currentTime <= endTime
 }
 
 function formatMoney(value: number | null) {
@@ -394,7 +426,7 @@ function buildPeriodRows(items: AnalysisRecord[], periodType: PeriodType): Perio
   return [...groups.entries()]
     .map(([periodKey, groupItems]) => ({
       periodKey,
-      periodLabel: getPeriodInfo(groupItems[0].closeTime, periodType).label,
+      periodLabel: getPeriodInfo(groupItems[0]!.closeTime, periodType).label,
       ...calculateMetrics(groupItems),
     }))
     .sort((a, b) => a.periodKey.localeCompare(b.periodKey))
@@ -479,6 +511,17 @@ onMounted(loadData)
               :value="option.value"
             />
           </el-select>
+          <el-date-picker
+            v-model="openDateRange"
+            type="daterange"
+            value-format="YYYY-MM-DD"
+            start-placeholder="开仓开始日期"
+            end-placeholder="开仓结束日期"
+            range-separator="至"
+            clearable
+            class="open-date-range"
+            :disabled="!openTimeColumn"
+          />
           <el-button @click="loadData">刷新</el-button>
           <div class="summary">{{ selectedRecords.length }} / {{ closedAnalysisRecords.length }} 笔已平仓</div>
         </div>
@@ -725,6 +768,10 @@ onMounted(loadData)
   width: 240px;
 }
 
+.open-date-range {
+  width: 300px;
+}
+
 .factor-select {
   width: 260px;
 }
@@ -852,6 +899,7 @@ onMounted(loadData)
 
   .toolbar-right,
   .account-select,
+  .open-date-range,
   .factor-select {
     width: 100%;
   }
