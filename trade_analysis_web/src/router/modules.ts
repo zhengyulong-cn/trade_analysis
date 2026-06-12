@@ -34,6 +34,14 @@ export const RouterModules: RouteRecordRaw[] = [
         },
       },
       {
+        path: "/futures/opportunity-reviews",
+        component: () => import("@/views/futures/opportunity_reviews/OpportunityReviewManager.vue"),
+        meta: {
+          icon: "",
+          title: "机会回顾",
+        },
+      },
+      {
         path: "/futures/open_opportunity_analysis",
         component: () => import("@/views/futures/open_opportunity_analysis/OpenOpportunityAnalysis.vue"),
         meta: {

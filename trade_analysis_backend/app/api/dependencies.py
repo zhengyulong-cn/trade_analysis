@@ -19,6 +19,8 @@ from app.services.market_data import (
     create_quote_provider,
 )
 from app.services.opportunity_analysis_service_v2 import OpportunityAnalysisServiceV2
+from app.services.opportunity_review_column_service import OpportunityReviewColumnService
+from app.services.opportunity_review_service import OpportunityReviewService
 from app.services.realtime_bar_service import RealtimeBarService
 from app.services.trade_record_service import TradeRecordService
 from app.services.trade_record_storage import TradeRecordStorageService
@@ -93,6 +95,14 @@ def get_trade_record_column_service(session: SessionDep) -> TradeRecordColumnSer
     return TradeRecordColumnService(session)
 
 
+def get_opportunity_review_column_service(session: SessionDep) -> OpportunityReviewColumnService:
+    return OpportunityReviewColumnService(session)
+
+
+def get_opportunity_review_service(session: SessionDep) -> OpportunityReviewService:
+    return OpportunityReviewService(session)
+
+
 def get_trade_record_service(session: SessionDep) -> TradeRecordService:
     return TradeRecordService(session)
 
@@ -155,6 +165,12 @@ TradeAccountServiceDep = Annotated[
 ]
 TradeRecordColumnServiceDep = Annotated[
     TradeRecordColumnService, Depends(get_trade_record_column_service)
+]
+OpportunityReviewColumnServiceDep = Annotated[
+    OpportunityReviewColumnService, Depends(get_opportunity_review_column_service)
+]
+OpportunityReviewServiceDep = Annotated[
+    OpportunityReviewService, Depends(get_opportunity_review_service)
 ]
 TradeRecordServiceDep = Annotated[
     TradeRecordService, Depends(get_trade_record_service)
