@@ -3,9 +3,11 @@ import {
   deleteOpportunityReviewApi,
   getOpportunityReviewColumnListApi,
   getOpportunityReviewListApi,
+  resolveStorageImageUrl,
   type OpportunityReview,
   type OpportunityReviewColumn,
   type OpportunityReviewColumnOption,
+  type ImageAttachment,
 } from "@/api/modules"
 import { formatDateTime } from "@/utils/date"
 import { ElMessage, ElMessageBox } from "element-plus"
@@ -186,8 +188,28 @@ onMounted(loadPageData)
           show-overflow-tooltip
         >
           <template #default="{ row }">
+            <template v-if="column.data_type === 'images'">
+              <div
+                v-if="Array.isArray(row.data_json[column.column_key]) && row.data_json[column.column_key].length"
+                class="image-list"
+              >
+                <el-image
+                  v-for="item in row.data_json[column.column_key]"
+                  :key="item.path"
+                  :src="resolveStorageImageUrl(item.path)"
+                  :preview-src-list="
+                    row.data_json[column.column_key].map((image: ImageAttachment) => resolveStorageImageUrl(image.path))
+                  "
+                  class="image-thumb"
+                  fit="cover"
+                  preview-teleported
+                />
+              </div>
+              <span v-else>-</span>
+            </template>
+
             <template
-              v-if="
+              v-else-if="
                 column.data_type === 'single_select' &&
                 row.data_json[column.column_key] !== null &&
                 row.data_json[column.column_key] !== undefined &&
@@ -306,10 +328,19 @@ onMounted(loadPageData)
   width: 100%;
 }
 
+.image-list,
 .tag-list {
   display: flex;
   flex-wrap: wrap;
-  gap: 6px;
+  gap: 8px;
+}
+
+.image-thumb {
+  width: 52px;
+  height: 52px;
+  overflow: hidden;
+  border-radius: 10px;
+  background: #f3f5f9;
 }
 
 .record-tag {

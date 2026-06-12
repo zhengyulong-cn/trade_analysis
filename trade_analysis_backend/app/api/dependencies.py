@@ -31,6 +31,7 @@ from app.services.analysis_service_v2 import AnalysisServiceV2
 from app.services.redis_client import redis_client_manager
 from app.services.trade_thought_service import TradeThoughtService
 from app.services.trade_thought_storage import TradeThoughtStorageService
+from app.services.upload_service import UploadService
 
 SessionDep = Annotated[Session, Depends(get_session)]
 
@@ -115,9 +116,14 @@ def get_trade_thought_storage_service() -> TradeThoughtStorageService:
     return TradeThoughtStorageService()
 
 
+def get_upload_service() -> UploadService:
+    return UploadService()
+
+
 TradeThoughtStorageServiceDep = Annotated[
     TradeThoughtStorageService, Depends(get_trade_thought_storage_service)
 ]
+UploadServiceDep = Annotated[UploadService, Depends(get_upload_service)]
 
 
 def get_trade_thought_service(

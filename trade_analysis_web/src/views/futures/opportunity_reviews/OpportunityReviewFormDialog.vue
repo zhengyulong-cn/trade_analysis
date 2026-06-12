@@ -2,15 +2,17 @@
 import {
   createOpportunityReviewApi,
   updateOpportunityReviewApi,
+  type ImageAttachment,
   type OpportunityReview,
   type OpportunityReviewColumn,
   type OpportunityReviewColumnOption,
 } from "@/api/modules"
+import ImageAttachmentUpload from "@/components/upload/ImageAttachmentUpload.vue"
 import { ElMessage, type FormInstance, type FormRules } from "element-plus"
 import { computed, reactive, ref, watch } from "vue"
 
 type DialogMode = "create" | "edit"
-type FormValue = string | number | boolean | null | string[] | unknown[]
+type FormValue = string | number | boolean | null | string[] | ImageAttachment[]
 type FormData = Record<string, FormValue>
 
 const props = defineProps<{
@@ -24,6 +26,8 @@ const emit = defineEmits<{
   "update:modelValue": [value: boolean]
   saved: []
 }>()
+
+const MAX_IMAGE_COUNT = 12
 
 const submitting = ref(false)
 const formRef = ref<FormInstance>()
@@ -85,7 +89,12 @@ const fillFormData = (record: OpportunityReview) => {
   for (const column of enabledColumns.value) {
     const value = record.data_json[column.column_key]
 
-    if (column.data_type === "multi_select" || column.data_type === "images") {
+    if (column.data_type === "images") {
+      formData[column.column_key] = Array.isArray(value) ? (value as ImageAttachment[]) : []
+      continue
+    }
+
+    if (column.data_type === "multi_select") {
       formData[column.column_key] = Array.isArray(value) ? [...value.map((item) => String(item))] : []
       continue
     }
@@ -125,7 +134,7 @@ const buildRules = computed<FormRules>(() => {
           }
           callback()
         },
-        trigger: column.data_type === "multi_select" ? "change" : "blur",
+        trigger: column.data_type === "images" || column.data_type === "multi_select" ? "change" : "blur",
       },
     ]
   }
@@ -139,7 +148,7 @@ const buildPayload = () => {
   for (const column of enabledColumns.value) {
     const rawValue = formData[column.column_key]
 
-    if (column.data_type === "multi_select" || column.data_type === "images") {
+    if (column.data_type === "images" || column.data_type === "multi_select") {
       dataJson[column.column_key] = Array.isArray(rawValue) ? rawValue : []
       continue
     }
@@ -227,10 +236,11 @@ watch(
       <div class="form-grid">
         <template v-for="column in enabledColumns" :key="column.column_id">
           <el-form-item
+            v-if="column.data_type !== 'images'"
             label-width="110"
             :label="column.column_label"
             :prop="column.column_key"
-            :class="{ 'full-row': column.data_type === 'multi_select' || column.data_type === 'images' }"
+            :class="{ 'full-row': column.data_type === 'multi_select' }"
           >
             <el-switch v-if="column.data_type === 'bool'" v-model="formData[column.column_key]" />
 
@@ -291,8 +301,16 @@ watch(
                 :value="option.value"
               />
             </el-select>
+          </el-form-item>
 
-            <el-alert v-else-if="column.data_type === 'images'" type="info" :closable="false" title="图片字段稍后接入上传" />
+          <el-form-item v-else :label="column.column_label" :prop="column.column_key" class="full-row">
+            <ImageAttachmentUpload
+              v-model="formData[column.column_key]"
+              scope="opportunity_reviews"
+              storage-label="storage/opportunity_reviews"
+              :max-count="MAX_IMAGE_COUNT"
+              :paste-enabled="dialogVisible"
+            />
           </el-form-item>
         </template>
       </div>
