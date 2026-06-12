@@ -103,6 +103,13 @@ const getNumberStep = (column: TradeRecordColumn) => {
   return precision <= 0 ? 1 : Number((1 / Math.pow(10, precision)).toFixed(precision))
 }
 
+const disableWeekendDate = (date: Date) => {
+  const day = date.getDay()
+  return day === 0 || day === 6
+}
+
+const disableHour = () => [2, 3, 4, 5, 6, 7, 8, 12, 16, 17, 18, 19, 20]
+
 const normalizeImageItem = (item: TradeRecordImage): TradeRecordImage => ({
   path: item.path,
   original_name: item.original_name,
@@ -461,6 +468,8 @@ onBeforeUnmount(() => {
               v-model="formData[column.column_key]"
               type="datetime"
               value-format="YYYY-MM-DD HH:mm:ss"
+              :disabled-date="disableWeekendDate"
+              :disabled-hours="disableHour"
               class="full-width"
               :placeholder="`请选择${column.column_label}`"
             />
@@ -506,7 +515,7 @@ onBeforeUnmount(() => {
               @click="setActiveImageColumn(column.column_key)"
             >
               <el-upload
-                v-model:file-list="uploadFileMap[column.column_key]"
+                :file-list="uploadFileMap[column.column_key] ?? []"
                 list-type="picture-card"
                 :auto-upload="true"
                 :limit="MAX_IMAGE_COUNT"

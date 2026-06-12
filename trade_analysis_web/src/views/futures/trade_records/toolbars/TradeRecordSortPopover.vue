@@ -2,6 +2,7 @@
 import type { TradeRecordColumn } from "@/api/modules"
 import { computed, ref } from "vue"
 import { createSortCondition, type SortCondition, type SortDirection } from "./tradeRecordSort"
+import { Plus } from "@element-plus/icons-vue";
 
 const props = defineProps<{
   sortableColumns: TradeRecordColumn[]
@@ -92,13 +93,16 @@ const updateConditionDirection = (conditionId: string, direction: SortDirection)
     <div class="sort-panel">
       <div class="sort-panel-header">
         <div class="sort-panel-title">设置排序条件</div>
-        <el-switch
-          :model-value="sortEnabled"
-          inline-prompt
-          active-text="开"
-          inactive-text="关"
-          @update:model-value="updateSortEnabled"
-        />
+        <div class="sort-action">
+          <el-switch
+            :model-value="sortEnabled"
+            inline-prompt
+            active-text="开"
+            inactive-text="关"
+            @update:model-value="updateSortEnabled"
+          />
+          <el-button text @click="clearSortConditions" :disabled="!activeSortCount">清空</el-button>
+        </div>
       </div>
 
       <div v-if="sortConditions.length" class="sort-condition-list">
@@ -129,11 +133,10 @@ const updateConditionDirection = (conditionId: string, direction: SortDirection)
         </div>
       </div>
 
-      <el-empty v-else description="暂无排序条件" />
+      <div v-else class="empty-state">暂无排序条件</div>
 
       <div class="sort-panel-actions">
-        <el-button text @click="addSortCondition">新增条件</el-button>
-        <el-button text @click="clearSortConditions">清空</el-button>
+        <el-button @click="addSortCondition" :icon="Plus">新增条件</el-button>
       </div>
     </div>
   </el-popover>
@@ -163,6 +166,12 @@ const updateConditionDirection = (conditionId: string, direction: SortDirection)
   font-weight: 600;
 }
 
+.sort-action {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
 .sort-condition-list {
   display: flex;
   flex-direction: column;
@@ -182,6 +191,11 @@ const updateConditionDirection = (conditionId: string, direction: SortDirection)
 
 .sort-direction {
   min-width: 170px;
+}
+
+.empty-state {
+  color: #94a3b8;
+  font-size: 13px;
 }
 
 .sort-panel-actions {

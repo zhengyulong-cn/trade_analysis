@@ -18,12 +18,20 @@ import { computed, onMounted, ref, watch } from "vue"
 import TradeAccountConfigDialog from "./TradeAccountConfigDialog.vue"
 import TradeRecordColumnConfigDialog from "./TradeRecordColumnConfigDialog.vue"
 import TradeRecordFormDialog from "./TradeRecordFormDialog.vue"
+import TradeRecordFilterPopover from "./toolbars/TradeRecordFilterPopover.vue"
 import TradeRecordSortPopover from "./toolbars/TradeRecordSortPopover.vue"
+import {
+  filterTradeRecords,
+  getFilterableColumns,
+  normalizeFilterConditions,
+  readTradeRecordManagerViewState,
+  saveTradeRecordManagerViewState,
+  type FilterCondition,
+  type FilterLogic,
+} from "./toolbars/tradeRecordFilter"
 import {
   getSortableColumns,
   normalizeSortConditions,
-  readTradeRecordViewState,
-  saveTradeRecordViewState,
   sortTradeRecords,
   type SortCondition,
 } from "./toolbars/tradeRecordSort"
@@ -43,6 +51,9 @@ const accounts = ref<TradeAccount[]>([])
 const records = ref<TradeRecord[]>([])
 const sortEnabled = ref(false)
 const sortConditions = ref<SortCondition[]>([])
+const filterEnabled = ref(false)
+const filterLogic = ref<FilterLogic>("all")
+const filterConditions = ref<FilterCondition[]>([])
 
 defineProps<{
   handleModeChange: (mode: string | number | boolean) => void
@@ -55,13 +66,28 @@ const enabledColumns = computed(() =>
 )
 
 const sortableColumns = computed(() => getSortableColumns(enabledColumns.value))
+const filterableColumns = computed(() => getFilterableColumns(enabledColumns.value))
 
 const effectiveSortConditions = computed(() =>
   normalizeSortConditions(sortConditions.value, sortableColumns.value),
 )
 
+const effectiveFilterConditions = computed(() =>
+  normalizeFilterConditions(filterConditions.value, filterableColumns.value),
+)
+
+const filteredRecords = computed(() =>
+  filterTradeRecords(
+    records.value,
+    filterableColumns.value,
+    filterEnabled.value,
+    filterLogic.value,
+    effectiveFilterConditions.value,
+  ),
+)
+
 const sortedRecords = computed(() =>
-  sortTradeRecords(records.value, sortableColumns.value, sortEnabled.value, effectiveSortConditions.value),
+  sortTradeRecords(filteredRecords.value, sortableColumns.value, sortEnabled.value, effectiveSortConditions.value),
 )
 
 const getColumnOptions = (column: TradeRecordColumn): TradeRecordColumnOption[] => {
@@ -133,6 +159,22 @@ const isSameSortConditions = (first: SortCondition[], second: SortCondition[]) =
   })
 }
 
+const isSameFilterConditions = (first: FilterCondition[], second: FilterCondition[]) => {
+  if (first.length !== second.length) {
+    return false
+  }
+
+  return first.every((item, index) => {
+    const target = second[index]
+    return (
+      item.id === target?.id &&
+      item.column_key === target?.column_key &&
+      item.operator === target?.operator &&
+      JSON.stringify(item.value ?? null) === JSON.stringify(target?.value ?? null)
+    )
+  })
+}
+
 const formatCellValue = (column: TradeRecordColumn, value: unknown) => {
   if (value === null || value === undefined || value === "") {
     return "-"
@@ -176,13 +218,16 @@ const loadPageData = async () => {
 }
 
 const loadViewState = () => {
-  const viewState = readTradeRecordViewState()
+  const viewState = readTradeRecordManagerViewState()
   if (!viewState) {
     return
   }
 
   sortEnabled.value = viewState.sort_enabled
   sortConditions.value = viewState.sort_conditions
+  filterEnabled.value = viewState.filter_enabled
+  filterLogic.value = viewState.filter_logic
+  filterConditions.value = viewState.filter_conditions
 }
 
 const openCreateDialog = () => {
@@ -256,12 +301,25 @@ watch(sortableColumns, () => {
   }
 })
 
+watch(filterableColumns, () => {
+  const normalizedConditions = effectiveFilterConditions.value
+  if (!isSameFilterConditions(filterConditions.value, normalizedConditions)) {
+    filterConditions.value = normalizedConditions
+  }
+  if (!normalizedConditions.length) {
+    filterEnabled.value = false
+  }
+})
+
 watch(
-  [sortEnabled, sortConditions],
+  [sortEnabled, sortConditions, filterEnabled, filterLogic, filterConditions],
   () => {
-    saveTradeRecordViewState({
+    saveTradeRecordManagerViewState({
       sort_enabled: sortEnabled.value,
       sort_conditions: effectiveSortConditions.value,
+      filter_enabled: filterEnabled.value,
+      filter_logic: filterLogic.value,
+      filter_conditions: effectiveFilterConditions.value,
     })
   },
   { deep: true },
@@ -281,6 +339,16 @@ watch(
           </div>
         </div>
         <div class="toolbar-right">
+          <TradeRecordFilterPopover
+            :filterable-columns="filterableColumns"
+            :filter-enabled="filterEnabled"
+            :filter-logic="filterLogic"
+            :filter-conditions="filterConditions"
+            :get-column-options="getColumnOptions"
+            @update:filter-enabled="filterEnabled = $event"
+            @update:filter-logic="filterLogic = $event"
+            @update:filter-conditions="filterConditions = $event"
+          />
           <TradeRecordSortPopover
             :sortable-columns="sortableColumns"
             :sort-enabled="sortEnabled"
@@ -288,7 +356,7 @@ watch(
             @update:sort-enabled="sortEnabled = $event"
             @update:sort-conditions="sortConditions = $event"
           />
-          <div class="summary">{{ sortedRecords.length }} 条记录</div>
+          <div class="summary">{{ sortedRecords.length }} / {{ records.length }} 条记录</div>
           <el-button @click="loadPageData">刷新</el-button>
           <el-button type="primary" @click="openCreateDialog">新增交易记录</el-button>
           <el-button type="warning" @click="openColumnDialog">列配置</el-button>
@@ -441,13 +509,14 @@ watch(
   display: flex;
   align-items: center;
   flex-wrap: wrap;
+  gap: 10px;
 }
 
 .summary {
   color: #5f6b7c;
   font-size: 13px;
   white-space: nowrap;
-  margin: 0 12px;
+  margin: 0 4px 0 2px;
 }
 
 .record-table {
