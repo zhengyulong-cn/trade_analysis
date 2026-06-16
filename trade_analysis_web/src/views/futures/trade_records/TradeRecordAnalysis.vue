@@ -637,6 +637,10 @@ onMounted(loadData)
               {{ formatMoney(overviewMetrics.totalPnl) }}
             </div>
           </div>
+          <div class="metric-card">
+            <div class="metric-label">手续费</div>
+            <div class="metric-value">{{ formatMoney(overviewMetrics.totalFee) }}</div>
+          </div>
           <div class="metric-card metric-card-primary">
             <div class="metric-label">胜率</div>
             <div class="metric-value">{{ formatRate(overviewMetrics.winRate) }}</div>
@@ -656,10 +660,6 @@ onMounted(loadData)
           <div class="metric-card">
             <div class="metric-label">平均亏损</div>
             <div class="metric-value loss">{{ formatMoney(overviewMetrics.avgLoss) }}</div>
-          </div>
-          <div class="metric-card">
-            <div class="metric-label">手续费</div>
-            <div class="metric-value">{{ formatMoney(overviewMetrics.totalFee) }}</div>
           </div>
           <div class="metric-card">
             <div class="metric-label">最长连续亏损</div>

@@ -173,7 +173,6 @@ onMounted(loadPageData)
       <header class="toolbar">
         <div class="toolbar-left">
           <div class="toolbar-title">机会回顾</div>
-          <div class="toolbar-subtitle">记录历史行情里值得复盘的交易机会</div>
         </div>
         <div class="toolbar-right">
           <div class="summary">{{ records.length }} 条记录</div>
@@ -193,7 +192,6 @@ onMounted(loadPageData)
           :label="column.column_label"
           :width="column.table_column_width || undefined"
           :min-width="column.table_column_width ? undefined : DEFAULT_TABLE_MIN_WIDTH"
-          show-overflow-tooltip
         >
           <template #default="{ row }">
             <template v-if="column.data_type === 'images'">

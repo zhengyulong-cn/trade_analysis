@@ -382,7 +382,6 @@ watch(
           :label="column.column_label"
           :width="column.table_column_width || undefined"
           :min-width="column.table_column_width ? undefined : DEFAULT_TABLE_MIN_WIDTH"
-          show-overflow-tooltip
         >
           <template #default="{ row }">
             <template v-if="column.data_type === 'images'">
