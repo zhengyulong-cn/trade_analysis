@@ -18,6 +18,7 @@ import { computed, onMounted, ref, watch } from "vue"
 import TradeAccountConfigDialog from "./TradeAccountConfigDialog.vue"
 import TradeRecordColumnConfigDialog from "./TradeRecordColumnConfigDialog.vue"
 import TradeRecordFormDialog from "./TradeRecordFormDialog.vue"
+import TradeRecordExportDropdown from "./toolbars/exports/TradeRecordExportDropdown.vue"
 import TradeRecordFilterPopover from "./toolbars/TradeRecordFilterPopover.vue"
 import TradeRecordSortPopover from "./toolbars/TradeRecordSortPopover.vue"
 import {
@@ -366,6 +367,11 @@ watch(
           />
           <div class="summary">{{ sortedRecords.length }} / {{ records.length }} 条记录</div>
           <el-button @click="loadPageData">刷新</el-button>
+          <TradeRecordExportDropdown
+            :records="sortedRecords"
+            :columns="enabledColumns"
+            :get-column-options="getColumnOptions"
+          />
           <el-button type="primary" @click="openCreateDialog">新增交易记录</el-button>
           <el-button type="warning" @click="openColumnDialog">列配置</el-button>
           <el-button type="warning" @click="openAccountDialog">账户配置</el-button>
