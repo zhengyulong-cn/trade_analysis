@@ -19,6 +19,7 @@ import TradeAccountConfigDialog from "./TradeAccountConfigDialog.vue"
 import TradeRecordColumnConfigDialog from "./TradeRecordColumnConfigDialog.vue"
 import TradeRecordFormDialog from "./TradeRecordFormDialog.vue"
 import TradeRecordExportDropdown from "./toolbars/exports/TradeRecordExportDropdown.vue"
+import TradeRecordImportDialog from "./toolbars/TradeRecordImportDialog.vue"
 import TradeRecordFilterPopover from "./toolbars/TradeRecordFilterPopover.vue"
 import TradeRecordSortPopover from "./toolbars/TradeRecordSortPopover.vue"
 import {
@@ -45,6 +46,7 @@ const loading = ref(false)
 const accountDialogVisible = ref(false)
 const dialogVisible = ref(false)
 const columnDialogVisible = ref(false)
+const importDialogVisible = ref(false)
 const dialogMode = ref<DialogMode>("create")
 const editingRecord = ref<TradeRecord | null>(null)
 const columns = ref<TradeRecordColumn[]>([])
@@ -259,6 +261,10 @@ const openAccountDialog = () => {
   accountDialogVisible.value = true
 }
 
+const openImportDialog = () => {
+  importDialogVisible.value = true
+}
+
 const handleFormSaved = async () => {
   editingRecord.value = null
   await loadPageData()
@@ -367,6 +373,7 @@ watch(
           />
           <div class="summary">{{ sortedRecords.length }} / {{ records.length }} 条记录</div>
           <el-button @click="loadPageData">刷新</el-button>
+          <el-button type="success" @click="openImportDialog">导入交易记录</el-button>
           <TradeRecordExportDropdown
             :records="sortedRecords"
             :columns="enabledColumns"
@@ -472,6 +479,13 @@ watch(
       :columns="columns"
       :accounts="accounts"
       @saved="handleFormSaved"
+    />
+
+    <TradeRecordImportDialog
+      v-model="importDialogVisible"
+      :columns="columns"
+      :accounts="accounts"
+      @imported="loadPageData"
     />
 
     <TradeRecordColumnConfigDialog v-model="columnDialogVisible" :columns="columns" @changed="loadPageData" />
