@@ -30,7 +30,7 @@ const importPrompt = `你将从交易软件截图中提取交易记录，并输�
 
 合约：contract
 品种：product，["氧化铝","焦煤","焦炭","铁矿石","纯碱","玻璃","烧碱","甲醇","乙二醇","PTA","苯乙烯","沥青","塑料","橡胶","合成橡胶","豆一","菜粕","菜油","棕榈油","多晶硅","碳酸锂","鸡蛋","苹果","沪银","沪镍","沪锡"] 中的某一个
-账户：3（固定值）
+账户：4（固定值，字符串类型）
 手数：lots，整数
 方向：open_direction，多单值为long，空单值为short
 开仓时间：open_time，YYYY-MM-DD HH:mm:ss格式
@@ -42,9 +42,9 @@ const importPrompt = `你将从交易软件截图中提取交易记录，并输�
 \`\`\`
 [
   {
-    "contract": "p2609",
+    "contract": "jm2609",
     "product": "焦煤",
-    "account_id": 3,
+    "account_id": "4",
     "lots": 10,
     "open_direction": "short"
     "open_time": "2026-06-17 09:31:00",
