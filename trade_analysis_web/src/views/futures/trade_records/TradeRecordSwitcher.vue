@@ -1,7 +1,7 @@
 <script lang="ts" setup>
 import { computed } from "vue"
 import { useRoute, useRouter } from "vue-router"
-import TradeRecordAnalysis from "./TradeRecordAnalysis.vue"
+import TradeRecordAnalysisV2 from "./TradeRecordAnalysisV2.vue"
 import TradeRecordManager from "./TradeRecordManager.vue"
 
 type TradeRecordMode = "manager" | "analysis"
@@ -27,7 +27,7 @@ const handleModeChange = (mode: string | number | boolean) => {
 <template>
   <section class="trade-record-switcher">
     <TradeRecordManager v-if="currentMode === 'manager'" :handle-mode-change="handleModeChange"/>
-    <TradeRecordAnalysis v-else :handle-mode-change="handleModeChange" />
+    <TradeRecordAnalysisV2 v-else :handle-mode-change="handleModeChange" />
   </section>
 </template>
 
