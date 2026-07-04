@@ -15,7 +15,7 @@ const getTimestamp = () => {
 
 const getNumberDisplayOption = (column: TradeRecordColumn) => {
   const option = Array.isArray(column.options_json) ? column.options_json[0] : undefined
-  return option && typeof option === "object" ? (option as Record<string, unknown>) : {}
+  return option && typeof option === "object" ? (option as unknown as Record<string, unknown>) : {}
 }
 
 const getNumberPrecision = (column: TradeRecordColumn) => {

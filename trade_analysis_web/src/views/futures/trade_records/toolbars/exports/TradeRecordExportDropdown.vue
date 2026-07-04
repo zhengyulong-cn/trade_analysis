@@ -2,8 +2,9 @@
 import type { TradeRecord, TradeRecordColumn, TradeRecordColumnOption } from "@/api/modules"
 import { ElMessage } from "element-plus"
 import { exportTradeRecordsToExcel } from "./tradeRecordExcelExport"
+import { tradeRecordReplaySystemSQLExport } from "./tradeRecordReplaySystemSQLExport"
 
-type ExportCommand = "excel" | "markdown" | "pdf"
+type ExportCommand = "excel" | "markdown" | "pdf" | "replaySQL"
 
 const props = defineProps<{
   records: TradeRecord[]
@@ -20,6 +21,16 @@ const handleCommand = (command: ExportCommand) => {
 
     exportTradeRecordsToExcel(props.records, props.columns, props.getColumnOptions)
     ElMessage.success("交易记录已导出")
+    return
+  }
+
+  if (command === "replaySQL") {
+    if (!props.records.length) {
+      ElMessage.warning("当前没有可导出的交易记录")
+      return
+    }
+    tradeRecordReplaySystemSQLExport(props.records)
+    ElMessage.success("已导出为TradeReplay软件的SQL格式")
     return
   }
 
@@ -40,6 +51,7 @@ const handleCommand = (command: ExportCommand) => {
         <el-dropdown-item command="excel">导出Excel</el-dropdown-item>
         <el-dropdown-item command="markdown" disabled>导出Markdown</el-dropdown-item>
         <el-dropdown-item command="pdf" disabled>导出PDF</el-dropdown-item>
+        <el-dropdown-item command="replaySQL">导出TradeReplay SQL</el-dropdown-item>
       </el-dropdown-menu>
     </template>
   </el-dropdown>
