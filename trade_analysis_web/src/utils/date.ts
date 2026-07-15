@@ -2,13 +2,12 @@ import dayjs, { type Dayjs } from 'dayjs'
 import customParseFormat from 'dayjs/plugin/customParseFormat'
 import timezone from 'dayjs/plugin/timezone'
 import utc from 'dayjs/plugin/utc'
-import { DEFAULT_DATE_TIME_FORMAT } from '@/constants/date'
-
 dayjs.extend(customParseFormat)
 dayjs.extend(timezone)
 dayjs.extend(utc)
 
 const SHANGHAI_TIMEZONE = 'Asia/Shanghai'
+export const DEFAULT_DATE_TIME_FORMAT = 'YYYY-MM-DD HH:mm:ss'
 
 const hasExplicitTimezone = (value: string) => {
   return /([zZ]|[+-]\d{2}:\d{2}|[+-]\d{4})$/.test(value)

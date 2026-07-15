@@ -42,21 +42,6 @@ export const RouterModules: RouteRecordRaw[] = [
         },
       },
       {
-        path: "/futures/open_opportunity_analysis",
-        component: () => import("@/views/futures/open_opportunity_analysis/OpenOpportunityAnalysis.vue"),
-        meta: {
-          title: "开仓机会分析",
-        },
-      },
-      {
-        path: "/reports/fundamental-analysis",
-        component: () => import("@/views/reports/future_fundamental_analysis/FutureFundamentalAnalysis.vue"),
-        meta: {
-          icon: "",
-          title: "基本面分析",
-        },
-      },
-      {
         path: "/futures/trade-thoughts",
         component: () => import("@/views/futures/trade_thoughts/TradeThoughtManager.vue"),
         meta: {
@@ -73,14 +58,6 @@ export const RouterModules: RouteRecordRaw[] = [
       title: "数据管理",
     },
     children: [
-      {
-        path: "/futures/products",
-        component: () => import("@/views/futures/future_products_manager/FutureProductManager.vue"),
-        meta: {
-          icon: "",
-          title: "期货品种管理",
-        },
-      },
       {
         path: "/futures/contracts",
         component: () => import("@/views/futures/future_contracts_manager/FutureContractManager.vue"),

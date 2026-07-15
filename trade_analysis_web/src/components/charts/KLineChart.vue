@@ -1,5 +1,4 @@
 <script setup lang="ts">
-import { INITIAL_VISIBLE_K_LINE_COUNT } from '@/constants/chart'
 import dayjs from 'dayjs'
 import { computed, onMounted, onUnmounted, ref, watch } from 'vue'
 import KLineReplayPanel from '@/components/charts/kline_replay/KLineReplayPanel.vue'
@@ -35,6 +34,7 @@ import { useAnalysisDrawer } from '@/hooks/useAnalysisDrawer'
 const TRADING_VIEW_LIBRARY_PATH = '/charting_library/'
 const DEFAULT_SYMBOL = 'FUTURES'
 const SCRIPT_ID = 'tradingview-charting-library-script'
+const INITIAL_VISIBLE_K_LINE_COUNT = 500
 
 const props = withDefaults(
   defineProps<{

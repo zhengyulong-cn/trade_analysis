@@ -67,9 +67,4 @@ class Settings:
             f"redis://{credentials}{self.redis_host}:{self.redis_port}/{self.redis_db}"
         )
 
-    @property
-    def future_report_storage_dir(self) -> str:
-        return str(Path(self.storage_root) / "future_reports")
-
-
 settings = Settings()

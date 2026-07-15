@@ -1,25 +1,6 @@
 import axios from "@/api/axios";
 import { toChartTimestampSeconds } from "@/utils/date";
 
-export interface FutureProduct {
-  product_id: number
-  product_code: string
-  display_name: string
-  alias_names: string[]
-  create_at: string
-  updated_at: string
-}
-
-export interface FutureProductCreateParams {
-  product_code: string
-  display_name: string
-  alias_names: string[]
-}
-
-export interface FutureProductUpdateParams extends Partial<FutureProductCreateParams> {
-  product_id: number
-}
-
 export interface FutureContract {
   contract_id: number
   symbol: string
@@ -170,36 +151,6 @@ export interface FutureRealtimeBarResult {
   bar: FutureRealtimeBar | null
 }
 
-export interface FutureOpportunityAnalysisItem {
-  symbol: string
-  exchange: string
-  name: string
-  analysis_message: string | null
-  latest_price: number | null
-  latest_time: number | null
-  latest_30f_time: number | null
-  current_4h_segment_direction: string | null
-  current_30f_segment_direction: string | null
-  current_30f_segment_type: string | null
-  current_5f_segment_direction: string | null
-  trading_range_top: number | null
-  trading_range_bottom: number | null
-  is_in_30f_trading_range: boolean
-  trading_range_position: string | null
-  current_30f_momentum_check_direction: string | null
-  current_30f_momentum_exhausted: boolean | null
-  current_5f_momentum_check_direction: string | null
-  current_5f_momentum_exhausted: boolean | null
-  open_side: string | null
-  has_opportunity: boolean
-  opportunity_action: string | null
-  opportunity_mode: string | null
-}
-
-export interface FutureOpportunityAnalysisListResult {
-  items: FutureOpportunityAnalysisItem[]
-}
-
 const mapFutureKlineToChartData = (item: FutureKlineItem): FutureChartKLineItem | null => {
   const timestamp = toChartTimestampSeconds(item.date_time)
   if (timestamp === null) {
@@ -263,18 +214,6 @@ export const getFutureDataApi = async (params: { symbol: string; period: number;
 
 export const getFutureContractList = () => {
   return axios.get<FutureContract[]>("/contracts") as unknown as Promise<FutureContract[]>
-}
-
-export const getFutureProductList = () => {
-  return axios.get<FutureProduct[]>("/future-products") as unknown as Promise<FutureProduct[]>
-}
-
-export const createFutureProduct = (params: FutureProductCreateParams) => {
-  return axios.post<FutureProduct>("/future-products/create", params) as unknown as Promise<FutureProduct>
-}
-
-export const updateFutureProduct = (params: FutureProductUpdateParams) => {
-  return axios.post<FutureProduct>("/future-products/update", params) as unknown as Promise<FutureProduct>
 }
 
 export const createFutureContract = (params: FutureContractCreateParams) => {
@@ -341,17 +280,5 @@ export const saveFutureChartPersistenceApi = (params: FutureChartPersistenceSave
 export const getFutureRealtimeBarApi = (params: { symbol: string; interval: number }) => {
   return axios.get<FutureRealtimeBarResult>("/realtime-bars/current", params) as unknown as Promise<
     FutureRealtimeBarResult
-  >
-}
-
-export const getFutureOpportunityAnalysisItemApi = (params: { symbol: string }) => {
-  return axios.get<FutureOpportunityAnalysisItem>("/analysis/opportunity/item", params) as unknown as Promise<
-    FutureOpportunityAnalysisItem
-  >
-}
-
-export const getFutureOpportunityAnalysisAllApi = () => {
-  return axios.get<FutureOpportunityAnalysisListResult>("/analysis/opportunity/all") as unknown as Promise<
-    FutureOpportunityAnalysisListResult
   >
 }
