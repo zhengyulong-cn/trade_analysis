@@ -65,25 +65,25 @@ class SignalFilterService:
                 macd[index] <= 0
                 and macd[index - 1] < macd[index]
                 and macd[index - 2] < macd[index - 1]
-                and closes[index] > ema20[index]
+                # and closes[index] > ema20[index]
             )
             green_growing = (
                 macd[index] <= 0
                 and macd[index - 1] > macd[index]
                 and macd[index - 2] > macd[index - 1]
-                and closes[index] < ema20[index]
+                # and closes[index] < ema20[index]
             )
             red_shrinking = (
                 macd[index] >= 0
                 and macd[index - 1] > macd[index]
                 and macd[index - 2] > macd[index - 1]
-                and closes[index] < ema20[index]
+                # and closes[index] < ema20[index]
             )
             red_growing = (
                 macd[index] >= 0
                 and macd[index - 1] < macd[index]
                 and macd[index - 2] < macd[index - 1]
-                and closes[index] > ema20[index]
+                # and closes[index] > ema20[index]
             )
             is_long = (green_shrinking and within_boundary) or red_growing
             is_short = (red_shrinking and within_boundary) or green_growing

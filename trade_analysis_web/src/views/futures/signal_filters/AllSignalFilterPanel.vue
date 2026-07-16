@@ -12,10 +12,12 @@ const props = defineProps<{
   result: FutureAllContractSignalResult | null
   loading: boolean
   contracts: FutureContract[]
+  remainingSeconds: number
 }>()
 
 const interval = defineModel<number>('interval', { required: true })
 const symbols = defineModel<string[]>('symbols', { required: true })
+const autoRefreshing = defineModel<boolean>('autoRefreshing', { required: true })
 defineEmits<{ query: [] }>()
 
 const intervalOptions = [
@@ -24,6 +26,12 @@ const intervalOptions = [
   { label: '1 小时', value: 3600 },
   { label: '日线', value: 86400 },
 ]
+
+const countdownText = computed(() => {
+  const minutes = Math.floor(props.remainingSeconds / 60).toString().padStart(2, '0')
+  const seconds = (props.remainingSeconds % 60).toString().padStart(2, '0')
+  return `${minutes}:${seconds}`
+})
 
 const allSelected = computed(() => props.contracts.length > 0 && symbols.value.length === props.contracts.length)
 const partiallySelected = computed(() => symbols.value.length > 0 && symbols.value.length < props.contracts.length)
@@ -143,6 +151,8 @@ const timeRows = computed(() => {
           <el-option v-for="item in intervalOptions" :key="item.value" :label="item.label" :value="item.value" />
         </el-select>
         <el-button type="primary" :loading="loading" @click="$emit('query')">查询</el-button>
+        <el-switch v-model="autoRefreshing" active-text="每5分钟自动刷新" inactive-text="关闭" />
+        <span v-if="autoRefreshing" class="countdown">下次刷新 {{ countdownText }}</span>
       </div>
     </header>
     <el-table v-loading="loading" :data="timeRows" size="small" border height="45rem" empty-text="暂无交易时间数据">
@@ -152,7 +162,7 @@ const timeRows = computed(() => {
           <span v-if="!row.signals.length" class="empty-signal">无</span>
           <div v-else class="signal-list">
             <div v-for="signal in row.signals" :key="`${signal.symbol}-${signal.signal_type}`" :class="['signal-item', { continuous: signal.continuousCount >= 2 }]">
-              {{ signal.name }}【{{ signal.signal_type === 'long' ? '多头' : '空头' }}｜{{ formatEmaTrendState(signal.ema_trend_state) }}｜ADX {{ Number(signal.adx).toFixed(2) }}<template v-if="signal.continuousCount >= 2">｜连续{{ signal.continuousCount }}次</template>】
+              {{ signal.name }}【{{ signal.signal_type === 'long' ? 'MACD多头' : 'MACD空头' }}｜{{ formatEmaTrendState(signal.ema_trend_state) }}｜ADX {{ Number(signal.adx).toFixed(2) }}<template v-if="signal.continuousCount >= 2">｜连续{{ signal.continuousCount }}次</template>】
             </div>
           </div>
         </template>
@@ -180,6 +190,7 @@ const timeRows = computed(() => {
 .actions { gap: 8px; }
 .interval-select { width: 120px; }
 .symbols-select { width: 260px; }
+.countdown { color: #606266; font-size: 13px; white-space: nowrap; }
 .signal-list { display: flex; flex-direction: column; row-gap: .5rem; }
 .signal-item, .warning-item { color: #303133; }
 .continuous { color: #f56c6c; font-weight: 600; }
