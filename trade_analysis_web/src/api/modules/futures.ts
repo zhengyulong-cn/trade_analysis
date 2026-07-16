@@ -216,6 +216,142 @@ export const getFutureContractList = () => {
   return axios.get<FutureContract[]>("/contracts") as unknown as Promise<FutureContract[]>
 }
 
+export type FutureSignalDirection = 'all' | 'long' | 'short'
+
+export interface FutureSignalFilterItem {
+  signal_type: Exclude<FutureSignalDirection, 'all'>
+  date_time: string
+  open: number
+  close: number
+  high: number
+  low: number
+  ema20: number
+  diff: number
+  dea: number
+  macd: number
+  boundary: number
+  within_boundary: boolean
+}
+
+export interface FutureSignalFilterResult {
+  symbol: string
+  exchange: string
+  name: string
+  interval: number
+  bar_count: number
+  signal_count: number
+  signals: FutureSignalFilterItem[]
+}
+
+export interface FutureAdxRisingSignalItem {
+  date_time: string
+  open: number
+  close: number
+  high: number
+  low: number
+  tr: number
+  di_plus: number
+  di_minus: number
+  dx: number
+  adx: number
+  previous_adx: number
+  threshold: number
+  above_threshold: boolean
+  adx_slope: 'positive' | 'negative' | 'zero'
+}
+
+export type FutureEmaTrendState =
+  | 'bull_trend'
+  | 'bull_expanding'
+  | 'bull_contracting'
+  | 'bear_trend'
+  | 'bear_expanding'
+  | 'bear_contracting'
+  | 'neutral'
+
+export interface FutureEmaTrendSignalItem {
+  date_time: string
+  ema20: number
+  ema120: number
+  atr20: number
+  gap_strength: number
+  gap_change: number
+  state: FutureEmaTrendState
+}
+
+export interface FutureHoldingWarningSignalItem {
+  position_direction: 'long' | 'short'
+  macd_signal_type: 'long' | 'short'
+  date_time: string
+  close: number
+  ema_trend_state: FutureEmaTrendState
+}
+
+export interface FutureAdxRisingSignalResult {
+  symbol: string
+  exchange: string
+  name: string
+  interval: number
+  period: number
+  threshold: number
+  bar_count: number
+  signal_count: number
+  signals: FutureAdxRisingSignalItem[]
+}
+
+export interface FutureContractSignalResult {
+  symbol: string
+  exchange: string
+  name: string
+  interval: number
+  bar_count: number
+  macd_signals: FutureSignalFilterItem[]
+  adx_signals: FutureAdxRisingSignalItem[]
+  ema_trend_signals: FutureEmaTrendSignalItem[]
+  entry_signals: Array<{
+    signal_type: 'long' | 'short'
+    date_time: string
+    open: number
+    close: number
+    high: number
+    low: number
+    adx_signal_date_time: string
+    adx: number
+    above_threshold: boolean
+    ema20: number
+    ema120: number
+    gap_strength: number
+    ema_trend_state: FutureEmaTrendState
+  }>
+  holding_warning_signals: FutureHoldingWarningSignalItem[]
+}
+
+export interface FutureAllContractSignalResult {
+  interval: number
+  contract_count: number
+  items: FutureContractSignalResult[]
+  entry_signals: Array<FutureContractSignalResult['entry_signals'][number] & {
+    symbol: string
+    exchange: string
+    name: string
+    interval: number
+  }>
+  holding_warning_signals: Array<FutureHoldingWarningSignalItem & {
+    symbol: string
+    exchange: string
+    name: string
+    interval: number
+  }>
+}
+
+export const getFutureSignalsApi = (params: { symbol: string; interval: number; limit?: number }) => {
+  return axios.get<FutureContractSignalResult>('/signal-filters/item', params) as unknown as Promise<FutureContractSignalResult>
+}
+
+export const getAllFutureSignalsApi = (params: { interval: number; limit?: number }) => {
+  return axios.get<FutureAllContractSignalResult>('/signal-filters/all', params) as unknown as Promise<FutureAllContractSignalResult>
+}
+
 export const createFutureContract = (params: FutureContractCreateParams) => {
   return axios.post<FutureContract>("/contracts/create", params) as unknown as Promise<FutureContract>
 }
@@ -282,3 +418,4 @@ export const getFutureRealtimeBarApi = (params: { symbol: string; interval: numb
     FutureRealtimeBarResult
   >
 }
+

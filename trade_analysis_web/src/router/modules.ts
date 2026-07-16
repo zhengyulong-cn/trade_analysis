@@ -26,6 +26,14 @@ export const RouterModules: RouteRecordRaw[] = [
     },
     children: [
       {
+        path: "/futures/signal-filters",
+        component: () => import("@/views/futures/signal_filters/SignalFilterManager.vue"),
+        meta: {
+          icon: "",
+          title: "信号筛选器",
+        },
+      },
+      {
         path: "/futures/trade-records",
         component: () => import("@/views/futures/trade_records/TradeRecordSwitcher.vue"),
         meta: {

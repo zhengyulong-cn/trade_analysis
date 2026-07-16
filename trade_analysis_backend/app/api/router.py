@@ -8,6 +8,7 @@ from app.api.routes.klines import router as kline_router
 from app.api.routes.opportunity_review_columns import router as opportunity_review_column_router
 from app.api.routes.opportunity_reviews import router as opportunity_review_router
 from app.api.routes.realtime_bars import router as realtime_bar_router
+from app.api.routes.signal_filters import router as signal_filter_router
 from app.api.routes.trade_accounts import router as trade_account_router
 from app.api.routes.trade_record_columns import router as trade_record_column_router
 from app.api.routes.trade_records import router as trade_record_router
@@ -67,4 +68,9 @@ api_router.include_router(
     analysis_router,
     prefix="/analysis",
     tags=["analysis"],
+)
+api_router.include_router(
+    signal_filter_router,
+    prefix="/signal-filters",
+    tags=["signal-filters"],
 )

@@ -17,6 +17,7 @@ from app.services.market_data import (
 from app.services.opportunity_review_column_service import OpportunityReviewColumnService
 from app.services.opportunity_review_service import OpportunityReviewService
 from app.services.realtime_bar_service import RealtimeBarService
+from app.services.signal_filter_service import SignalFilterService
 from app.services.trade_record_service import TradeRecordService
 from app.services.trade_record_storage import TradeRecordStorageService
 from app.services.trade_record_column_service import TradeRecordColumnService
@@ -160,3 +161,18 @@ def get_analysis_service(kline_service: KlineServiceDep) -> AnalysisServiceV2:
 
 
 AnalysisServiceDep = Annotated[AnalysisServiceV2, Depends(get_analysis_service)]
+
+
+def get_signal_filter_service(
+    kline_service: KlineServiceDep,
+    contract_service: ContractServiceDep,
+) -> SignalFilterService:
+    return SignalFilterService(
+        kline_service=kline_service,
+        contract_service=contract_service,
+    )
+
+
+SignalFilterServiceDep = Annotated[
+    SignalFilterService, Depends(get_signal_filter_service)
+]
