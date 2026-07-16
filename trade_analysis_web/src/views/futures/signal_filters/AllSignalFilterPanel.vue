@@ -1,6 +1,7 @@
 <script lang="ts" setup>
 import type {
   FutureAllContractSignalResult,
+  FutureContract,
   FutureHoldingWarningSignalItem,
 } from '@/api/modules'
 import { formatDateTime } from '@/utils/date'
@@ -10,9 +11,11 @@ import { formatEmaTrendState } from './signalFilterLabels'
 const props = defineProps<{
   result: FutureAllContractSignalResult | null
   loading: boolean
+  contracts: FutureContract[]
 }>()
 
 const interval = defineModel<number>('interval', { required: true })
+const symbols = defineModel<string[]>('symbols', { required: true })
 defineEmits<{ query: [] }>()
 
 const intervalOptions = [
@@ -21,6 +24,33 @@ const intervalOptions = [
   { label: '1 小时', value: 3600 },
   { label: '日线', value: 86400 },
 ]
+
+const allSelected = computed(() => props.contracts.length > 0 && symbols.value.length === props.contracts.length)
+const partiallySelected = computed(() => symbols.value.length > 0 && symbols.value.length < props.contracts.length)
+
+const handleSelectAll = (selected: boolean) => {
+  symbols.value = selected ? props.contracts.map((contract) => contract.symbol) : []
+}
+
+const toggleSymbol = (symbol: string, selected: boolean) => {
+  const nextSymbols = new Set(symbols.value)
+  if (selected) nextSymbols.add(symbol)
+  else nextSymbols.delete(symbol)
+  symbols.value = [...nextSymbols]
+}
+
+const filteredResult = computed(() => {
+  if (!props.result) return null
+  const selected = new Set(symbols.value)
+  const items = props.result.items.filter((item) => selected.has(item.symbol))
+  return {
+    ...props.result,
+    items,
+    contract_count: items.length,
+    entry_signals: props.result.entry_signals.filter((signal) => selected.has(signal.symbol)),
+    holding_warning_signals: props.result.holding_warning_signals.filter((signal) => selected.has(signal.symbol)),
+  }
+})
 
 type EntrySignal = FutureAllContractSignalResult['entry_signals'][number] & {
   continuousCount: number
@@ -63,9 +93,9 @@ const markContinuous = <T extends { date_time: string }>(
 }
 
 const timeRows = computed(() => {
-  if (!props.result) return []
-  const entrySignals = markContinuous(props.result.entry_signals, (signal) => `${signal.symbol}|${signal.signal_type}`)
-  const warningSignals = markContinuous(props.result.holding_warning_signals, (signal) => `${signal.symbol}|${signal.position_direction}`)
+  if (!filteredResult.value) return []
+  const entrySignals = markContinuous(filteredResult.value.entry_signals, (signal) => `${signal.symbol}|${signal.signal_type}`)
+  const warningSignals = markContinuous(filteredResult.value.holding_warning_signals, (signal) => `${signal.symbol}|${signal.position_direction}`)
   const signalsByTime = new Map<string, EntrySignal[]>()
   const warningsByTime = new Map<string, WarningSignal[]>()
   for (const signal of entrySignals) {
@@ -78,7 +108,7 @@ const timeRows = computed(() => {
     values.push(warning)
     warningsByTime.set(warning.date_time, values)
   }
-  const dateTimes = new Set(props.result.items.flatMap((item) => item.ema_trend_signals.map((signal) => signal.date_time)))
+  const dateTimes = new Set(filteredResult.value.items.flatMap((item) => item.ema_trend_signals.map((signal) => signal.date_time)))
   return [...dateTimes]
     .sort((first, second) => Date.parse(second) - Date.parse(first))
     .map((dateTime) => ({ dateTime, signals: signalsByTime.get(dateTime) ?? [], warnings: warningsByTime.get(dateTime) ?? [] }))
@@ -90,13 +120,29 @@ const timeRows = computed(() => {
     <header class="panel-header">
       <div>
         <h3>多品种信号预警</h3>
-        <span>共 {{ result?.contract_count ?? 0 }} 个品种，入场 {{ result?.entry_signals.length ?? 0 }} 个，持仓预警 {{ result?.holding_warning_signals.length ?? 0 }} 个</span>
+        <span>共 {{ filteredResult?.contract_count ?? 0 }} 个品种，入场 {{ filteredResult?.entry_signals.length ?? 0 }} 个，持仓预警 {{ filteredResult?.holding_warning_signals.length ?? 0 }} 个</span>
       </div>
       <div class="actions">
+        <el-select v-model="symbols" multiple collapse-tags collapse-tags-tooltip filterable class="symbols-select" placeholder="选择合约">
+          <template #header>
+            <el-checkbox :model-value="allSelected" :indeterminate="partiallySelected" @change="handleSelectAll">
+              全选合约
+            </el-checkbox>
+          </template>
+          <el-option v-for="contract in contracts" :key="contract.contract_id" :label="contract.symbol" :value="contract.symbol">
+            <el-checkbox
+              :model-value="symbols.includes(contract.symbol)"
+              @click.stop
+              @change="(selected: boolean) => toggleSymbol(contract.symbol, selected)"
+            >
+              {{ contract.symbol }}
+            </el-checkbox>
+          </el-option>
+        </el-select>
         <el-select v-model="interval" class="interval-select">
           <el-option v-for="item in intervalOptions" :key="item.value" :label="item.label" :value="item.value" />
         </el-select>
-        <el-button type="primary" :loading="loading" @click="$emit('query')">查询全部</el-button>
+        <el-button type="primary" :loading="loading" @click="$emit('query')">查询</el-button>
       </div>
     </header>
     <el-table v-loading="loading" :data="timeRows" size="small" border height="45rem" empty-text="暂无交易时间数据">
@@ -133,6 +179,7 @@ const timeRows = computed(() => {
 .panel-header span { color: #909399; font-size: 13px; }
 .actions { gap: 8px; }
 .interval-select { width: 120px; }
+.symbols-select { width: 260px; }
 .signal-list { display: flex; flex-direction: column; row-gap: .5rem; }
 .signal-item, .warning-item { color: #303133; }
 .continuous { color: #f56c6c; font-weight: 600; }

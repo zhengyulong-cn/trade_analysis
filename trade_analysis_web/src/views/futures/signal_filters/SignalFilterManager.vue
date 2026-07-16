@@ -18,6 +18,7 @@ const interval = ref(300)
 const loading = ref(false)
 const result = ref<FutureContractSignalResult | null>(null)
 const allInterval = ref(300)
+const allSymbols = ref<string[]>([])
 const allLoading = ref(false)
 const allResult = ref<FutureAllContractSignalResult | null>(null)
 
@@ -49,6 +50,7 @@ const loadSignals = async () => {
 onMounted(async () => {
   try {
     contracts.value = await getFutureContractList()
+    allSymbols.value = contracts.value.map((contract) => contract.symbol)
     symbol.value = contracts.value[0]?.symbol ?? ''
     await loadSignals()
     await loadAllSignals()
@@ -66,6 +68,8 @@ onMounted(async () => {
     </header>
     <AllSignalFilterPanel
       v-model:interval="allInterval"
+      v-model:symbols="allSymbols"
+      :contracts="contracts"
       :result="allResult"
       :loading="allLoading"
       @query="loadAllSignals"
