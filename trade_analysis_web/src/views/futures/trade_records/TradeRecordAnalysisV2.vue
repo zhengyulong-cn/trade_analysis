@@ -186,7 +186,7 @@ const formatRecords = computed<AnalysisRecord[]>(() => {
       const rawAccountId = record.data_json[accountColumn.value!.column_key]
       const accountId = String(rawAccountId)
 
-      const tradeDay = calcTradeDay(openTime)
+      const tradeDay = calcTradeDay(closeTime)
       return {
         // record,
         accountId,

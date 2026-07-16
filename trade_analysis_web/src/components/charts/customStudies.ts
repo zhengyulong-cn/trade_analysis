@@ -1,8 +1,33 @@
 import type { TradingViewWidget } from '@/components/charts/tradingViewTypes'
 import { localAtrStrategy } from '@/strategy_core/local_atr'
 import { localFenxinSegmentStrategy } from '@/strategy_core/local_fenxing_segment'
+import { localSegmentStrategy } from '@/strategy_core/local_segment'
 
 const LOCAL_ATR_STUDY_LENGTH = 14
+
+export const addLocalSegmentStudy = (currentWidget: TradingViewWidget) => {
+  const activeChart = currentWidget.activeChart()
+  const existingStudies = activeChart.getAllStudies?.() ?? []
+  const hasLocalSegment = existingStudies.some(
+    (study) => study.name === localSegmentStrategy.getLocalSegmentIndicatorName(),
+  )
+  const createStudy = activeChart.createStudy
+
+  if (!createStudy || hasLocalSegment) {
+    return
+  }
+
+  try {
+    void createStudy.call(
+      activeChart,
+      localSegmentStrategy.getLocalSegmentIndicatorName(),
+      true,
+      false,
+    )
+  } catch (error) {
+    console.warn('Failed to create local segment study', error)
+  }
+}
 
 export const addDefaultCustomStudies = (currentWidget: TradingViewWidget) => {
   const activeChart = currentWidget.activeChart()
@@ -38,6 +63,7 @@ export const addDefaultCustomStudies = (currentWidget: TradingViewWidget) => {
         false,
       )
     }
+
   } catch (error) {
     console.warn('Failed to create local custom studies', error)
   }
@@ -47,6 +73,7 @@ export const getCustomIndicators = async (PineJS: unknown) => {
   const indicatorGroups = await Promise.all([
     localAtrStrategy.getCustomIndicators(PineJS as Parameters<typeof localAtrStrategy.getCustomIndicators>[0]),
     localFenxinSegmentStrategy.getCustomIndicators(PineJS as Parameters<typeof localFenxinSegmentStrategy.getCustomIndicators>[0]),
+    localSegmentStrategy.getCustomIndicators(PineJS as Parameters<typeof localSegmentStrategy.getCustomIndicators>[0]),
   ])
 
   return indicatorGroups.flat()
@@ -58,5 +85,6 @@ export const getWhitelistedStudyTools = () => {
     { name: 'MACD' },
     { name: localAtrStrategy.getLocalAtrIndicatorName() },
     { name: localFenxinSegmentStrategy.getLocalFenxinSegmentIndicatorName() },
+    { name: localSegmentStrategy.getLocalSegmentIndicatorName() },
   ]
 }

@@ -24,6 +24,7 @@ import {
 } from '@/components/charts/chartPersistence'
 import {
   addDefaultCustomStudies,
+  addLocalSegmentStudy,
   getCustomIndicators,
   getWhitelistedStudyTools,
 } from '@/components/charts/customStudies'
@@ -34,7 +35,7 @@ import { useAnalysisDrawer } from '@/hooks/useAnalysisDrawer'
 const TRADING_VIEW_LIBRARY_PATH = '/charting_library/'
 const DEFAULT_SYMBOL = 'FUTURES'
 const SCRIPT_ID = 'tradingview-charting-library-script'
-const INITIAL_VISIBLE_K_LINE_COUNT = 300
+const INITIAL_VISIBLE_K_LINE_COUNT = 200
 
 const props = withDefaults(
   defineProps<{
@@ -476,6 +477,7 @@ const createWidget = async () => {
       if (!restoreResult?.appliedLocalStudyTemplate) {
         addDefaultCustomStudies(currentWidget)
       }
+      addLocalSegmentStudy(currentWidget)
       if (
         shouldApplyInitialVisibleRange
         && token === createWidgetToken
