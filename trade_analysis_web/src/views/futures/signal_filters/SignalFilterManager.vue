@@ -60,8 +60,8 @@ const handleAutoRefreshChange = async (enabled: boolean) => {
     remainingSeconds.value = 0
     return
   }
-  await loadAllSignals()
   scheduleAutoRefresh()
+  await loadAllSignals()
 }
 
 const loadSignals = async () => {

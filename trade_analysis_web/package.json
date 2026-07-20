@@ -17,6 +17,7 @@
   "dependencies": {
     "@element-plus/icons-vue": "^2.3.2",
     "@imengyu/vue3-context-menu": "^1.5.4",
+    "@opus-aether-ai/pine-transpiler": "^0.4.11",
     "axios": "^1.15.0",
     "dayjs": "^1.11.20",
     "element-plus": "^2.13.7",
