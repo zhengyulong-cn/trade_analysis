@@ -1,5 +1,5 @@
 //@version=6
-indicator("Confirmed Pivot ZigZag", overlay = true, max_labels_count = 500, max_lines_count = 500)
+indicator("Confirmed Pivot ZigZag", overlay = true, max_labels_count = 500, max_lines_count = 500, max_bars_back = 5000)
 
 offsetBars = input.int(3, "Offset Bars", minval = 1)
 showPoints = input.bool(true, "Show H/L")
@@ -7,33 +7,14 @@ showLines = input.bool(true, "Show Lines")
 highColor = input.color(color.red, "High / Down Color")
 lowColor = input.color(color.green, "Low / Up Color")
 lineWidth = input.int(2, "Line Width", minval = 1)
+
 ema20 = ta.ema(close, 20)
+ema120 = ta.ema(close, 120)
+std120 = ta.stdev(math.abs(close - open), 120, false)
 
-isConfirmedHigh(offset) =>
-    candidate = high[offset]
-    result = not na(high[offset * 2]) and candidate > ema20[offset]
-    for i = 0 to offset * 2
-        if i != offset and high[i] > candidate
-            result := false
-    result
+plot(ema20, color = color.black)
+plot(ema120, color = color.maroon)
 
-isConfirmedLow(offset) =>
-    candidate = low[offset]
-    result = not na(low[offset * 2]) and candidate < ema20[offset]
-    for i = 0 to offset * 2
-        if i != offset and low[i] < candidate
-            result := false
-    result
-
-highSignal = isConfirmedHigh(offsetBars)
-lowSignal = isConfirmedLow(offsetBars)
-
-minimumDistance = offsetBars
-pivotIndex = bar_index - offsetBars
-highPrice = high[offsetBars]
-lowPrice = low[offsetBars]
-
-// kind: 1 = high, -1 = low. segment is the line ending at this pivot.
 type PivotPoint
     int kind
     int barIndex
@@ -42,6 +23,36 @@ type PivotPoint
     line segment
 
 var array<PivotPoint> pivotPoints = array.new<PivotPoint>()
+var int lastLongPointIndex = na
+var int lastShortPointIndex = na
+
+isLongSignal(float macdValue, float boundaryValue, float emaValue) =>
+    greenShrinking = macdValue <= 0 and macdValue[1] < macdValue and macdValue[2] < macdValue[1] and close > emaValue
+    redGrowing = macdValue >= 0 and macdValue[1] < macdValue and macdValue[2] < macdValue[1] and close > emaValue
+    insideBoundary = math.abs(macdValue) < math.abs(boundaryValue)
+    (greenShrinking and insideBoundary) or redGrowing
+
+isShortSignal(float macdValue, float boundaryValue, float emaValue) =>
+    redShrinking = macdValue >= 0 and macdValue[1] > macdValue and macdValue[2] > macdValue[1] and close < emaValue
+    greenGrowing = macdValue <= 0 and macdValue[1] > macdValue and macdValue[2] > macdValue[1] and close < emaValue
+    insideBoundary = math.abs(macdValue) < math.abs(boundaryValue)
+    (redShrinking and insideBoundary) or greenGrowing
+
+isConfirmedHigh(int offset) =>
+    candidate = high[offset]
+    result = not na(high[offset * 2]) and candidate > ema20[offset]
+    for i = 0 to offset * 2
+        if i != offset and high[i] > candidate
+            result := false
+    result
+
+isConfirmedLow(int offset) =>
+    candidate = low[offset]
+    result = not na(low[offset * 2]) and candidate < ema20[offset]
+    for i = 0 to offset * 2
+        if i != offset and low[i] < candidate
+            result := false
+    result
 
 addPivot(array<PivotPoint> points, int kind, int barIndex, float price) =>
     labelStyle = kind == 1 ? label.style_label_down : label.style_label_up
@@ -72,8 +83,14 @@ processPivot(array<PivotPoint> points, int kind, int barIndex, float price, int 
             isMoreExtreme = kind == 1 ? price > lastPoint.price : price < lastPoint.price
             if isMoreExtreme
                 replaceLastPivot(lastPoint, barIndex, price)
-        else if barIndex - lastPoint.barIndex > requiredDistance
-            addPivot(points, kind, barIndex, price)
+        else
+            PivotPoint previousPoint = array.size(points) >= 2 ? array.get(points, array.size(points) - 2) : na
+            isPreviousDownSegmentBroken = kind == 1 and lastPoint.kind == -1 and not na(previousPoint) and previousPoint.kind == 1 and price > previousPoint.price
+            isPreviousUpSegmentBroken = kind == -1 and lastPoint.kind == 1 and not na(previousPoint) and previousPoint.kind == -1 and price < previousPoint.price
+            if isPreviousDownSegmentBroken or isPreviousUpSegmentBroken
+                addPivot(points, kind, barIndex, price)
+            else if barIndex - lastPoint.barIndex > requiredDistance
+                addPivot(points, kind, barIndex, price)
 
 getRecentPivot(array<PivotPoint> points, int kind, int occurrence) =>
     PivotPoint result = na
@@ -88,8 +105,224 @@ getRecentPivot(array<PivotPoint> points, int kind, int occurrence) =>
         index -= 1
     result
 
+getRecentPivotBefore(array<PivotPoint> points, int kind, int beforeBarIndex, int occurrence) =>
+    PivotPoint result = na
+    found = 0
+    index = array.size(points) - 1
+    while index >= 0 and found < occurrence
+        point = array.get(points, index)
+        if point.kind == kind and point.barIndex < beforeBarIndex
+            found += 1
+            if found == occurrence
+                result := point
+        index -= 1
+    result
+
+findLowestFrom(int startBarIndex, int minimumDistance) =>
+    float resultPrice = na
+    int resultIndex = na
+    if not na(startBarIndex)
+        barsToSearch = math.min(bar_index - startBarIndex, 4999)
+        if barsToSearch >= 0
+            int barsAgo = barsToSearch - minimumDistance
+            while barsAgo >= 0
+                candidatePrice = low[barsAgo]
+                if candidatePrice < ema20[barsAgo] and (na(resultPrice) or candidatePrice < resultPrice)
+                    resultPrice := candidatePrice
+                    resultIndex := bar_index - barsAgo
+                barsAgo -= 1
+    [resultPrice, resultIndex]
+
+findHighestFrom(int startBarIndex, int minimumDistance) =>
+    float resultPrice = na
+    int resultIndex = na
+    if not na(startBarIndex)
+        barsToSearch = math.min(bar_index - startBarIndex, 4999)
+        if barsToSearch >= 0
+            int barsAgo = barsToSearch - minimumDistance
+            while barsAgo >= 0
+                candidatePrice = high[barsAgo]
+                if candidatePrice > ema20[barsAgo] and (na(resultPrice) or candidatePrice > resultPrice)
+                    resultPrice := candidatePrice
+                    resultIndex := bar_index - barsAgo
+                barsAgo -= 1
+    [resultPrice, resultIndex]
+
+type PivotZone
+    int kind
+    int barIndex
+    float center
+    float upper
+    float lower
+
+getPivotSeriesOffset(PivotPoint point) =>
+    bar_index - point.barIndex
+
+getPivotCenter(PivotPoint point) =>
+    barsAgo = getPivotSeriesOffset(point)
+    point.kind == 1 ? math.max(open[barsAgo], close[barsAgo]) : math.min(open[barsAgo], close[barsAgo])
+
+getPivotUpper(PivotPoint point, float center, float tolerance) =>
+    barsAgo = getPivotSeriesOffset(point)
+    point.kind == 1 ? math.min(high[barsAgo], center + tolerance) : center + tolerance
+
+getPivotLower(PivotPoint point, float center, float tolerance) =>
+    barsAgo = getPivotSeriesOffset(point)
+    point.kind == 1 ? center - tolerance : math.max(low[barsAgo], center - tolerance)
+
+getPivotTolerance(PivotPoint point) =>
+    barsAgo = getPivotSeriesOffset(point)
+    nz(std120[barsAgo], 0.0)
+
+buildZone(PivotPoint point) =>
+    center = getPivotCenter(point)
+    tolerance = getPivotTolerance(point)
+    upper = getPivotUpper(point, center, tolerance)
+    lower = getPivotLower(point, center, tolerance)
+    PivotZone.new(point.kind, point.barIndex, center, upper, lower)
+
+isLess(PivotPoint leftPoint, PivotPoint rightPoint) =>
+    leftZone = buildZone(leftPoint)
+    rightZone = buildZone(rightPoint)
+    leftZone.upper < rightZone.lower
+
+isGreater(PivotPoint leftPoint, PivotPoint rightPoint) =>
+    leftZone = buildZone(leftPoint)
+    rightZone = buildZone(rightPoint)
+    leftZone.lower > rightZone.upper
+
+isEqual(PivotPoint leftPoint, PivotPoint rightPoint) =>
+    leftZone = buildZone(leftPoint)
+    rightZone = buildZone(rightPoint)
+    leftZone.upper >= rightZone.lower and leftZone.lower <= rightZone.upper
+
+isLongStructure(
+    PivotPoint l1,
+    PivotPoint l2,
+    PivotPoint l3,
+    PivotPoint h1,
+    PivotPoint h2
+) =>
+    l12Greater = isGreater(l1, l2)
+    l12Less = isLess(l1, l2)
+    l23Less = isLess(l2, l3)
+    l12Equal = isEqual(l1, l2)
+    l23Equal = isEqual(l2, l3)
+    h12Less = isLess(h1, h2)
+    h12Equal = isEqual(h1, h2)
+
+    (l12Less and l23Less and h12Less) or
+     (l12Greater and l23Less and h12Less) or
+     (l12Equal and l23Less and h12Less) or
+     (l12Less and l23Equal and h12Less) or
+     (l12Less and l23Less and h12Equal) or
+     (l12Equal and l23Less and h12Equal)
+
+isShortStructure(
+    PivotPoint h1,
+    PivotPoint h2,
+    PivotPoint h3,
+    PivotPoint l1,
+    PivotPoint l2
+) =>
+    h12Less = isLess(h1, h2)
+    h12Greater = isGreater(h1, h2)
+    h23Greater = isGreater(h2, h3)
+    h12Equal = isEqual(h1, h2)
+    h23Equal = isEqual(h2, h3)
+    l12Greater = isGreater(l1, l2)
+    l12Equal = isEqual(l1, l2)
+
+    (h12Greater and h23Greater and l12Greater) or
+     (h12Less and h23Greater and l12Greater) or
+     (h12Equal and h23Greater and l12Greater) or
+     (h12Greater and h23Equal and l12Greater) or
+     (h12Greater and h23Greater and l12Equal) or
+     (h12Equal and h23Greater and l12Equal)
+
+diff = ta.ema(close, 4) - ema20
+dea = ta.ema(diff, 20)
+macd = (diff - dea) * 2
+boundary = ta.ema(math.abs(macd), 500)
+
+highSignal = isConfirmedHigh(offsetBars)
+lowSignal = isConfirmedLow(offsetBars)
+longSignal = isLongSignal(macd, boundary, ema20)
+shortSignal = isShortSignal(macd, boundary, ema20)
+
+minimumDistance = offsetBars
+pivotIndex = bar_index - offsetBars
+highPrice = high[offsetBars]
+lowPrice = low[offsetBars]
+
 if highSignal
     processPivot(pivotPoints, 1, pivotIndex, highPrice, minimumDistance)
 
 if lowSignal
     processPivot(pivotPoints, -1, pivotIndex, lowPrice, minimumDistance)
+
+longH2 = getRecentPivot(pivotPoints, 1, 1)
+longH2BarIndex = na(longH2) ? na : longH2.barIndex
+longH1 = na(longH2BarIndex) ? na : getRecentPivotBefore(pivotPoints, 1, longH2BarIndex, 1)
+longL2 = na(longH2BarIndex) ? na : getRecentPivotBefore(pivotPoints, -1, longH2BarIndex, 1)
+longL2BarIndex = na(longL2) ? na : longL2.barIndex
+longL1 = na(longL2BarIndex) ? na : getRecentPivotBefore(pivotPoints, -1, longL2BarIndex, 1)
+[longL3Price, longL3Index] = findLowestFrom(longH2BarIndex, minimumDistance)
+
+shortL2 = getRecentPivot(pivotPoints, -1, 1)
+shortL2BarIndex = na(shortL2) ? na : shortL2.barIndex
+shortL1 = na(shortL2BarIndex) ? na : getRecentPivotBefore(pivotPoints, -1, shortL2BarIndex, 1)
+shortH2 = na(shortL2BarIndex) ? na : getRecentPivotBefore(pivotPoints, 1, shortL2BarIndex, 1)
+shortH2BarIndex = na(shortH2) ? na : shortH2.barIndex
+shortH1 = na(shortH2BarIndex) ? na : getRecentPivotBefore(pivotPoints, 1, shortH2BarIndex, 1)
+[shortH3Price, shortH3Index] = findHighestFrom(shortL2BarIndex, minimumDistance)
+
+hasLongStructureInputs = not na(longH1) and not na(longH2) and not na(longL1) and not na(longL2) and not na(longL3Price) and not na(longL3Index)
+hasShortStructureInputs = not na(shortH1) and not na(shortH2) and not na(shortL1) and not na(shortL2) and not na(shortH3Price) and not na(shortH3Index)
+
+PivotPoint longL3 = hasLongStructureInputs ? PivotPoint.new(-1, longL3Index, longL3Price, na, na) : na
+PivotPoint shortH3 = hasShortStructureInputs ? PivotPoint.new(1, shortH3Index, shortH3Price, na, na) : na
+
+longStructureMatched = hasLongStructureInputs and isLongStructure(longL1, longL2, longL3, longH1, longH2)
+shortStructureMatched = hasShortStructureInputs and isShortStructure(shortH1, shortH2, shortH3, shortL1, shortL2)
+
+isNewLongPoint = na(lastLongPointIndex) or longL3Index != lastLongPointIndex
+isNewShortPoint = na(lastShortPointIndex) or shortH3Index != lastShortPointIndex
+
+longEntry = longSignal and longStructureMatched and isNewLongPoint
+shortEntry = shortSignal and shortStructureMatched and isNewShortPoint
+
+if longEntry
+    lastLongPointIndex := longL3Index
+    label.new(longL3Index, longL3Price, "L3", style = label.style_label_up, color = color.fuchsia, textcolor = color.white)
+
+if shortEntry
+    lastShortPointIndex := shortH3Index
+    label.new(shortH3Index, shortH3Price, "H3", style = label.style_label_down, color = color.blue, textcolor = color.white)
+
+plotshape(longEntry, title = "Long Entry Confirmed", style = shape.triangleup, location = location.belowbar, color = color.fuchsia, text = "L", textcolor = color.white, size = size.small)
+plotshape(shortEntry, title = "Short Entry Confirmed", style = shape.triangledown, location = location.abovebar, color = color.blue, text = "S", textcolor = color.white, size = size.small)
+
+alertcondition(longEntry, title = "Long Entry Confirmed", message = "Long HL structure and MACD signal confirmed")
+alertcondition(shortEntry, title = "Short Entry Confirmed", message = "Short HL structure and MACD signal confirmed")
+
+// PivotZone visualization
+zoneFillHigh = color.new(highColor, 85)
+zoneFillLow = color.new(lowColor, 85)
+zoneBorderHigh = color.new(highColor, 35)
+zoneBorderLow = color.new(lowColor, 35)
+
+drawPivotZone(PivotPoint point) =>
+    if not na(point)
+        zone = buildZone(point)
+        leftBar = math.max(zone.barIndex - 2, 0)
+        rightBar = zone.barIndex
+        borderColor = zone.kind == 1 ? zoneBorderHigh : zoneBorderLow
+        fillColor = zone.kind == 1 ? zoneFillHigh : zoneFillLow
+        box.new(left = leftBar, top = zone.upper, right = rightBar, bottom = zone.lower, border_color = borderColor, bgcolor = fillColor)
+
+PivotPoint zoneHighPoint = highSignal ? PivotPoint.new(1, pivotIndex, highPrice, na, na) : na
+PivotPoint zoneLowPoint = lowSignal ? PivotPoint.new(-1, pivotIndex, lowPrice, na, na) : na
+
+drawPivotZone(zoneHighPoint)
+drawPivotZone(zoneLowPoint)
