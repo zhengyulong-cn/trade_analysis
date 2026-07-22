@@ -4,6 +4,7 @@ import { init, dispose, type Chart, type KLineData, type PeriodType } from "klin
 import { ElMessage } from "element-plus"
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from "vue"
 import ChartSideBar from "./ChartSideBar.vue"
+import { chartStylesConfig } from "./config.ts"
 
 interface PeriodOption {
   label: string
@@ -116,22 +117,7 @@ const ensureChart = async () => {
   chart = init(chartRef.value, {
     locale: "zh-CN",
     timezone: "Asia/Shanghai",
-    styles: {
-      grid: {
-        horizontal: {
-          color: "#edf1f6",
-        },
-        vertical: {
-          color: "#edf1f6",
-        },
-      },
-      candle: {
-        tooltip: {
-          showRule: "always",
-          showType: "standard",
-        },
-      },
-    },
+    styles: chartStylesConfig,
   })
 
   chart?.setDataLoader({
