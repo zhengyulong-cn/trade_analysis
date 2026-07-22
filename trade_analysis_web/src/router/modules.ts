@@ -10,8 +10,8 @@ export const RouterModules: RouteRecordRaw[] = [
     component: () => import("@/views/Home.vue"),
   },
   {
-    path: "/market_conditions",
-    component: () => import("@/views/market_conditions/MarketConditions.vue"),
+    path: "/live",
+    component: () => import("@/views/live/Live.vue"),
     meta: {
       icon: "Histogram",
       title: "市场行情",
