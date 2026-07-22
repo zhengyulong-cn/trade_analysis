@@ -16,6 +16,7 @@ from app.services.market_data import (
 )
 from app.services.opportunity_review_column_service import OpportunityReviewColumnService
 from app.services.opportunity_review_service import OpportunityReviewService
+from app.services.pine_script_service import PineScriptService
 from app.services.realtime_bar_service import RealtimeBarService
 from app.services.signal_filter_service import SignalFilterService
 from app.services.trade_record_service import TradeRecordService
@@ -75,6 +76,10 @@ def get_opportunity_review_column_service(session: SessionDep) -> OpportunityRev
 
 def get_opportunity_review_service(session: SessionDep) -> OpportunityReviewService:
     return OpportunityReviewService(session)
+
+
+def get_pine_script_service(session: SessionDep) -> PineScriptService:
+    return PineScriptService(session)
 
 
 def get_trade_record_service(session: SessionDep) -> TradeRecordService:
@@ -140,6 +145,9 @@ OpportunityReviewColumnServiceDep = Annotated[
 ]
 OpportunityReviewServiceDep = Annotated[
     OpportunityReviewService, Depends(get_opportunity_review_service)
+]
+PineScriptServiceDep = Annotated[
+    PineScriptService, Depends(get_pine_script_service)
 ]
 TradeRecordServiceDep = Annotated[
     TradeRecordService, Depends(get_trade_record_service)

@@ -82,6 +82,14 @@ export const RouterModules: RouteRecordRaw[] = [
           title: "期货K线管理",
         },
       },
+      {
+        path: "/pine_scripts_manager",
+        component: () => import("@/views/managers/pine_scripts_manager/PineScriptsManager.vue"),
+        meta: {
+          icon: "",
+          title: "Pine脚本管理",
+        },
+      },
     ],
   },
 ]
