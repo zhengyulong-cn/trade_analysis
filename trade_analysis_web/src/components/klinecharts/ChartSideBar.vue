@@ -1,21 +1,21 @@
 <script setup lang="ts">
-import { ChatDotSquare, Collection } from '@element-plus/icons-vue'
 import { computed, ref } from 'vue'
+import type { FutureContract } from '@/api/modules'
+import { Collection, Monitor } from '@element-plus/icons-vue'
+import ContractListPanel from './sidebar_panel/ContractListPanel.vue';
 
-interface ContractOption {
-  label: string
-  value: string
-  description?: string
-  isFavorite?: boolean
+enum PanelTypeEnum {
+  Contracts = 'contracts',
+  Monitor = 'Monitor',
 }
 
 const props = withDefaults(
   defineProps<{
-    contractOptions?: ContractOption[]
+    contracts?: FutureContract[]
     selectedContract?: string
   }>(),
   {
-    contractOptions: () => [],
+    contracts: () => [],
     selectedContract: '',
   },
 )
@@ -25,46 +25,39 @@ const emit = defineEmits<{
   'toggleFavorite': [value: string]
 }>()
 
-const activeSidePanel = ref<'contracts' | 'news' | null>(null)
+const activeSidePanel = ref<PanelTypeEnum | null>(null)
+const hasContractOptions = computed(() => props.contracts.length > 0)
 
-const hasContractOptions = computed(() => props.contractOptions.length > 0)
-const isContractPanelOpen = computed(() => activeSidePanel.value === 'contracts')
-const isNewsPanelOpen = computed(() => activeSidePanel.value === 'news')
-
-const toggleSidePanel = (panel: 'contracts' | 'news') => {
+const toggleSidePanel = (panel: PanelTypeEnum) => {
   activeSidePanel.value = activeSidePanel.value === panel ? null : panel
-}
-
-const handleContractSelect = (contractValue: string) => {
-  if (contractValue && contractValue !== props.selectedContract) {
-    emit('update:selectedContract', contractValue)
-  }
-}
-
-const handleToggleFavorite = (contractValue: string) => {
-  emit('toggleFavorite', contractValue)
 }
 </script>
 
 <template>
   <div class="chart-sidebar-box">
+    <div v-if="activeSidePanel">
+      <ContractListPanel v-if="activeSidePanel === PanelTypeEnum.Contracts" :contracts="contracts" :selectedContract="selectedContract" @update:selected-contract="emit('update:selectedContract', $event)"/>
+      <section v-else-if="activeSidePanel === PanelTypeEnum.Monitor" class="news-panel">
+        <div class="panel-empty">暂无监视</div>
+      </section>
+    </div>
     <div class="sidebar-actions">
       <button
         type="button"
         class="sidebar-action"
-        :class="{ 'is-active': isContractPanelOpen }"
+        :class="{ 'is-active': activeSidePanel === PanelTypeEnum.Contracts }"
         :disabled="!hasContractOptions"
-        @click="toggleSidePanel('contracts')"
+        @click="toggleSidePanel(PanelTypeEnum.Contracts)"
       >
         <el-icon><Collection /></el-icon>
       </button>
       <button
         type="button"
         class="sidebar-action"
-        :class="{ 'is-active': isNewsPanelOpen }"
-        @click="toggleSidePanel('news')"
+        :class="{ 'is-active': activeSidePanel === PanelTypeEnum.Monitor }"
+        @click="toggleSidePanel(PanelTypeEnum.Monitor)"
       >
-        <el-icon><ChatDotSquare /></el-icon>
+        <el-icon><Monitor /></el-icon>
       </button>
     </div>
   </div>
@@ -122,11 +115,6 @@ const handleToggleFavorite = (contractValue: string) => {
 
 .sidebar-action-label {
   font-size: 12px;
-}
-
-.sidebar-panel-content {
-  flex: 1;
-  min-width: 16rem;
 }
 
 .news-panel {

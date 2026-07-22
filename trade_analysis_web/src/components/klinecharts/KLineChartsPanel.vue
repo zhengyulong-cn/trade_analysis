@@ -238,9 +238,13 @@ onBeforeUnmount(() => {
         <el-empty v-else-if="isChartEmpty" description="当前合约和周期暂无 K 线数据" class="chart-empty" />
       </div>
     </div>
-    <side>
-      <ChartSideBar />
-    </side>
+    <aside class="chart-side-bar">
+      <ChartSideBar
+        :contracts="sortedContracts"
+        :selected-contract="selectedSymbol"
+        @update:selected-contract="selectedSymbol = $event"
+      />
+    </aside>
   </section>
 </template>
 
@@ -249,6 +253,7 @@ onBeforeUnmount(() => {
   display: flex;
   flex-direction: row;
   height: calc(100vh - 3.5rem);
+  column-gap: .5rem;
 }
 
 .chart-main {
@@ -256,6 +261,10 @@ onBeforeUnmount(() => {
   width: 100%;
   display: flex;
   flex-direction: column;
+}
+
+.chart-side-bar {
+  height: 100%;
 }
 
 .chart-toolbar {
