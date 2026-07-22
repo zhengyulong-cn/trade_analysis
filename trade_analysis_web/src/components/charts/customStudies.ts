@@ -1,6 +1,7 @@
 import type { TradingViewWidget } from '@/components/charts/tradingViewTypes'
 import { localAtrStrategy } from '@/strategy_core/local_atr'
 import { localFenxinSegmentStrategy } from '@/strategy_core/local_fenxing_segment'
+import { localPivotZigZagStrategy } from '@/strategy_core/local_pivot_zigzag'
 import { localSegmentStrategy } from '@/strategy_core/local_segment'
 
 const LOCAL_ATR_STUDY_LENGTH = 14
@@ -36,6 +37,9 @@ export const addDefaultCustomStudies = (currentWidget: TradingViewWidget) => {
   const hasLocalFenxinSegment = existingStudies.some(
     (study) => study.name === localFenxinSegmentStrategy.getLocalFenxinSegmentIndicatorName(),
   )
+  const hasLocalPivotZigZag = existingStudies.some(
+    (study) => study.name === localPivotZigZagStrategy.getLocalPivotZigZagIndicatorName(),
+  )
 
   const createStudy = activeChart.createStudy
   if (!createStudy) {
@@ -64,6 +68,14 @@ export const addDefaultCustomStudies = (currentWidget: TradingViewWidget) => {
       )
     }
 
+    if (!hasLocalPivotZigZag) {
+      void createStudy.call(
+        activeChart,
+        localPivotZigZagStrategy.getLocalPivotZigZagIndicatorName(),
+        true,
+        false,
+      )
+    }
   } catch (error) {
     console.warn('Failed to create local custom studies', error)
   }
@@ -73,6 +85,7 @@ export const getCustomIndicators = async (PineJS: unknown) => {
   const indicatorGroups = await Promise.all([
     localAtrStrategy.getCustomIndicators(PineJS as Parameters<typeof localAtrStrategy.getCustomIndicators>[0]),
     localFenxinSegmentStrategy.getCustomIndicators(PineJS as Parameters<typeof localFenxinSegmentStrategy.getCustomIndicators>[0]),
+    localPivotZigZagStrategy.getCustomIndicators(PineJS as Parameters<typeof localPivotZigZagStrategy.getCustomIndicators>[0]),
     localSegmentStrategy.getCustomIndicators(PineJS as Parameters<typeof localSegmentStrategy.getCustomIndicators>[0]),
   ])
 
@@ -85,6 +98,7 @@ export const getWhitelistedStudyTools = () => {
     { name: 'MACD' },
     { name: localAtrStrategy.getLocalAtrIndicatorName() },
     { name: localFenxinSegmentStrategy.getLocalFenxinSegmentIndicatorName() },
+    { name: localPivotZigZagStrategy.getLocalPivotZigZagIndicatorName() },
     { name: localSegmentStrategy.getLocalSegmentIndicatorName() },
   ]
 }
