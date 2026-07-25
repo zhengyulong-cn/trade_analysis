@@ -5,7 +5,7 @@ from pydantic import ConfigDict, Field, field_validator
 from sqlmodel import SQLModel
 
 
-PineScriptType = Literal["indicator", "strategy"]
+PineScriptType = Literal["indicator", "strategy", "scanner"]
 
 
 class PineScriptBase(SQLModel):

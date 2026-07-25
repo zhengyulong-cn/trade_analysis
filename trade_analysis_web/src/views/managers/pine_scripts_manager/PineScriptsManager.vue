@@ -26,6 +26,7 @@ type TypeFilter = PineScriptType | "all"
 const scriptTypeOptions: Array<{ label: string; value: PineScriptType }> = [
   { label: "指标", value: "indicator" },
   { label: "策略", value: "strategy" },
+  { label: "扫描器", value: "scanner" },
 ]
 
 const scripts = ref<PineScript[]>([])

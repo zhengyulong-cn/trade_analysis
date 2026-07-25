@@ -1,6 +1,6 @@
 import axios from "@/api/axios";
 
-export type PineScriptType = "indicator" | "strategy"
+export type PineScriptType = "indicator" | "strategy" | "scanner"
 
 export interface PineScript {
   script_id: number
