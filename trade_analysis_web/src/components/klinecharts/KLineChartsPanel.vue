@@ -1,11 +1,19 @@
 <script setup lang="ts">
-import { getFutureDataApi, type FutureContract, type FutureChartKLineItem } from "@/api/modules"
+import {
+  executePineIndicatorApi,
+  getFutureDataApi,
+  type FutureContract,
+  type FutureChartKLineItem,
+  type PineIndicatorExecuteResult,
+} from "@/api/modules"
 import { init, dispose, type Chart, type KLineData, type PeriodType } from "klinecharts"
 import { ElMessage } from "element-plus"
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from "vue"
 import ChartSideBar from "./ChartSideBar.vue"
 import { chartStylesConfig } from "./config.ts"
+import PineIndicatorSelector from "./PineIndicatorSelector.vue"
 import PineIndicatorTestDialog from "./PineIndicatorTestDialog.vue"
+import { createPineDrawingOverlays, registerPineDrawingOverlays } from "./pine-overlays.ts"
 
 interface PeriodOption {
   label: string
@@ -37,9 +45,108 @@ const selectedPeriod = ref(DEFAULT_PERIOD_OPTION.value)
 const chartLoading = ref(false)
 const hasLoadedOnce = ref(false)
 const klineCount = ref(0)
+const selectedPineIndicatorIds = ref<number[]>([])
+const pineIndicatorLoadingIds = ref<number[]>([])
 let chart: Chart | null = null
 let resizeObserver: ResizeObserver | null = null
 let latestRequestId = 0
+let latestPineIndicatorRequestId = 0
+const renderedPineIndicatorIds = new Set<number>()
+
+const pineIndicatorGroupId = (scriptId: number) => `pine-indicator-${scriptId}`
+
+const setPineIndicatorLoading = (scriptId: number, loading: boolean) => {
+  const ids = new Set(pineIndicatorLoadingIds.value)
+  if (loading) {
+    ids.add(scriptId)
+  } else {
+    ids.delete(scriptId)
+  }
+  pineIndicatorLoadingIds.value = [...ids]
+}
+
+const removePineIndicatorOverlays = (scriptId: number) => {
+  chart?.removeOverlay({ groupId: pineIndicatorGroupId(scriptId) })
+  renderedPineIndicatorIds.delete(scriptId)
+}
+
+const clearPineIndicatorOverlays = () => {
+  for (const scriptId of new Set([...renderedPineIndicatorIds, ...selectedPineIndicatorIds.value])) {
+    removePineIndicatorOverlays(scriptId)
+  }
+}
+
+const renderPineIndicator = (result: PineIndicatorExecuteResult) => {
+  if (!chart) {
+    return
+  }
+
+  removePineIndicatorOverlays(result.script_id)
+  const overlays = createPineDrawingOverlays(pineIndicatorGroupId(result.script_id), result.drawings)
+  if (overlays.length) {
+    chart.createOverlay(overlays)
+    renderedPineIndicatorIds.add(result.script_id)
+  }
+}
+
+const loadPineIndicator = async (scriptId: number) => {
+  const symbol = selectedSymbol.value
+  const interval = selectedPeriod.value
+  if (!chart || !symbol || !selectedPineIndicatorIds.value.includes(scriptId)) {
+    return
+  }
+
+  const requestId = ++latestPineIndicatorRequestId
+  setPineIndicatorLoading(scriptId, true)
+  try {
+    const result = await executePineIndicatorApi({
+      script_id: scriptId,
+      symbol,
+      interval,
+      limit: 1000,
+    })
+    const isStillCurrent = chart
+      && selectedSymbol.value === symbol
+      && selectedPeriod.value === interval
+      && selectedPineIndicatorIds.value.includes(scriptId)
+    if (!isStillCurrent) {
+      return
+    }
+    renderPineIndicator(result)
+  } catch {
+    if (selectedSymbol.value === symbol && selectedPeriod.value === interval) {
+      ElMessage.error(`Failed to load Pine indicator #${scriptId}.`)
+    }
+  } finally {
+    if (requestId <= latestPineIndicatorRequestId) {
+      setPineIndicatorLoading(scriptId, false)
+    }
+  }
+}
+
+const reloadSelectedPineIndicators = () => {
+  for (const scriptId of selectedPineIndicatorIds.value) {
+    void loadPineIndicator(scriptId)
+  }
+}
+
+const updateSelectedPineIndicators = (scriptIds: number[]) => {
+  const nextIds = [...new Set(scriptIds)]
+  const nextIdSet = new Set(nextIds)
+  for (const scriptId of selectedPineIndicatorIds.value) {
+    if (!nextIdSet.has(scriptId)) {
+      removePineIndicatorOverlays(scriptId)
+    }
+  }
+
+  const currentIdSet = new Set(selectedPineIndicatorIds.value)
+  selectedPineIndicatorIds.value = nextIds
+  for (const scriptId of nextIds) {
+    if (!currentIdSet.has(scriptId)) {
+      void loadPineIndicator(scriptId)
+    }
+  }
+}
 
 const sortedContracts = computed(() => {
   return [...props.contracts].sort((first, second) => {
@@ -95,6 +202,7 @@ const loadChartBars = async (callback: (data: KLineData[], more?: boolean) => vo
     const chartData = toKLineChartsData(response.kLineList)
     callback(chartData, false)
     klineCount.value = chartData.length
+    reloadSelectedPineIndicators()
   } catch {
     if (requestId !== latestRequestId) {
       return
@@ -120,6 +228,7 @@ const ensureChart = async () => {
     timezone: "Asia/Shanghai",
     styles: chartStylesConfig,
   })
+  registerPineDrawingOverlays()
 
   chart?.setDataLoader({
     getBars: ({ callback }) => {
@@ -135,6 +244,7 @@ const ensureChart = async () => {
 
 const clearChart = () => {
   chart?.resetData()
+  clearPineIndicatorOverlays()
   klineCount.value = 0
 }
 
@@ -145,6 +255,7 @@ const refreshChart = async () => {
   }
 
   await ensureChart()
+  clearPineIndicatorOverlays()
   const contract = currentContract.value
   chart?.setSymbol({
     ticker: selectedSymbol.value,
@@ -189,6 +300,7 @@ onBeforeUnmount(() => {
   resizeObserver?.disconnect()
   resizeObserver = null
   if (chart) {
+    clearPineIndicatorOverlays()
     dispose(chart)
     chart = null
   }
@@ -217,6 +329,12 @@ onBeforeUnmount(() => {
           </el-select>
 
           <el-segmented v-model="selectedPeriod" :options="PERIOD_OPTIONS" class="period-segmented" />
+          <PineIndicatorSelector
+            :model-value="selectedPineIndicatorIds"
+            :loading-ids="pineIndicatorLoadingIds"
+            :disabled="!selectedSymbol"
+            @update:model-value="updateSelectedPineIndicators"
+          />
           <PineIndicatorTestDialog :symbol="selectedSymbol" :interval="selectedPeriod" />
         </div>
       </header>
