@@ -5,6 +5,7 @@ import { ElMessage } from "element-plus"
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from "vue"
 import ChartSideBar from "./ChartSideBar.vue"
 import { chartStylesConfig } from "./config.ts"
+import PineIndicatorTestDialog from "./PineIndicatorTestDialog.vue"
 
 interface PeriodOption {
   label: string
@@ -216,6 +217,7 @@ onBeforeUnmount(() => {
           </el-select>
 
           <el-segmented v-model="selectedPeriod" :options="PERIOD_OPTIONS" class="period-segmented" />
+          <PineIndicatorTestDialog :symbol="selectedSymbol" :interval="selectedPeriod" />
         </div>
       </header>
       <div v-loading="chartLoading" class="chart-shell">

@@ -8,6 +8,7 @@ from app.api.routes.klines import router as kline_router
 from app.api.routes.opportunity_review_columns import router as opportunity_review_column_router
 from app.api.routes.opportunity_reviews import router as opportunity_review_router
 from app.api.routes.pine_scripts import router as pine_script_router
+from app.api.routes.pine_indicators import router as pine_indicator_router
 from app.api.routes.realtime_bars import router as realtime_bar_router
 from app.api.routes.signal_filters import router as signal_filter_router
 from app.api.routes.trade_accounts import router as trade_account_router
@@ -59,6 +60,11 @@ api_router.include_router(
     pine_script_router,
     prefix="/pine-scripts",
     tags=["pine-scripts"],
+)
+api_router.include_router(
+    pine_indicator_router,
+    prefix="/pine-indicators",
+    tags=["pine-indicators"],
 )
 api_router.include_router(
     upload_router,

@@ -2,6 +2,15 @@
     "version": "0.2.0",
     "configurations": [
         {
+            "name": "Fastify Debugger",
+            "port": 9229,
+            "request": "attach",
+            "skipFiles": [
+                "<node_internals>/**"
+            ],
+            "type": "node"
+        },
+        {
             "name": "Python Debugger: Current File",
             "type": "debugpy",
             "request": "launch",
@@ -22,6 +31,6 @@
                 "APP_RELOAD": "false",
                 "LOG_LEVEL": "DEBUG"
             }
-        }
+        },
     ]
 }

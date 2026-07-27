@@ -8,6 +8,7 @@
   "main": "index.js",
   "scripts": {
     "dev": "node --env-file=.env --import tsx --watch src/index.ts",
+    "debug": "node --inspect-brk --env-file=.env --import tsx src/index.ts",
     "build": "tsc -p tsconfig.json",
     "start": "node --env-file=.env dist/index.js"
   },

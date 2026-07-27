@@ -39,6 +39,10 @@ class Settings:
     realtime_quote_subscription_refresh_seconds: float = float(
         os.getenv("REALTIME_QUOTE_SUBSCRIPTION_REFRESH_SECONDS", "60")
     )
+    pine_runner_url: str = os.getenv("PINE_RUNNER_URL", "http://127.0.0.1:8001")
+    pine_runner_timeout_seconds: float = float(
+        os.getenv("PINE_RUNNER_TIMEOUT_SECONDS", "30")
+    )
     storage_root: str = os.getenv(
         "STORAGE_ROOT",
         str(Path(__file__).resolve().parents[2] / "storage"),
