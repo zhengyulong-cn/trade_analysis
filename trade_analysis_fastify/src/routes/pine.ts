@@ -26,7 +26,7 @@ export const pineRoutes: FastifyPluginAsync = async (app) => {
       schema: {
         tags: ['Pine Scripts'],
         summary: 'Execute a Pine Script indicator',
-        description: 'Runs the supplied Pine Script against custom OHLCV candles and returns PineTS plots.',
+        description: 'Runs the supplied Pine Script against custom OHLCV candles and returns normalized plots and drawings.',
         body: {
           type: 'object',
           required: ['source', 'bars'],
@@ -48,7 +48,7 @@ export const pineRoutes: FastifyPluginAsync = async (app) => {
         response: {
           200: {
             type: 'object',
-            required: ['barCount', 'indicator', 'plots', 'warnings'],
+            required: ['barCount', 'indicator', 'plots', 'drawings', 'warnings'],
             properties: {
               barCount: { type: 'integer', minimum: 1 },
               indicator: {
@@ -57,9 +57,19 @@ export const pineRoutes: FastifyPluginAsync = async (app) => {
                 additionalProperties: true,
               },
               plots: {
+                type: 'array',
+                description: 'Normalized continuous plot series emitted by the Pine script.',
+                items: { type: 'object', additionalProperties: true },
+              },
+              drawings: {
                 type: 'object',
-                description: 'Dynamic plot and drawing data emitted by the Pine script.',
-                additionalProperties: true,
+                required: ['labels', 'lines', 'boxes'],
+                description: 'Normalized discrete drawing objects emitted by the Pine script.',
+                properties: {
+                  labels: { type: 'array', items: { type: 'object', additionalProperties: true } },
+                  lines: { type: 'array', items: { type: 'object', additionalProperties: true } },
+                  boxes: { type: 'array', items: { type: 'object', additionalProperties: true } },
+                },
               },
               warnings: {
                 type: 'array',

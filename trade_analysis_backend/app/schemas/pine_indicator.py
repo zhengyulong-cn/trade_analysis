@@ -18,5 +18,6 @@ class PineIndicatorExecuteResponse(SQLModel):
     interval: int
     bar_count: int
     indicator: dict[str, Any]
-    plots: dict[str, Any]
+    plots: list[dict[str, Any]]
+    drawings: dict[str, list[dict[str, Any]]]
     warnings: list[dict[str, Any]]

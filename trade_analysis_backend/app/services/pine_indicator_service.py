@@ -44,8 +44,14 @@ class PineIndicatorService:
 
         indicator = result.get("indicator")
         plots = result.get("plots")
+        drawings = result.get("drawings")
         warnings = result.get("warnings")
-        if not isinstance(indicator, dict) or not isinstance(plots, dict) or not isinstance(warnings, list):
+        if (
+            not isinstance(indicator, dict)
+            or not isinstance(plots, list)
+            or not isinstance(drawings, dict)
+            or not isinstance(warnings, list)
+        ):
             raise HTTPException(
                 status_code=status.HTTP_502_BAD_GATEWAY,
                 detail="Pine runner returned an invalid execution result.",
@@ -59,6 +65,7 @@ class PineIndicatorService:
             bar_count=len(bars),
             indicator=indicator,
             plots=plots,
+            drawings=drawings,
             warnings=warnings,
         )
 
