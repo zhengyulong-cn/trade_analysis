@@ -90,6 +90,14 @@ export const RouterModules: RouteRecordRaw[] = [
           title: "Pine脚本管理",
         },
       },
+      {
+        path: "/pine-playground",
+        component: () => import("@/views/managers/pine_playground/PinePlayground.vue"),
+        meta: {
+          icon: "",
+          title: "PineTS Playground",
+        },
+      },
     ],
   },
 ]
