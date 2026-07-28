@@ -1,6 +1,8 @@
 <script setup lang="ts">
 import type { FutureContract } from '@/api/modules'
 import { computed } from 'vue';
+import { storeToRefs } from 'pinia'
+import { useRealtimeMarketStore } from '@/stores/realtimeMarket'
 const props = withDefaults(
   defineProps<{
     contracts?: FutureContract[]
@@ -15,6 +17,8 @@ const emit = defineEmits<{
   'update:selectedContract': [value: string]
   'toggleFavorite': [value: string]
 }>()
+const realtimeMarketStore = useRealtimeMarketStore()
+const { quotes } = storeToRefs(realtimeMarketStore)
 const selectedContractId = computed(() => {
   return props.contracts.find((item) => item.symbol === props.selectedContract)?.contract_id
 })
@@ -23,6 +27,11 @@ const handleContractSelect = (contractValue: string) => {
   if (contractValue && contractValue !== props.selectedContract) {
     emit('update:selectedContract', contractValue)
   }
+}
+
+const getLatestPrice = (symbol: string) => {
+  const price = Number(quotes.value[symbol]?.last_price)
+  return Number.isFinite(price) ? price.toLocaleString('zh-CN', { maximumFractionDigits: 4 }) : '--'
 }
 </script>
 
@@ -42,6 +51,7 @@ const handleContractSelect = (contractValue: string) => {
         @click="handleContractSelect(contract.symbol)"
       >
         <span class="contract-symbol">{{ contract.symbol }}</span>
+        <span class="contract-price">{{ getLatestPrice(contract.symbol) }}</span>
         <span class="contract-name">{{ contract.name }}</span>
       </button>
     </el-scrollbar>
@@ -124,5 +134,13 @@ const handleContractSelect = (contractValue: string) => {
   font-size: 12px;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+.contract-price {
+  justify-self: end;
+  color: #0f766e;
+  font-size: 13px;
+  font-variant-numeric: tabular-nums;
+  font-weight: 600;
 }
 </style>

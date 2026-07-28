@@ -9,6 +9,8 @@ import {
 import { init, dispose, type Chart, type KLineData, type PeriodType } from "klinecharts"
 import { ElMessage } from "element-plus"
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from "vue"
+import { storeToRefs } from "pinia"
+import { useRealtimeMarketStore, type RealtimeBar } from "@/stores/realtimeMarket"
 import ChartSideBar from "./ChartSideBar.vue"
 import { chartStylesConfig } from "./config.ts"
 import PineIndicatorSelector from "./PineIndicatorSelector.vue"
@@ -38,7 +40,7 @@ const PERIOD_OPTIONS: PeriodOption[] = [
   { label: "30分", value: 60 * 30, type: "minute", span: 30 },
   { label: "1小时", value: 60 * 60, type: "hour", span: 1 },
 ]
-const DEFAULT_PERIOD_OPTION = PERIOD_OPTIONS[1] as PeriodOption
+const DEFAULT_PERIOD_OPTION = PERIOD_OPTIONS[0] as PeriodOption
 
 const chartRef = ref<HTMLDivElement>()
 const chartShellRef = ref<HTMLDivElement>()
@@ -60,7 +62,10 @@ let resizeObserver: ResizeObserver | null = null
 let latestRequestId = 0
 let latestPineIndicatorRequestId = 0
 let isInitializingChart = false
+let realtimeBarSubscriber: ((data: KLineData) => void) | null = null
 const renderedPineIndicatorIds = new Set<number>()
+const realtimeMarketStore = useRealtimeMarketStore()
+const { bars: realtimeBars } = storeToRefs(realtimeMarketStore)
 
 const pineIndicatorGroupId = (scriptId: number) => `pine-indicator-${scriptId}`
 
@@ -192,6 +197,22 @@ const toKLineChartsData = (items: FutureChartKLineItem[]): KLineData[] => {
   }))
 }
 
+const toRealtimeKLineData = (bar: RealtimeBar): KLineData => ({
+  timestamp: new Date(bar.date_time).getTime(),
+  open: Number(bar.open),
+  high: Number(bar.high),
+  low: Number(bar.low),
+  close: Number(bar.close),
+  volume: Number(bar.volume),
+})
+
+const publishRealtimeBar = (bar: RealtimeBar | undefined) => {
+  if (!bar || bar.symbol !== selectedSymbol.value || bar.interval !== selectedPeriod.value) {
+    return
+  }
+  realtimeBarSubscriber?.(toRealtimeKLineData(bar))
+}
+
 const loadChartBars = async (callback: (data: KLineData[], more?: boolean) => void) => {
   if (!selectedSymbol.value) {
     callback([], false)
@@ -215,6 +236,7 @@ const loadChartBars = async (callback: (data: KLineData[], more?: boolean) => vo
 
     const chartData = toKLineChartsData(response.kLineList)
     callback(chartData, false)
+    publishRealtimeBar(realtimeBars.value[`${selectedSymbol.value}:${selectedPeriod.value}`])
     klineCount.value = chartData.length
     reloadSelectedPineIndicators()
   } catch {
@@ -247,6 +269,13 @@ const ensureChart = async () => {
   chart?.setDataLoader({
     getBars: ({ callback }) => {
       void loadChartBars(callback)
+    },
+    subscribeBar: ({ callback }) => {
+      realtimeBarSubscriber = callback
+      publishRealtimeBar(realtimeBars.value[`${selectedSymbol.value}:${selectedPeriod.value}`])
+    },
+    unsubscribeBar: () => {
+      realtimeBarSubscriber = null
     },
   })
 
@@ -325,6 +354,17 @@ watch(selectedPeriod, () => {
   }
 })
 
+watch(
+  () => realtimeBars.value[`${selectedSymbol.value}:${selectedPeriod.value}`],
+  (bar) => publishRealtimeBar(bar),
+)
+
+watch(
+  () => props.contracts.map((contract) => contract.symbol),
+  (symbols) => realtimeMarketStore.subscribe(symbols),
+  { immediate: true },
+)
+
 onMounted(() => {
   void (async () => {
     // Set the period before a symbol is assigned so only setSymbol loads initial bars.
@@ -340,6 +380,8 @@ onMounted(() => {
 })
 
 onBeforeUnmount(() => {
+  realtimeBarSubscriber = null
+  realtimeMarketStore.disconnect()
   resizeObserver?.disconnect()
   resizeObserver = null
   if (chart) {

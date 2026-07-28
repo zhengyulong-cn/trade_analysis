@@ -10,6 +10,7 @@ from app.api.routes.opportunity_reviews import router as opportunity_review_rout
 from app.api.routes.pine_scripts import router as pine_script_router
 from app.api.routes.pine_indicators import router as pine_indicator_router
 from app.api.routes.realtime_bars import router as realtime_bar_router
+from app.api.routes.realtime_market import router as realtime_market_router
 from app.api.routes.signal_filters import router as signal_filter_router
 from app.api.routes.trade_accounts import router as trade_account_router
 from app.api.routes.trade_record_columns import router as trade_record_column_router
@@ -75,6 +76,11 @@ api_router.include_router(
     realtime_bar_router,
     prefix="/realtime-bars",
     tags=["realtime-bars"],
+)
+api_router.include_router(
+    realtime_market_router,
+    prefix="/ws",
+    tags=["realtime-market"],
 )
 api_router.include_router(
     analysis_router,

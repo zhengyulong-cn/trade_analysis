@@ -16,6 +16,8 @@ from app.models.contract import Contract
 from app.services.market_data import MarketQuote, MarketTradingTime
 from app.services.market_data.tqsdk_provider import TqSdkMarketDataProvider
 from app.services.realtime_bar_service import RealtimeBarService
+from app.services.realtime_market_hub import realtime_market_hub
+from app.core.kline_intervals import SUPPORTED_KLINE_INTERVALS
 from app.services.redis_client import redis_client_manager
 
 logger = get_logger(__name__)
@@ -147,7 +149,17 @@ class RealtimeQuoteWorker:
 
             for quote in quotes:
                 redis_client.set(self._quote_key(quote.symbol), self._encode_quote(quote))
-                service.process_quote(quote)
+                realtime_market_hub.publish_quote(quote)
+                processed_bars = service.process_quote(quote)
+                if not processed_bars:
+                    continue
+                for interval in SUPPORTED_KLINE_INTERVALS:
+                    current_bar = service.get_current_bar(
+                        symbol=quote.symbol,
+                        interval=interval,
+                    )
+                    if current_bar is not None:
+                        realtime_market_hub.publish_bar(current_bar)
 
     def _load_subscription_specs(self) -> list[QuoteSubscriptionSpec]:
         provider = TqSdkMarketDataProvider()
