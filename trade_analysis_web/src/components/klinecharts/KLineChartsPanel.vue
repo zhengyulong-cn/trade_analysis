@@ -1,31 +1,25 @@
 <script setup lang="ts">
 import {
-  executePineIndicatorApi,
   getFutureDataApi,
-  addWatchlistContractApi,
-  createWatchlistApi,
-  deleteWatchlistApi,
   type FutureContract,
   type FutureChartKLineItem,
-  getWatchlistContractsApi,
-  getWatchlistsApi,
-  type PineIndicatorExecuteResult,
-  removeWatchlistContractApi,
-  reorderWatchlistContractsApi,
-  type Watchlist,
-  type WatchlistContract,
 } from "@/api/modules"
 import { init, dispose, type Chart, type KLineData, type PeriodType } from "klinecharts"
 import { ElMessage } from "element-plus"
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from "vue"
 import { storeToRefs } from "pinia"
 import { useRealtimeMarketStore, type RealtimeBar } from "@/stores/realtimeMarket"
+import { usePositionOverlayStore } from "@/stores/positionOverlays"
 import ChartSideBar from "./ChartSideBar.vue"
 import { chartStylesConfig } from "./config.ts"
 import PineIndicatorSelector from "./PineIndicatorSelector.vue"
 import PineLabelTooltip from "./overlay/label/PineLabelTooltip.vue"
 import { usePineLabelTooltip } from "./overlay/label/usePineLabelTooltip.ts"
-import { createPineDrawingOverlays, registerPineDrawingOverlays } from "./overlay/pine-drawing-overlays.ts"
+import { registerPineDrawingOverlays } from "./overlay/pine-drawing-overlays.ts"
+import { registerPositionTextOverlay } from "./overlay/position-text-overlay.ts"
+import { usePineIndicators } from './composables/usePineIndicators'
+import { usePositionChartOverlays } from './composables/usePositionChartOverlays'
+import { useWatchlists } from './composables/useWatchlists'
 
 interface PeriodOption {
   label: string
@@ -55,14 +49,10 @@ const chartRef = ref<HTMLDivElement>()
 const chartShellRef = ref<HTMLDivElement>()
 const selectedSymbol = ref("")
 const selectedPeriod = ref(DEFAULT_PERIOD_OPTION.value)
-const watchlists = ref<Watchlist[]>([])
-const activeWatchlistId = ref<number | null>(null)
-const watchlistContracts = ref<WatchlistContract[]>([])
 const chartLoading = ref(false)
 const hasLoadedOnce = ref(false)
 const klineCount = ref(0)
-const selectedPineIndicatorIds = ref<number[]>([])
-const pineIndicatorLoadingIds = ref<number[]>([])
+const latestClosePrice = ref<number | undefined>()
 const {
   tooltip: pineLabelTooltip,
   hide: hidePineLabelTooltip,
@@ -72,112 +62,45 @@ const {
 let chart: Chart | null = null
 let resizeObserver: ResizeObserver | null = null
 let latestRequestId = 0
-let latestPineIndicatorRequestId = 0
 let isInitializingChart = false
 let realtimeBarSubscriber: ((data: KLineData) => void) | null = null
-const renderedPineIndicatorIds = new Set<number>()
 const realtimeMarketStore = useRealtimeMarketStore()
 const { bars: realtimeBars } = storeToRefs(realtimeMarketStore)
-
-const pineIndicatorGroupId = (scriptId: number) => `pine-indicator-${scriptId}`
-
-const setPineIndicatorLoading = (scriptId: number, loading: boolean) => {
-  const ids = new Set(pineIndicatorLoadingIds.value)
-  if (loading) {
-    ids.add(scriptId)
-  } else {
-    ids.delete(scriptId)
-  }
-  pineIndicatorLoadingIds.value = [...ids]
-}
-
-const removePineIndicatorOverlays = (scriptId: number) => {
-  chart?.removeOverlay({ groupId: pineIndicatorGroupId(scriptId) })
-  renderedPineIndicatorIds.delete(scriptId)
-}
-
-const clearPineIndicatorOverlays = () => {
-  hidePineLabelTooltip()
-  for (const scriptId of new Set([...renderedPineIndicatorIds, ...selectedPineIndicatorIds.value])) {
-    removePineIndicatorOverlays(scriptId)
-  }
-}
-
-const renderPineIndicator = (result: PineIndicatorExecuteResult) => {
-  if (!chart) {
-    return
-  }
-
-  removePineIndicatorOverlays(result.script_id)
-  const overlays = createPineDrawingOverlays(pineIndicatorGroupId(result.script_id), result.drawings, {
+const positionOverlayStore = usePositionOverlayStore()
+const { positions } = storeToRefs(positionOverlayStore)
+const {
+  watchlists,
+  activeWatchlistId,
+  watchlistContracts,
+  loadWatchlists,
+  switchWatchlist,
+  createWatchlist,
+  deleteWatchlist,
+  addContractToWatchlist,
+  removeContractFromWatchlist,
+  reorderWatchlistContracts,
+} = useWatchlists()
+const { clear: clearPositionOverlays, render: renderPositionOverlays } = usePositionChartOverlays(
+  () => chart,
+  selectedSymbol,
+  positions,
+)
+const {
+  selectedPineIndicatorIds,
+  pineIndicatorLoadingIds,
+  clear: clearPineIndicatorOverlays,
+  reload: reloadSelectedPineIndicators,
+  update: updateSelectedPineIndicators,
+} = usePineIndicators(
+  () => chart,
+  selectedSymbol,
+  selectedPeriod,
+  {
     onEnter: showPineLabelTooltip,
     onMove: showPineLabelTooltip,
     onLeave: hidePineLabelTooltip,
-  })
-  if (overlays.length) {
-    chart.createOverlay(overlays)
-    renderedPineIndicatorIds.add(result.script_id)
-  }
-}
-
-const loadPineIndicator = async (scriptId: number) => {
-  const symbol = selectedSymbol.value
-  const interval = selectedPeriod.value
-  if (!chart || !symbol || !selectedPineIndicatorIds.value.includes(scriptId)) {
-    return
-  }
-
-  const requestId = ++latestPineIndicatorRequestId
-  setPineIndicatorLoading(scriptId, true)
-  try {
-    const result = await executePineIndicatorApi({
-      script_id: scriptId,
-      symbol,
-      interval,
-      limit: 1000,
-    })
-    const isStillCurrent = chart
-      && selectedSymbol.value === symbol
-      && selectedPeriod.value === interval
-      && selectedPineIndicatorIds.value.includes(scriptId)
-    if (!isStillCurrent) {
-      return
-    }
-    renderPineIndicator(result)
-  } catch {
-    if (selectedSymbol.value === symbol && selectedPeriod.value === interval) {
-      ElMessage.error(`Failed to load Pine indicator #${scriptId}.`)
-    }
-  } finally {
-    if (requestId <= latestPineIndicatorRequestId) {
-      setPineIndicatorLoading(scriptId, false)
-    }
-  }
-}
-
-const reloadSelectedPineIndicators = () => {
-  for (const scriptId of selectedPineIndicatorIds.value) {
-    void loadPineIndicator(scriptId)
-  }
-}
-
-const updateSelectedPineIndicators = (scriptIds: number[]) => {
-  const nextIds = [...new Set(scriptIds)]
-  const nextIdSet = new Set(nextIds)
-  for (const scriptId of selectedPineIndicatorIds.value) {
-    if (!nextIdSet.has(scriptId)) {
-      removePineIndicatorOverlays(scriptId)
-    }
-  }
-
-  const currentIdSet = new Set(selectedPineIndicatorIds.value)
-  selectedPineIndicatorIds.value = nextIds
-  for (const scriptId of nextIds) {
-    if (!currentIdSet.has(scriptId)) {
-      void loadPineIndicator(scriptId)
-    }
-  }
-}
+  },
+)
 
 const sortedContracts = computed(() => watchlistContracts.value)
 const selectableContracts = computed(() => {
@@ -187,69 +110,16 @@ const selectableContracts = computed(() => {
 const currentContract = computed(() => {
   return props.contracts.find((item) => item.symbol === selectedSymbol.value)
 })
+const currentLatestPrice = computed(() => {
+  const realtimePrice = Number(realtimeBars.value[`${selectedSymbol.value}:${selectedPeriod.value}`]?.close)
+  return Number.isFinite(realtimePrice) ? realtimePrice : latestClosePrice.value
+})
 
 const isChartUnavailable = computed(() => !props.loading && !watchlistContracts.value.length)
 const isChartEmpty = computed(() => hasLoadedOnce.value && !chartLoading.value && klineCount.value === 0)
 const selectedPeriodOption = computed(() => {
   return PERIOD_OPTIONS.find((item) => item.value === selectedPeriod.value) ?? DEFAULT_PERIOD_OPTION
 })
-
-const loadWatchlistContracts = async (watchlistId: number) => {
-  watchlistContracts.value = await getWatchlistContractsApi(watchlistId)
-}
-
-const loadWatchlists = async () => {
-  watchlists.value = await getWatchlistsApi()
-  const activeExists = watchlists.value.some((item) => item.watchlist_id === activeWatchlistId.value)
-  activeWatchlistId.value = activeExists
-    ? activeWatchlistId.value
-    : (watchlists.value[0]?.watchlist_id ?? null)
-  if (activeWatchlistId.value !== null) {
-    await loadWatchlistContracts(activeWatchlistId.value)
-  }
-}
-
-const switchWatchlist = async (watchlistId: number) => {
-  activeWatchlistId.value = watchlistId
-  await loadWatchlistContracts(watchlistId)
-}
-
-const createWatchlist = async (name: string) => {
-  const watchlist = await createWatchlistApi({ name })
-  await loadWatchlists()
-  await switchWatchlist(watchlist.watchlist_id)
-}
-
-const deleteWatchlist = async (watchlistId: number) => {
-  await deleteWatchlistApi(watchlistId)
-  activeWatchlistId.value = null
-  await loadWatchlists()
-}
-
-const addContractToWatchlist = async (contractId: number) => {
-  if (activeWatchlistId.value === null) return
-  await addWatchlistContractApi(activeWatchlistId.value, contractId)
-  await loadWatchlistContracts(activeWatchlistId.value)
-  await loadWatchlists()
-}
-
-const removeContractFromWatchlist = async (contractId: number) => {
-  if (activeWatchlistId.value === null) return
-  await removeWatchlistContractApi(activeWatchlistId.value, contractId)
-  await loadWatchlistContracts(activeWatchlistId.value)
-  await loadWatchlists()
-}
-
-const reorderWatchlistContracts = async (contractIds: number[]) => {
-  if (activeWatchlistId.value === null) return
-  try {
-    await reorderWatchlistContractsApi(activeWatchlistId.value, contractIds)
-    await loadWatchlistContracts(activeWatchlistId.value)
-  } catch {
-    await loadWatchlistContracts(activeWatchlistId.value)
-    ElMessage.error('保存自选表排序失败')
-  }
-}
 
 const toKLineChartsData = (items: FutureChartKLineItem[]): KLineData[] => {
   return items.map((item) => ({
@@ -275,7 +145,9 @@ const publishRealtimeBar = (bar: RealtimeBar | undefined) => {
   if (!bar || bar.symbol !== selectedSymbol.value || bar.interval !== selectedPeriod.value) {
     return
   }
+  latestClosePrice.value = Number(bar.close)
   realtimeBarSubscriber?.(toRealtimeKLineData(bar))
+  renderPositionOverlays()
 }
 
 const loadChartBars = async (callback: (data: KLineData[], more?: boolean) => void) => {
@@ -300,8 +172,10 @@ const loadChartBars = async (callback: (data: KLineData[], more?: boolean) => vo
     }
 
     const chartData = toKLineChartsData(response.kLineList)
+    latestClosePrice.value = chartData.at(-1)?.close
     callback(chartData, false)
     publishRealtimeBar(realtimeBars.value[`${selectedSymbol.value}:${selectedPeriod.value}`])
+    renderPositionOverlays()
     klineCount.value = chartData.length
     reloadSelectedPineIndicators()
   } catch {
@@ -330,6 +204,7 @@ const ensureChart = async () => {
     styles: chartStylesConfig,
   })
   registerPineDrawingOverlays()
+  registerPositionTextOverlay()
 
   chart?.setDataLoader({
     getBars: ({ callback }) => {
@@ -353,6 +228,7 @@ const ensureChart = async () => {
 const clearChart = () => {
   chart?.resetData()
   clearPineIndicatorOverlays()
+  clearPositionOverlays()
   klineCount.value = 0
 }
 
@@ -408,6 +284,7 @@ watch(
 )
 
 watch(selectedSymbol, () => {
+  latestClosePrice.value = undefined
   if (!isInitializingChart) {
     void refreshChartSymbol()
   }
@@ -423,6 +300,8 @@ watch(
   () => realtimeBars.value[`${selectedSymbol.value}:${selectedPeriod.value}`],
   (bar) => publishRealtimeBar(bar),
 )
+
+watch(positions, () => renderPositionOverlays(), { deep: true })
 
 watch(
   () => [...watchlistContracts.value.map((contract) => contract.symbol), selectedSymbol.value],
@@ -452,6 +331,7 @@ onBeforeUnmount(() => {
   resizeObserver = null
   if (chart) {
     clearPineIndicatorOverlays()
+    clearPositionOverlays()
     dispose(chart)
     chart = null
   }
@@ -508,6 +388,7 @@ onBeforeUnmount(() => {
         :active-watchlist-id="activeWatchlistId"
         :watchlist-contracts="sortedContracts"
         :selected-contract="selectedSymbol"
+        :latest-price="currentLatestPrice"
         @update:selected-contract="selectedSymbol = $event"
         @update:active-watchlist-id="switchWatchlist"
         @create-watchlist="createWatchlist"

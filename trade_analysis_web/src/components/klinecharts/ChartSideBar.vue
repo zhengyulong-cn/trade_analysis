@@ -3,6 +3,7 @@ import { computed, ref } from 'vue'
 import type { FutureContract, Watchlist, WatchlistContract } from '@/api/modules'
 import { Collection, Monitor } from '@element-plus/icons-vue'
 import ContractListPanel from './sidebar_panel/ContractListPanel.vue';
+import PositionPanel from './sidebar_panel/PositionPanel.vue'
 
 enum PanelTypeEnum {
   Contracts = 'contracts',
@@ -16,6 +17,7 @@ const props = withDefaults(
     activeWatchlistId?: number | null
     watchlistContracts?: WatchlistContract[]
     selectedContract?: string
+    latestPrice?: number
   }>(),
   {
     contracts: () => [],
@@ -23,6 +25,7 @@ const props = withDefaults(
     activeWatchlistId: null,
     watchlistContracts: () => [],
     selectedContract: '',
+    latestPrice: undefined,
   },
 )
 
@@ -54,6 +57,7 @@ const toggleSidePanel = (panel: PanelTypeEnum) => {
         :contracts="watchlistContracts"
         :available-contracts="contracts"
         :selected-contract="selectedContract"
+        :latest-price="latestPrice"
         @update:selected-contract="emit('update:selectedContract', $event)"
         @update:active-watchlist-id="emit('update:activeWatchlistId', $event)"
         @create-watchlist="emit('create-watchlist', $event)"
@@ -62,9 +66,13 @@ const toggleSidePanel = (panel: PanelTypeEnum) => {
         @remove-contract="emit('remove-contract', $event)"
         @reorder-contracts="emit('reorder-contracts', $event)"
       />
-      <section v-else-if="activeSidePanel === PanelTypeEnum.Monitor" class="news-panel">
-        <div class="panel-empty">暂无监视</div>
-      </section>
+      <PositionPanel
+        v-else-if="activeSidePanel === PanelTypeEnum.Monitor"
+        :contracts="contracts"
+        :selected-contract="selectedContract"
+        :latest-price="latestPrice"
+        @update:selected-contract="emit('update:selectedContract', $event)"
+      />
     </div>
     <div class="sidebar-actions">
       <button
