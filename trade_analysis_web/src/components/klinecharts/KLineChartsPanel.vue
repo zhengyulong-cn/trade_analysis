@@ -59,6 +59,7 @@ let chart: Chart | null = null
 let resizeObserver: ResizeObserver | null = null
 let latestRequestId = 0
 let latestPineIndicatorRequestId = 0
+let isInitializingChart = false
 const renderedPineIndicatorIds = new Set<number>()
 
 const pineIndicatorGroupId = (scriptId: number) => `pine-indicator-${scriptId}`
@@ -261,25 +262,39 @@ const clearChart = () => {
   klineCount.value = 0
 }
 
-const refreshChart = async () => {
+const refreshChartSymbol = async () => {
   if (!selectedSymbol.value) {
     clearChart()
     return
   }
 
   await ensureChart()
-  clearPineIndicatorOverlays()
   const contract = currentContract.value
+  if (chart?.getSymbol()?.ticker === selectedSymbol.value) {
+    return
+  }
+
+  clearPineIndicatorOverlays()
   chart?.setSymbol({
     ticker: selectedSymbol.value,
     name: contract?.name ?? selectedSymbol.value,
     shortName: selectedSymbol.value,
   })
+}
+
+const refreshChartPeriod = async () => {
+  await ensureChart()
+  const nextPeriod = selectedPeriodOption.value
+  const currentPeriod = chart?.getPeriod()
+  if (currentPeriod?.type === nextPeriod.type && currentPeriod.span === nextPeriod.span) {
+    return
+  }
+
+  clearPineIndicatorOverlays()
   chart?.setPeriod({
-    type: selectedPeriodOption.value.type,
-    span: selectedPeriodOption.value.span,
+    type: nextPeriod.type,
+    span: nextPeriod.span,
   })
-  chart?.resetData()
 }
 
 watch(
@@ -298,14 +313,29 @@ watch(
   { immediate: true },
 )
 
-watch([selectedSymbol, selectedPeriod], () => {
-  void refreshChart()
+watch(selectedSymbol, () => {
+  if (!isInitializingChart) {
+    void refreshChartSymbol()
+  }
+})
+
+watch(selectedPeriod, () => {
+  if (!isInitializingChart) {
+    void refreshChartPeriod()
+  }
 })
 
 onMounted(() => {
   void (async () => {
+    // Set the period before a symbol is assigned so only setSymbol loads initial bars.
+    isInitializingChart = true
+    const initialSymbol = selectedSymbol.value
+    selectedSymbol.value = ""
     await ensureChart()
-    await refreshChart()
+    await refreshChartPeriod()
+    selectedSymbol.value = initialSymbol
+    await refreshChartSymbol()
+    isInitializingChart = false
   })()
 })
 
