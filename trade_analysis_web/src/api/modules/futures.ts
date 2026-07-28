@@ -6,7 +6,6 @@ export interface FutureContract {
   symbol: string
   exchange: string
   name: string
-  is_favorite: number
   create_at: string
   updated_at: string
 }
@@ -15,11 +14,23 @@ export interface FutureContractCreateParams {
   symbol: string
   exchange: string
   name: string
-  is_favorite?: number
 }
 
 export interface FutureContractUpdateParams extends Partial<FutureContractCreateParams> {
   contract_id: number
+}
+
+export interface Watchlist {
+  watchlist_id: number
+  name: string
+  display_order: number
+  item_count: number
+  create_at: string
+  updated_at: string
+}
+
+export interface WatchlistContract extends FutureContract {
+  display_order: number
 }
 
 export interface FutureMainContractCandidate {
@@ -214,6 +225,34 @@ export const getFutureDataApi = async (params: { symbol: string; period: number;
 
 export const getFutureContractList = () => {
   return axios.get<FutureContract[]>("/contracts") as unknown as Promise<FutureContract[]>
+}
+
+export const getWatchlistsApi = () => {
+  return axios.get<Watchlist[]>('/watchlists') as unknown as Promise<Watchlist[]>
+}
+
+export const createWatchlistApi = (params: { name: string }) => {
+  return axios.post<Watchlist>('/watchlists', params) as unknown as Promise<Watchlist>
+}
+
+export const deleteWatchlistApi = (watchlistId: number) => {
+  return axios.post<void>(`/watchlists/${watchlistId}/delete`) as unknown as Promise<void>
+}
+
+export const getWatchlistContractsApi = (watchlistId: number) => {
+  return axios.get<WatchlistContract[]>(`/watchlists/${watchlistId}/contracts`) as unknown as Promise<WatchlistContract[]>
+}
+
+export const addWatchlistContractApi = (watchlistId: number, contractId: number) => {
+  return axios.post<void>(`/watchlists/${watchlistId}/contracts`, { contract_id: contractId }) as unknown as Promise<void>
+}
+
+export const removeWatchlistContractApi = (watchlistId: number, contractId: number) => {
+  return axios.post<void>(`/watchlists/${watchlistId}/contracts/remove`, { contract_id: contractId }) as unknown as Promise<void>
+}
+
+export const reorderWatchlistContractsApi = (watchlistId: number, contractIds: number[]) => {
+  return axios.post<void>(`/watchlists/${watchlistId}/contracts/reorder`, { contract_ids: contractIds }) as unknown as Promise<void>
 }
 
 export type FutureSignalDirection = 'all' | 'long' | 'short'

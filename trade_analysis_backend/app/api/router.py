@@ -17,6 +17,7 @@ from app.api.routes.trade_record_columns import router as trade_record_column_ro
 from app.api.routes.trade_records import router as trade_record_router
 from app.api.routes.trade_thoughts import router as trade_thought_router
 from app.api.routes.uploads import router as upload_router
+from app.api.routes.watchlists import router as watchlist_router
 
 api_router = APIRouter()
 api_router.include_router(health_router, tags=["health"])
@@ -26,6 +27,7 @@ api_router.include_router(
     tags=["chart-persistences"],
 )
 api_router.include_router(contract_router, prefix="/contracts", tags=["contracts"])
+api_router.include_router(watchlist_router, prefix="/watchlists", tags=["watchlists"])
 api_router.include_router(kline_router, prefix="/klines", tags=["klines"])
 api_router.include_router(
     trade_account_router,

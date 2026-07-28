@@ -1,6 +1,6 @@
 <script lang="ts" setup>
 import KLineSection from '@/components/charts/KLineSection.vue'
-import { getFutureDataApi, updateFutureContract, type FutureKlineData } from '@/api/modules'
+import { getFutureDataApi, type FutureKlineData } from '@/api/modules'
 import { useContractsStore } from '@/stores/contracts'
 import { ElMessage } from 'element-plus'
 import type { ChartOptions, DeepPartial } from 'lightweight-charts'
@@ -50,25 +50,7 @@ const contractOptions = computed(() => {
 })
 
 const sortedContractOptions = computed(() => {
-  return [...contractOptions.value]
-    .sort((first, second) => {
-      const firstContract = contracts.value.find((contract) => contract.symbol === first.value)
-      const secondContract = contracts.value.find((contract) => contract.symbol === second.value)
-      const firstFavorite = firstContract?.is_favorite ?? 0
-      const secondFavorite = secondContract?.is_favorite ?? 0
-
-      if (firstFavorite !== secondFavorite) {
-        return secondFavorite - firstFavorite
-      }
-      return first.value.localeCompare(second.value, 'zh-CN')
-    })
-    .map((option) => {
-      const contract = contracts.value.find((item) => item.symbol === option.value)
-      return {
-        ...option,
-        isFavorite: contract?.is_favorite === 1,
-      }
-    })
+  return [...contractOptions.value].sort((first, second) => first.value.localeCompare(second.value, 'zh-CN'))
 })
 
 const chartOptions = computed<DeepPartial<ChartOptions>>(() => ({
@@ -151,24 +133,6 @@ const syncRouteQuery = async () => {
     path: route.path,
     query: nextQuery,
   })
-}
-
-const handleToggleFavorite = async (symbol: string) => {
-  const contract = contracts.value.find((item) => item.symbol === symbol)
-  if (!contract) {
-    return
-  }
-
-  try {
-    const updatedContract = await updateFutureContract({
-      contract_id: contract.contract_id,
-      is_favorite: contract.is_favorite === 1 ? 0 : 1,
-    })
-    contractsStore.upsertContract(updatedContract)
-    ElMessage.success(updatedContract.is_favorite === 1 ? '已加入收藏' : '已取消收藏')
-  } catch {
-    ElMessage.error('切换合约收藏状态失败')
-  }
 }
 
 const loadKLineData = async () => {
@@ -270,7 +234,6 @@ watch(
       :unavailable-description="UNAVAILABLE_DESCRIPTION"
       @update:selected-contract="selectedSymbol = $event"
       @update:selected-period="selectedPeriod = Number($event)"
-      @toggle-favorite="handleToggleFavorite"
     />
   </div>
 </template>

@@ -13,10 +13,6 @@ export const useContractsStore = defineStore('contracts', () => {
     return new Map(contracts.value.map((contract) => [contract.symbol, contract]))
   })
 
-  const favoriteContracts = computed(() => {
-    return contracts.value.filter((contract) => contract.is_favorite === 1)
-  })
-
   const loadContracts = async (force = false) => {
     if (loading.value) {
       return contracts.value
@@ -64,7 +60,6 @@ export const useContractsStore = defineStore('contracts', () => {
     loaded,
     loadError,
     contractsMap,
-    favoriteContracts,
     loadContracts,
     setContracts,
     upsertContract,

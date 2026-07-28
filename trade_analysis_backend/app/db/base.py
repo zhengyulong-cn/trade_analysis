@@ -11,5 +11,6 @@ from app.models.trade_account import TradeAccount  # noqa: F401
 from app.models.trade_record_column import TradeRecordColumn  # noqa: F401
 from app.models.trade_record import TradeRecord  # noqa: F401
 from app.models.trade_thought import TradeThought  # noqa: F401
+from app.models.watchlist import Watchlist, WatchlistItem  # noqa: F401
 
 metadata = SQLModel.metadata

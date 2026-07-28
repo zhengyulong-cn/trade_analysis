@@ -8,7 +8,6 @@ class ContractBase(SQLModel):
     symbol: str
     exchange: str
     name: str
-    is_favorite: int = 0
 
 
 class ContractCreate(ContractBase):
@@ -20,7 +19,6 @@ class ContractUpdate(SQLModel):
     symbol: str | None = None
     exchange: str | None = None
     name: str | None = None
-    is_favorite: int | None = None
 
 
 class MainContractCandidateRead(SQLModel):

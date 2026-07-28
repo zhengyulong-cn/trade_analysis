@@ -1,11 +1,8 @@
 <script setup lang="ts">
-import { Star, StarFilled } from '@element-plus/icons-vue'
-
 interface ContractOption {
   label: string
   value: string
   description?: string
-  isFavorite?: boolean
 }
 
 withDefaults(
@@ -22,16 +19,12 @@ withDefaults(
 const emit = defineEmits<{
   close: []
   select: [value: string]
-  toggleFavorite: [value: string]
 }>()
 
 const handleContractSelect = (contractValue: string) => {
   emit('select', contractValue)
 }
 
-const handleToggleFavorite = (contractValue: string) => {
-  emit('toggleFavorite', contractValue)
-}
 </script>
 
 <template>
@@ -47,17 +40,6 @@ const handleToggleFavorite = (contractValue: string) => {
       >
         <div class="contract-item__header">
           <div class="contract-code">{{ contract.label }}</div>
-          <button
-            type="button"
-            class="favorite-button"
-            :class="{ 'favorite-button--active': contract.isFavorite }"
-            @click.stop="handleToggleFavorite(contract.value)"
-          >
-            <el-icon>
-              <StarFilled v-if="contract.isFavorite" />
-              <Star v-else />
-            </el-icon>
-          </button>
         </div>
         <div>{{ contract.value }}</div>
       </button>
@@ -113,30 +95,4 @@ const handleToggleFavorite = (contractValue: string) => {
   font-weight: 600;
 }
 
-.favorite-button {
-  width: 28px;
-  height: 28px;
-  flex: 0 0 28px;
-  padding: 0;
-  border: 0;
-  border-radius: 50%;
-  background: transparent;
-  color: #c0c4cc;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  cursor: pointer;
-  transition:
-    color 0.2s ease,
-    background-color 0.2s ease;
-}
-
-.favorite-button:hover {
-  color: #e6a23c;
-  background: rgba(230, 162, 60, 0.1);
-}
-
-.favorite-button--active {
-  color: #e6a23c;
-}
 </style>

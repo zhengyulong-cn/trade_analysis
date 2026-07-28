@@ -31,6 +31,7 @@ from app.services.redis_client import redis_client_manager
 from app.services.trade_thought_service import TradeThoughtService
 from app.services.trade_thought_storage import TradeThoughtStorageService
 from app.services.upload_service import UploadService
+from app.services.watchlist_service import WatchlistService
 
 SessionDep = Annotated[Session, Depends(get_session)]
 
@@ -58,6 +59,10 @@ RedisClientDep = Annotated[Redis, Depends(get_redis_client)]
 
 def get_contract_service(session: SessionDep) -> ContractService:
     return ContractService(session)
+
+
+def get_watchlist_service(session: SessionDep) -> WatchlistService:
+    return WatchlistService(session)
 
 
 def get_chart_persistence_service(session: SessionDep) -> ChartPersistenceService:
@@ -155,6 +160,7 @@ def get_realtime_bar_service(
 
 
 ContractServiceDep = Annotated[ContractService, Depends(get_contract_service)]
+WatchlistServiceDep = Annotated[WatchlistService, Depends(get_watchlist_service)]
 ChartPersistenceServiceDep = Annotated[
     ChartPersistenceService, Depends(get_chart_persistence_service)
 ]

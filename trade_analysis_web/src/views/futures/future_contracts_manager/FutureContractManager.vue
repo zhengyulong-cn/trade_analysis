@@ -9,7 +9,6 @@ import {
   type FutureContractCreateParams,
   type FutureMainContractCandidate,
 } from '@/api/modules'
-import { Star, StarFilled } from '@element-plus/icons-vue'
 import { formatDateTime as formatDateTimeByDayjs } from '@/utils/date'
 import { ElMessage, type FormInstance, type FormRules } from 'element-plus'
 import { computed, onMounted, reactive, ref } from 'vue'
@@ -35,7 +34,6 @@ const loading = ref(false)
 const submitting = ref(false)
 const syncingMainContracts = ref(false)
 const mainContractsLoading = ref(false)
-const favoriteTogglingIds = ref<number[]>([])
 const dialogVisible = ref(false)
 const dialogMode = ref<'create' | 'edit'>('create')
 const formRef = ref<FormInstance>()
@@ -162,31 +160,6 @@ const formatDateTime = (_row: FutureContract, _column: unknown, value: string) =
   return formatDateTimeByDayjs(value)
 }
 
-const isFavoriteToggling = (contractId: number) => {
-  return favoriteTogglingIds.value.includes(contractId)
-}
-
-const handleFavoriteToggle = async (row: FutureContract) => {
-  favoriteTogglingIds.value = [...favoriteTogglingIds.value, row.contract_id]
-
-  try {
-    const updatedContract = await updateFutureContract({
-      contract_id: row.contract_id,
-      is_favorite: row.is_favorite === 1 ? 0 : 1,
-    })
-    contracts.value = sortContractsBySymbol(
-      contracts.value.map((item) => {
-        return item.contract_id === updatedContract.contract_id ? updatedContract : item
-      }),
-    )
-    ElMessage.success(updatedContract.is_favorite === 1 ? '已加入收藏' : '已取消收藏')
-  } catch {
-    ElMessage.error('切换合约收藏状态失败')
-  } finally {
-    favoriteTogglingIds.value = favoriteTogglingIds.value.filter((item) => item !== row.contract_id)
-  }
-}
-
 const handleMainContractSelectionChange = (selection: FutureMainContractCandidate[]) => {
   selectedMainContracts.value = selection
 }
@@ -241,25 +214,7 @@ onMounted(() => {
       empty-text="暂无期货合约"
     >
       <el-table-column prop="contract_id" label="ID" width="90" />
-      <el-table-column prop="symbol" label="合约代码" min-width="160">
-        <template #default="{ row }">
-          <div class="symbol-cell">
-            <span class="symbol-text">{{ row.symbol }}</span>
-            <button
-              type="button"
-              class="favorite-button"
-              :class="{ 'favorite-button--active': row.is_favorite === 1 }"
-              :disabled="isFavoriteToggling(row.contract_id)"
-              @click="handleFavoriteToggle(row)"
-            >
-              <el-icon>
-                <StarFilled v-if="row.is_favorite === 1" />
-                <Star v-else />
-              </el-icon>
-            </button>
-          </div>
-        </template>
-      </el-table-column>
+      <el-table-column prop="symbol" label="合约代码" min-width="160" />
       <el-table-column prop="exchange" label="交易所" min-width="120" />
       <el-table-column prop="name" label="合约名称" min-width="180" />
       <el-table-column

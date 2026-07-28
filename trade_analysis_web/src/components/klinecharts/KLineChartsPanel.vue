@@ -2,9 +2,18 @@
 import {
   executePineIndicatorApi,
   getFutureDataApi,
+  addWatchlistContractApi,
+  createWatchlistApi,
+  deleteWatchlistApi,
   type FutureContract,
   type FutureChartKLineItem,
+  getWatchlistContractsApi,
+  getWatchlistsApi,
   type PineIndicatorExecuteResult,
+  removeWatchlistContractApi,
+  reorderWatchlistContractsApi,
+  type Watchlist,
+  type WatchlistContract,
 } from "@/api/modules"
 import { init, dispose, type Chart, type KLineData, type PeriodType } from "klinecharts"
 import { ElMessage } from "element-plus"
@@ -46,6 +55,9 @@ const chartRef = ref<HTMLDivElement>()
 const chartShellRef = ref<HTMLDivElement>()
 const selectedSymbol = ref("")
 const selectedPeriod = ref(DEFAULT_PERIOD_OPTION.value)
+const watchlists = ref<Watchlist[]>([])
+const activeWatchlistId = ref<number | null>(null)
+const watchlistContracts = ref<WatchlistContract[]>([])
 const chartLoading = ref(false)
 const hasLoadedOnce = ref(false)
 const klineCount = ref(0)
@@ -167,24 +179,77 @@ const updateSelectedPineIndicators = (scriptIds: number[]) => {
   }
 }
 
-const sortedContracts = computed(() => {
-  return [...props.contracts].sort((first, second) => {
-    if (first.is_favorite !== second.is_favorite) {
-      return second.is_favorite - first.is_favorite
-    }
-    return first.symbol.localeCompare(second.symbol, "zh-CN")
-  })
+const sortedContracts = computed(() => watchlistContracts.value)
+const selectableContracts = computed(() => {
+  return [...props.contracts].sort((first, second) => first.symbol.localeCompare(second.symbol, 'zh-CN'))
 })
 
 const currentContract = computed(() => {
   return props.contracts.find((item) => item.symbol === selectedSymbol.value)
 })
 
-const isChartUnavailable = computed(() => !props.loading && !props.contracts.length)
+const isChartUnavailable = computed(() => !props.loading && !watchlistContracts.value.length)
 const isChartEmpty = computed(() => hasLoadedOnce.value && !chartLoading.value && klineCount.value === 0)
 const selectedPeriodOption = computed(() => {
   return PERIOD_OPTIONS.find((item) => item.value === selectedPeriod.value) ?? DEFAULT_PERIOD_OPTION
 })
+
+const loadWatchlistContracts = async (watchlistId: number) => {
+  watchlistContracts.value = await getWatchlistContractsApi(watchlistId)
+}
+
+const loadWatchlists = async () => {
+  watchlists.value = await getWatchlistsApi()
+  const activeExists = watchlists.value.some((item) => item.watchlist_id === activeWatchlistId.value)
+  activeWatchlistId.value = activeExists
+    ? activeWatchlistId.value
+    : (watchlists.value[0]?.watchlist_id ?? null)
+  if (activeWatchlistId.value !== null) {
+    await loadWatchlistContracts(activeWatchlistId.value)
+  }
+}
+
+const switchWatchlist = async (watchlistId: number) => {
+  activeWatchlistId.value = watchlistId
+  await loadWatchlistContracts(watchlistId)
+}
+
+const createWatchlist = async (name: string) => {
+  const watchlist = await createWatchlistApi({ name })
+  await loadWatchlists()
+  await switchWatchlist(watchlist.watchlist_id)
+}
+
+const deleteWatchlist = async (watchlistId: number) => {
+  await deleteWatchlistApi(watchlistId)
+  activeWatchlistId.value = null
+  await loadWatchlists()
+}
+
+const addContractToWatchlist = async (contractId: number) => {
+  if (activeWatchlistId.value === null) return
+  await addWatchlistContractApi(activeWatchlistId.value, contractId)
+  await loadWatchlistContracts(activeWatchlistId.value)
+  await loadWatchlists()
+}
+
+const removeContractFromWatchlist = async (contractId: number) => {
+  if (activeWatchlistId.value === null) return
+  await removeWatchlistContractApi(activeWatchlistId.value, contractId)
+  await loadWatchlistContracts(activeWatchlistId.value)
+  await loadWatchlists()
+}
+
+const reorderWatchlistContracts = async (contractIds: number[]) => {
+  if (activeWatchlistId.value === null) return
+  try {
+    await reorderWatchlistContractsApi(activeWatchlistId.value, contractIds)
+    await loadWatchlistContracts(activeWatchlistId.value)
+  } catch {
+    await loadWatchlistContracts(activeWatchlistId.value)
+    ElMessage.error('保存自选表排序失败')
+  }
+}
 
 const toKLineChartsData = (items: FutureChartKLineItem[]): KLineData[] => {
   return items.map((item) => ({
@@ -360,8 +425,8 @@ watch(
 )
 
 watch(
-  () => props.contracts.map((contract) => contract.symbol),
-  (symbols) => realtimeMarketStore.subscribe(symbols),
+  () => [...watchlistContracts.value.map((contract) => contract.symbol), selectedSymbol.value],
+  (symbols) => realtimeMarketStore.subscribe(symbols.filter(Boolean)),
   { immediate: true },
 )
 
@@ -369,6 +434,7 @@ onMounted(() => {
   void (async () => {
     // Set the period before a symbol is assigned so only setSymbol loads initial bars.
     isInitializingChart = true
+    await loadWatchlists()
     const initialSymbol = selectedSymbol.value
     selectedSymbol.value = ""
     await ensureChart()
@@ -406,7 +472,7 @@ onBeforeUnmount(() => {
             class="contract-select"
           >
             <el-option
-              v-for="contract in sortedContracts"
+            v-for="contract in selectableContracts"
               :key="contract.contract_id"
               :label="`${contract.symbol} ${contract.name}`"
               :value="contract.symbol"
@@ -437,9 +503,18 @@ onBeforeUnmount(() => {
     </div>
     <aside class="chart-side-bar">
       <ChartSideBar
-        :contracts="sortedContracts"
+        :contracts="contracts"
+        :watchlists="watchlists"
+        :active-watchlist-id="activeWatchlistId"
+        :watchlist-contracts="sortedContracts"
         :selected-contract="selectedSymbol"
         @update:selected-contract="selectedSymbol = $event"
+        @update:active-watchlist-id="switchWatchlist"
+        @create-watchlist="createWatchlist"
+        @delete-watchlist="deleteWatchlist"
+        @add-contract="addContractToWatchlist"
+        @remove-contract="removeContractFromWatchlist"
+        @reorder-contracts="reorderWatchlistContracts"
       />
     </aside>
   </section>

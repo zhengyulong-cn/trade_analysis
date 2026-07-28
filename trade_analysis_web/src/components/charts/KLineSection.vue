@@ -17,7 +17,6 @@ interface ContractOption {
   label: string
   value: string
   description?: string
-  isFavorite?: boolean
 }
 
 interface PeriodOption {
@@ -29,7 +28,6 @@ const emit = defineEmits<{
   'update:selectedContract': [value: string]
   'update:selectedPeriod': [value: number | string]
   'hoverKlineChange': [value: KLineItem | null]
-  'toggleFavorite': [value: string]
 }>()
 
 const props = withDefaults(
@@ -74,9 +72,6 @@ const handleCrosshairMove = (value: KLineItem | null) => {
   emit('hoverKlineChange', value)
 }
 
-const handleToggleFavorite = (value: string) => {
-  emit('toggleFavorite', value)
-}
 </script>
 
 <template>
@@ -101,7 +96,6 @@ const handleToggleFavorite = (value: string) => {
             :contract-options="contractOptions"
             :selected-contract="selectedContract"
             @update:selected-contract="handleSelectedContractChange"
-            @toggle-favorite="handleToggleFavorite"
           />
         </div>
       </div>
