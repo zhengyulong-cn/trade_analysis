@@ -12,8 +12,9 @@ import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from "vue"
 import ChartSideBar from "./ChartSideBar.vue"
 import { chartStylesConfig } from "./config.ts"
 import PineIndicatorSelector from "./PineIndicatorSelector.vue"
-import PineIndicatorTestDialog from "./PineIndicatorTestDialog.vue"
-import { createPineDrawingOverlays, registerPineDrawingOverlays } from "./pine-overlays.ts"
+import PineLabelTooltip from "./overlay/label/PineLabelTooltip.vue"
+import { usePineLabelTooltip } from "./overlay/label/usePineLabelTooltip.ts"
+import { createPineDrawingOverlays, registerPineDrawingOverlays } from "./overlay/pine-drawing-overlays.ts"
 
 interface PeriodOption {
   label: string
@@ -40,6 +41,7 @@ const PERIOD_OPTIONS: PeriodOption[] = [
 const DEFAULT_PERIOD_OPTION = PERIOD_OPTIONS[1] as PeriodOption
 
 const chartRef = ref<HTMLDivElement>()
+const chartShellRef = ref<HTMLDivElement>()
 const selectedSymbol = ref("")
 const selectedPeriod = ref(DEFAULT_PERIOD_OPTION.value)
 const chartLoading = ref(false)
@@ -47,6 +49,12 @@ const hasLoadedOnce = ref(false)
 const klineCount = ref(0)
 const selectedPineIndicatorIds = ref<number[]>([])
 const pineIndicatorLoadingIds = ref<number[]>([])
+const {
+  tooltip: pineLabelTooltip,
+  hide: hidePineLabelTooltip,
+  show: showPineLabelTooltip,
+  scheduleHide: schedulePineLabelTooltipHide,
+} = usePineLabelTooltip(chartShellRef)
 let chart: Chart | null = null
 let resizeObserver: ResizeObserver | null = null
 let latestRequestId = 0
@@ -71,6 +79,7 @@ const removePineIndicatorOverlays = (scriptId: number) => {
 }
 
 const clearPineIndicatorOverlays = () => {
+  hidePineLabelTooltip()
   for (const scriptId of new Set([...renderedPineIndicatorIds, ...selectedPineIndicatorIds.value])) {
     removePineIndicatorOverlays(scriptId)
   }
@@ -82,7 +91,11 @@ const renderPineIndicator = (result: PineIndicatorExecuteResult) => {
   }
 
   removePineIndicatorOverlays(result.script_id)
-  const overlays = createPineDrawingOverlays(pineIndicatorGroupId(result.script_id), result.drawings)
+  const overlays = createPineDrawingOverlays(pineIndicatorGroupId(result.script_id), result.drawings, {
+    onEnter: showPineLabelTooltip,
+    onMove: showPineLabelTooltip,
+    onLeave: hidePineLabelTooltip,
+  })
   if (overlays.length) {
     chart.createOverlay(overlays)
     renderedPineIndicatorIds.add(result.script_id)
@@ -335,11 +348,17 @@ onBeforeUnmount(() => {
             :disabled="!selectedSymbol"
             @update:model-value="updateSelectedPineIndicators"
           />
-          <PineIndicatorTestDialog :symbol="selectedSymbol" :interval="selectedPeriod" />
         </div>
       </header>
-      <div v-loading="chartLoading" class="chart-shell">
+      <div
+        ref="chartShellRef"
+        v-loading="chartLoading"
+        class="chart-shell"
+        @mousemove.capture="schedulePineLabelTooltipHide"
+        @mouseleave="hidePineLabelTooltip"
+      >
         <div ref="chartRef" class="chart-container"></div>
+        <PineLabelTooltip v-bind="pineLabelTooltip" />
         <el-empty v-if="isChartUnavailable" description="暂无合约数据" class="chart-empty" />
         <el-empty v-else-if="isChartEmpty" description="当前合约和周期暂无 K 线数据" class="chart-empty" />
       </div>

@@ -170,7 +170,7 @@ isLess(PivotPoint leftPoint, PivotPoint rightPoint) =>
     leftPoint.zoneUpper < rightPoint.zoneLower
 
 isGreater(PivotPoint leftPoint, PivotPoint rightPoint) =>
-    leftPoint.zoneUpper > rightPoint.zoneLower
+    leftPoint.zoneLower > rightPoint.zoneUpper
 
 isEqual(PivotPoint leftPoint, PivotPoint rightPoint) =>
     leftPoint.zoneUpper >= rightPoint.zoneLower and leftPoint.zoneLower <= rightPoint.zoneUpper

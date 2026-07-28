@@ -42,7 +42,7 @@ const updateSelection = (values: Array<string | number | boolean>) => {
 </script>
 
 <template>
-  <el-popover placement="bottom-start" :width="280" trigger="click" @show="loadScripts">
+  <el-popover placement="bottom-start" :width="320" trigger="click" @show="loadScripts">
     <template #reference>
       <el-button :disabled="disabled" :loading="loading" aria-label="Indicators" title="Indicators">
         <el-icon><DataAnalysis /></el-icon>
