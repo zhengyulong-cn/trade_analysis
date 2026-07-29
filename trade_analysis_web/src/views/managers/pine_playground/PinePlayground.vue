@@ -1,6 +1,8 @@
 <script setup lang="ts">
 import { Indicator, PineRuntimeError, PineTS } from "pinets"
 import { computed, ref } from "vue"
+import JsonPretty from "vue-json-pretty"
+import "vue-json-pretty/lib/styles.css"
 
 type LocalCandle = {
   openTime: number
@@ -28,7 +30,6 @@ const result = ref<Record<string, unknown>>()
 const errorMessage = ref("")
 const debugDetails = ref<Record<string, unknown>>()
 
-const resultText = computed(() => (result.value ? JSON.stringify(result.value, null, 2) : ""))
 const debugDetailsText = computed(() =>
   debugDetails.value ? JSON.stringify(debugDetails.value, null, 2) : "",
 )
@@ -151,7 +152,15 @@ const restoreSample = () => {
           <span v-if="elapsedMilliseconds !== undefined">{{ elapsedMilliseconds }} ms</span>
         </div>
         <el-alert v-if="errorMessage" :title="errorMessage" type="error" :closable="false" show-icon />
-        <pre v-else-if="resultText" class="result-output">{{ resultText }}</pre>
+        <JsonPretty
+          v-else-if="result"
+          :data="result"
+          :deep="2"
+          show-line
+          show-length
+          collapsed-on-click-brackets
+          class="result-json"
+        />
         <el-empty v-else description="Run a script to inspect its output." />
         <el-collapse v-if="debugDetailsText" class="debug-details">
           <el-collapse-item title="Debug details">
@@ -235,21 +244,14 @@ p {
   font-size: 13px;
 }
 
-.result-output {
+.result-json {
   flex: 1;
   min-height: 0;
-  margin: 0;
   padding: 12px;
   overflow: auto;
   border: 1px solid #dfe5ef;
   border-radius: 4px;
   background: #f8fafc;
-  color: #1f2937;
-  font-family: Consolas, "Courier New", monospace;
-  font-size: 12px;
-  line-height: 1.5;
-  white-space: pre-wrap;
-  word-break: break-word;
 }
 
 .debug-details {
