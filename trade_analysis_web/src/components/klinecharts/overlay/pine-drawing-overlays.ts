@@ -1,6 +1,11 @@
 import { registerOverlay, type OverlayCreate } from "klinecharts"
 
-import type { PineBoxDrawing, PineIndicatorDrawings, PineLineDrawing } from "@/api/modules"
+import type {
+  PineBoxDrawing,
+  PineIndicatorDrawings,
+  PineIndicatorPlot,
+  PineLineDrawing,
+} from "@/api/modules"
 import {
   createPineLabelOverlay,
   registerPineLabelOverlay,
@@ -16,6 +21,62 @@ const toOverlayPoint = (point: { timestamp?: number; price?: number }) => {
     return undefined
   }
   return { timestamp: point.timestamp as number, value: point.price as number }
+}
+
+interface PinePlotOverlayData {
+  color: string
+  lineWidth: number
+}
+
+const getPlotColor = (plot: PineIndicatorPlot) => {
+  return plot.data.find((item) => typeof item.options?.color === "string")?.options?.color ?? "#2962ff"
+}
+
+const getPlotLineWidth = (plot: PineIndicatorPlot) => {
+  const lineWidth = plot.data.find((item) => Number.isFinite(item.options?.linewidth))?.options?.linewidth
+  return lineWidth === undefined ? 2 : Math.max(1, lineWidth)
+}
+
+const toPlotSegments = (plot: PineIndicatorPlot) => {
+  const segments: Array<Array<{ timestamp: number; value: number }>> = []
+  let currentSegment: Array<{ timestamp: number; value: number }> = []
+
+  for (const item of plot.data) {
+    if (Number.isFinite(item.time) && Number.isFinite(item.value)) {
+      currentSegment.push({ timestamp: item.time, value: item.value as number })
+      continue
+    }
+
+    if (currentSegment.length >= 2) {
+      segments.push(currentSegment)
+    }
+    currentSegment = []
+  }
+
+  if (currentSegment.length >= 2) {
+    segments.push(currentSegment)
+  }
+  return segments
+}
+
+const registerPinePlotOverlay = () => {
+  registerOverlay<PinePlotOverlayData>({
+    name: "pine_plot",
+    totalStep: 2,
+    lock: true,
+    needDefaultPointFigure: false,
+    createPointFigures: ({ coordinates, overlay }) => {
+      if (coordinates.length < 2) {
+        return []
+      }
+      return [{
+        type: "line",
+        attrs: { coordinates },
+        styles: { style: "solid", size: overlay.extendData.lineWidth, color: overlay.extendData.color },
+        ignoreEvent: true,
+      }]
+    },
+  })
 }
 
 const registerPineLineOverlay = () => {
@@ -80,9 +141,24 @@ export const registerPineDrawingOverlays = () => {
     return
   }
   registerPineLabelOverlay()
+  registerPinePlotOverlay()
   registerPineLineOverlay()
   registerPineBoxOverlay()
   registered = true
+}
+
+export const createPinePlotOverlays = (groupId: string, plots: PineIndicatorPlot[]): OverlayCreate[] => {
+  const overlays: OverlayCreate[] = []
+  for (const plot of plots) {
+    const extendData = {
+      color: getPlotColor(plot),
+      lineWidth: getPlotLineWidth(plot),
+    }
+    for (const points of toPlotSegments(plot)) {
+      overlays.push({ name: "pine_plot", groupId, points, extendData, lock: true })
+    }
+  }
+  return overlays
 }
 
 export const createPineDrawingOverlays = (

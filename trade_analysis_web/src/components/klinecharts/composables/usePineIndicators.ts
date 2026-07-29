@@ -2,7 +2,7 @@ import { ElMessage } from 'element-plus'
 import type { Chart } from 'klinecharts'
 import { ref, type Ref } from 'vue'
 import { executePineIndicatorApi, type PineIndicatorExecuteResult } from '@/api/modules'
-import { createPineDrawingOverlays } from '../overlay/pine-drawing-overlays'
+import { createPineDrawingOverlays, createPinePlotOverlays } from '../overlay/pine-drawing-overlays'
 import type { PineLabelOverlayHandlers } from '../overlay/label/pine-label-overlay'
 
 export const usePineIndicators = (
@@ -46,7 +46,11 @@ export const usePineIndicators = (
       return
     }
     remove(result.script_id)
-    const overlays = createPineDrawingOverlays(groupId(result.script_id), result.drawings, labelHandlers)
+    const indicatorGroupId = groupId(result.script_id)
+    const overlays = [
+      ...createPinePlotOverlays(indicatorGroupId, result.plots),
+      ...createPineDrawingOverlays(indicatorGroupId, result.drawings, labelHandlers),
+    ]
     if (overlays.length) {
       chart.createOverlay(overlays)
       renderedPineIndicatorIds.add(result.script_id)

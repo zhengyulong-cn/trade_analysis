@@ -23,7 +23,17 @@ export interface PineIndicatorPlot {
   key: string
   title?: string
   options?: Record<string, unknown>
-  data: Array<Record<string, unknown>>
+  data: PineIndicatorPlotPoint[]
+}
+
+export interface PineIndicatorPlotPoint {
+  title?: string
+  time: number
+  value: number | null
+  options?: {
+    color?: string
+    linewidth?: number
+  }
 }
 
 export interface PineDrawingPoint {
