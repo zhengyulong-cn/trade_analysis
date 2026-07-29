@@ -67,7 +67,7 @@ const deletePosition = async (positionId: string) => {
       cancelButtonText: '取消',
       type: 'warning',
     })
-    positionStore.closePosition(positionId)
+    positionStore.deletePosition(positionId)
   } catch {}
 }
 
@@ -94,14 +94,15 @@ const savePosition = () => {
     </header>
     <el-scrollbar class="position-scrollbar" height="45rem">
       <div v-if="!sortedPositions.length" class="panel-empty">暂无盘中持仓</div>
-      <article v-for="position in sortedPositions" :key="position.id" class="position-item" @click="emit('update:selectedContract', position.symbol)">
+      <article v-for="position in sortedPositions" :key="position.id" class="position-item" :class="{ 'is-closed': position.closedAt }" @click="emit('update:selectedContract', position.symbol)">
         <div class="position-topline">
           <strong>{{ position.symbol }}</strong>
           <span :class="position.direction === 'long' ? 'direction-long' : 'direction-short'">{{ position.direction === 'long' ? '多' : '空' }}</span>
           <div class="position-actions">
             <el-button link type="primary" size="small" @click.stop="openEditDialog(position.id)">编辑</el-button>
             <el-button link type="danger" size="small" @click.stop="deletePosition(position.id)">删除</el-button>
-            <el-button link type="danger" size="small" @click.stop="positionStore.closePosition(position.id)">平仓</el-button>
+            <el-button v-if="!position.closedAt" link type="danger" size="small" @click.stop="positionStore.closePosition(position.id)">平仓</el-button>
+            <span v-else class="closed-label">已平仓</span>
           </div>
         </div>
         <div class="position-detail">{{ position.quantity }} 手 · {{ position.openPrice }}</div>
@@ -126,6 +127,6 @@ const savePosition = () => {
 .position-panel { width: 18rem; height: 100%; display: flex; flex-direction: column; border: 1px solid #e2e8f0; border-radius: 8px; background: #fff; }
 .panel-header { display: flex; justify-content: space-between; align-items: center; padding: 8px 10px; border-bottom: 1px solid #e2e8f0; font-weight: 600; }
 .position-scrollbar { flex: 1; }.panel-empty { padding: 24px 12px; color: #94a3b8; text-align: center; }
-.position-item { padding: 10px; border-bottom: 1px solid #f1f5f9; cursor: pointer; }.position-item:hover { background: #f8fafc; }
-.position-topline { display: flex; align-items: center; gap: 8px; }.position-actions { display: flex; gap: 4px; margin-left: auto; }.direction-long { color: #dc2626; }.direction-short { color: #2563eb; }.position-detail { margin-top: 4px; color: #64748b; font-size: 12px; }
+.position-item { padding: 10px; border-bottom: 1px solid #f1f5f9; cursor: pointer; }.position-item:hover { background: #f8fafc; }.position-item.is-closed { opacity: .45; }
+.position-topline { display: flex; align-items: center; gap: 8px; }.position-actions { display: flex; gap: 4px; margin-left: auto; }.closed-label { color: #64748b; font-size: 12px; }.direction-long { color: #dc2626; }.direction-short { color: #2563eb; }.position-detail { margin-top: 4px; color: #64748b; font-size: 12px; }
 </style>

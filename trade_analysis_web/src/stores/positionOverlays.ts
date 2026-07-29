@@ -11,6 +11,7 @@ export interface PositionOverlay {
   quantity: number
   openTime: string
   note: string
+  closedAt?: string
 }
 
 const STORAGE_KEY = 'trade-analysis:position-overlays'
@@ -39,15 +40,21 @@ export const usePositionOverlayStore = defineStore('position-overlays', () => {
     }]
   }
 
-  const updatePosition = (positionId: string, position: Omit<PositionOverlay, 'id'>) => {
+  const updatePosition = (positionId: string, position: Omit<PositionOverlay, 'id' | 'closedAt'>) => {
     positions.value = positions.value.map((item) => (
-      item.id === positionId ? { ...position, id: positionId } : item
+      item.id === positionId ? { ...item, ...position } : item
     ))
   }
 
   const closePosition = (positionId: string) => {
+    positions.value = positions.value.map((position) => (
+      position.id === positionId ? { ...position, closedAt: new Date().toISOString() } : position
+    ))
+  }
+
+  const deletePosition = (positionId: string) => {
     positions.value = positions.value.filter((position) => position.id !== positionId)
   }
 
-  return { positions, addPosition, updatePosition, closePosition }
+  return { positions, addPosition, updatePosition, closePosition, deletePosition }
 })

@@ -25,7 +25,7 @@ export const usePositionChartOverlays = (
       return
     }
     const overlays = positions.value
-      .filter((position) => position.symbol === selectedSymbol.value)
+      .filter((position) => position.symbol === selectedSymbol.value && !position.closedAt)
       .flatMap((position) => {
         const openTimestamp = new Date(position.openTime).getTime()
         if (!Number.isFinite(openTimestamp)) {
