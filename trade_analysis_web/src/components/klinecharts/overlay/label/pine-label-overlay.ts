@@ -42,7 +42,7 @@ const createLabelMarker = (x: number, y: number, shape: PineChartLabelShape): La
 const toPineChartLabel = (drawing: PineLabelDrawing): PineChartLabel => {
   const tooltip = drawing.text?.trim() ?? ""
   return {
-    shape: drawing.style === "style_label_down" ? "triangle_down" : "triangle_up",
+    shape: drawing.style === "style_label_up" ? "triangle_up" : "triangle_down",
     text: tooltip.length <= 3 ? tooltip : "...",
     tooltip,
     color: drawing.color ?? "#2962ff",
@@ -83,7 +83,7 @@ export const registerPineLabelOverlay = () => {
             align: "center",
             baseline: "middle",
           },
-          styles: { color: label.textColor, size: 9, weight: "600" },
+          styles: { color: label.textColor, size: 9, weight: "600", backgroundColor: "" },
           ignoreEvent: true,
         },
       ]
