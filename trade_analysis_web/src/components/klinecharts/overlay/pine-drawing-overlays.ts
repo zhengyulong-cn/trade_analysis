@@ -28,6 +28,10 @@ interface PinePlotOverlayData {
   lineWidth: number
 }
 
+interface PinePlotSegment extends PinePlotOverlayData {
+  points: Array<{ timestamp: number; value: number }>
+}
+
 const getPlotColor = (plot: PineIndicatorPlot) => {
   return plot.data.find((item) => typeof item.options?.color === "string")?.options?.color ?? "#2962ff"
 }
@@ -38,22 +42,45 @@ const getPlotLineWidth = (plot: PineIndicatorPlot) => {
 }
 
 const toPlotSegments = (plot: PineIndicatorPlot) => {
-  const segments: Array<Array<{ timestamp: number; value: number }>> = []
-  let currentSegment: Array<{ timestamp: number; value: number }> = []
+  const segments: PinePlotSegment[] = []
+  const defaultColor = getPlotColor(plot)
+  const defaultLineWidth = getPlotLineWidth(plot)
+  let currentSegment: PinePlotSegment | undefined
+  let previousPoint: { timestamp: number; value: number } | undefined
 
   for (const item of plot.data) {
-    if (Number.isFinite(item.time) && Number.isFinite(item.value)) {
-      currentSegment.push({ timestamp: item.time, value: item.value as number })
+    if (!Number.isFinite(item.time) || !Number.isFinite(item.value)) {
+      if (currentSegment && currentSegment.points.length >= 2) {
+        segments.push(currentSegment)
+      }
+      currentSegment = undefined
+      previousPoint = undefined
       continue
     }
 
-    if (currentSegment.length >= 2) {
-      segments.push(currentSegment)
+    const point = { timestamp: item.time, value: item.value as number }
+    const color = item.options?.color ?? defaultColor
+    const lineWidth = Number.isFinite(item.options?.linewidth)
+      ? Math.max(1, item.options?.linewidth as number)
+      : defaultLineWidth
+    if (!currentSegment) {
+      currentSegment = { color, lineWidth, points: [point] }
+    } else if (currentSegment.color === color && currentSegment.lineWidth === lineWidth) {
+      currentSegment.points.push(point)
+    } else {
+      if (currentSegment.points.length >= 2) {
+        segments.push(currentSegment)
+      }
+      currentSegment = {
+        color,
+        lineWidth,
+        points: previousPoint ? [previousPoint, point] : [point],
+      }
     }
-    currentSegment = []
+    previousPoint = point
   }
 
-  if (currentSegment.length >= 2) {
+  if (currentSegment && currentSegment.points.length >= 2) {
     segments.push(currentSegment)
   }
   return segments
@@ -150,12 +177,14 @@ export const registerPineDrawingOverlays = () => {
 export const createPinePlotOverlays = (groupId: string, plots: PineIndicatorPlot[]): OverlayCreate[] => {
   const overlays: OverlayCreate[] = []
   for (const plot of plots) {
-    const extendData = {
-      color: getPlotColor(plot),
-      lineWidth: getPlotLineWidth(plot),
-    }
-    for (const points of toPlotSegments(plot)) {
-      overlays.push({ name: "pine_plot", groupId, points, extendData, lock: true })
+    for (const segment of toPlotSegments(plot)) {
+      overlays.push({
+        name: "pine_plot",
+        groupId,
+        points: segment.points,
+        extendData: { color: segment.color, lineWidth: segment.lineWidth },
+        lock: true,
+      })
     }
   }
   return overlays
