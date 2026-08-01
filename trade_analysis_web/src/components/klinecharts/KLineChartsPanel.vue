@@ -20,6 +20,9 @@ import { registerPositionTextOverlay } from "./overlay/position-text-overlay.ts"
 import { usePineIndicators } from './composables/usePineIndicators'
 import { usePositionChartOverlays } from './composables/usePositionChartOverlays'
 import { useWatchlists } from './composables/useWatchlists'
+import ReplayToolbar from "./toolbar_panel/ReplayToolbar.vue"
+import ReplaySelectionMarker from "./toolbar_panel/ReplaySelectionMarker.vue"
+import { useKlineReplay } from "./composables/useKlineReplay"
 
 interface PeriodOption {
   label: string
@@ -101,6 +104,38 @@ const {
     onLeave: hidePineLabelTooltip,
   },
 )
+const {
+  mode: replayMode,
+  historicalBars,
+  speed: replaySpeed,
+  startTime: replayStartTime,
+  selectionX: replaySelectionX,
+  isActive: isReplayActive,
+  setHistoricalBars,
+  getLocalBars: getReplayLocalBars,
+  reset: resetReplayState,
+  beginSelection: beginReplaySelection,
+  play: startReplayPlayback,
+  pause: pauseReplayPlayback,
+  step: stepReplay,
+  setSpeed: setReplaySpeed,
+  exit: exitReplay,
+  onCrosshairChange: onReplayCrosshairChange,
+  startSelectionDrag: startReplaySelectionDrag,
+  stopSelectionDrag: stopReplaySelectionDrag,
+  dispose: disposeReplay,
+} = useKlineReplay({
+  getChart: () => chart,
+  onEnterSelection: () => {
+    clearPineIndicatorOverlays()
+    clearPositionOverlays()
+  },
+  onNextBar: (bar) => {
+    latestClosePrice.value = bar.close
+    realtimeBarSubscriber?.(bar)
+  },
+  onExit: () => chart?.resetData(),
+})
 
 const sortedContracts = computed(() => watchlistContracts.value)
 const selectableContracts = computed(() => {
@@ -114,7 +149,6 @@ const currentLatestPrice = computed(() => {
   const realtimePrice = Number(realtimeBars.value[`${selectedSymbol.value}:${selectedPeriod.value}`]?.close)
   return Number.isFinite(realtimePrice) ? realtimePrice : latestClosePrice.value
 })
-
 const isChartUnavailable = computed(() => !props.loading && !watchlistContracts.value.length)
 const isChartEmpty = computed(() => hasLoadedOnce.value && !chartLoading.value && klineCount.value === 0)
 const selectedPeriodOption = computed(() => {
@@ -142,7 +176,7 @@ const toRealtimeKLineData = (bar: RealtimeBar): KLineData => ({
 })
 
 const publishRealtimeBar = (bar: RealtimeBar | undefined) => {
-  if (!bar || bar.symbol !== selectedSymbol.value || bar.interval !== selectedPeriod.value) {
+  if (isReplayActive.value || !bar || bar.symbol !== selectedSymbol.value || bar.interval !== selectedPeriod.value) {
     return
   }
   latestClosePrice.value = Number(bar.close)
@@ -151,6 +185,14 @@ const publishRealtimeBar = (bar: RealtimeBar | undefined) => {
 }
 
 const loadChartBars = async (callback: (data: KLineData[], more?: boolean) => void) => {
+  const localReplayBars = getReplayLocalBars()
+  if (localReplayBars) {
+    callback(localReplayBars, false)
+    klineCount.value = localReplayBars.length
+    latestClosePrice.value = localReplayBars.at(-1)?.close
+    return
+  }
+
   if (!selectedSymbol.value) {
     callback([], false)
     klineCount.value = 0
@@ -172,6 +214,7 @@ const loadChartBars = async (callback: (data: KLineData[], more?: boolean) => vo
     }
 
     const chartData = toKLineChartsData(response.kLineList)
+    setHistoricalBars(chartData)
     latestClosePrice.value = chartData.at(-1)?.close
     callback(chartData, false)
     publishRealtimeBar(realtimeBars.value[`${selectedSymbol.value}:${selectedPeriod.value}`])
@@ -218,6 +261,7 @@ const ensureChart = async () => {
       realtimeBarSubscriber = null
     },
   })
+  chart.subscribeAction("onCrosshairChange", onReplayCrosshairChange)
 
   resizeObserver = new ResizeObserver(() => {
     chart?.resize()
@@ -285,12 +329,18 @@ watch(
 
 watch(selectedSymbol, () => {
   latestClosePrice.value = undefined
+  if (isReplayActive.value) {
+    resetReplayState()
+  }
   if (!isInitializingChart) {
     void refreshChartSymbol()
   }
 })
 
 watch(selectedPeriod, () => {
+  if (isReplayActive.value) {
+    resetReplayState()
+  }
   if (!isInitializingChart) {
     void refreshChartPeriod()
   }
@@ -325,11 +375,13 @@ onMounted(() => {
 })
 
 onBeforeUnmount(() => {
+  disposeReplay()
   realtimeBarSubscriber = null
   realtimeMarketStore.disconnect()
   resizeObserver?.disconnect()
   resizeObserver = null
   if (chart) {
+    chart.unsubscribeAction("onCrosshairChange", onReplayCrosshairChange)
     clearPineIndicatorOverlays()
     clearPositionOverlays()
     dispose(chart)
@@ -363,8 +415,20 @@ onBeforeUnmount(() => {
           <PineIndicatorSelector
             :model-value="selectedPineIndicatorIds"
             :loading-ids="pineIndicatorLoadingIds"
-            :disabled="!selectedSymbol"
+            :disabled="!selectedSymbol || isReplayActive"
             @update:model-value="updateSelectedPineIndicators"
+          />
+          <ReplayToolbar
+            :mode="replayMode"
+            :disabled="!historicalBars.length"
+            :start-time="replayStartTime"
+            :speed="replaySpeed"
+            @begin-selection="beginReplaySelection"
+            @play="startReplayPlayback"
+            @pause="pauseReplayPlayback"
+            @step="stepReplay"
+            @exit="exitReplay"
+            @update-speed="setReplaySpeed"
           />
         </div>
       </header>
@@ -374,8 +438,11 @@ onBeforeUnmount(() => {
         class="chart-shell"
         @mousemove.capture="schedulePineLabelTooltipHide"
         @mouseleave="hidePineLabelTooltip"
+        @mousedown.capture="startReplaySelectionDrag"
+        @mouseup.capture="stopReplaySelectionDrag"
       >
         <div ref="chartRef" class="chart-container"></div>
+        <ReplaySelectionMarker :visible="replayMode === 'selecting'" :x="replaySelectionX" />
         <PineLabelTooltip v-bind="pineLabelTooltip" />
         <el-empty v-if="isChartUnavailable" description="暂无合约数据" class="chart-empty" />
         <el-empty v-else-if="isChartEmpty" description="当前合约和周期暂无 K 线数据" class="chart-empty" />
