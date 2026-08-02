@@ -1,9 +1,11 @@
-import { ElMessage } from 'element-plus'
+import { ElMessage } from "element-plus"
 import type { Chart } from 'klinecharts'
 import { ref, type Ref } from 'vue'
-import { executePineIndicatorApi, type PineIndicatorExecuteResult } from '@/api/modules'
-import { createPineDrawingOverlays, createPinePlotOverlays } from '../overlay/pine-drawing-overlays'
+import { usePineScriptsStore } from "@/stores/pineScripts"
 import type { PineLabelOverlayHandlers } from '../overlay/label/pine-label-overlay'
+import { createPineDrawingOverlays } from "../overlay/pine-drawing-overlays"
+import { executePineScriptInBrowser, type LocalPineIndicatorResult } from "../indicator/pine-browser-executor"
+import { createPineIndicator, removePineIndicator } from "../indicator/pine-indicator"
 
 export const usePineIndicators = (
   getChart: () => Chart | null,
@@ -14,9 +16,17 @@ export const usePineIndicators = (
   const selectedPineIndicatorIds = ref<number[]>([])
   const pineIndicatorLoadingIds = ref<number[]>([])
   const renderedPineIndicatorIds = new Set<number>()
+  const pineScriptsStore = usePineScriptsStore()
   let latestRequestId = 0
 
   const groupId = (scriptId: number) => `pine-indicator-${scriptId}`
+
+  const remove = (scriptId: number) => {
+    const chart = getChart()
+    chart?.removeOverlay({ groupId: groupId(scriptId) })
+    removePineIndicator(chart, scriptId)
+    renderedPineIndicatorIds.delete(scriptId)
+  }
 
   const setLoading = (scriptId: number, loading: boolean) => {
     const ids = new Set(pineIndicatorLoadingIds.value)
@@ -28,11 +38,6 @@ export const usePineIndicators = (
     pineIndicatorLoadingIds.value = [...ids]
   }
 
-  const remove = (scriptId: number) => {
-    getChart()?.removeOverlay({ groupId: groupId(scriptId) })
-    renderedPineIndicatorIds.delete(scriptId)
-  }
-
   const clear = () => {
     labelHandlers.onLeave?.()
     for (const scriptId of new Set([...renderedPineIndicatorIds, ...selectedPineIndicatorIds.value])) {
@@ -40,20 +45,19 @@ export const usePineIndicators = (
     }
   }
 
-  const render = (result: PineIndicatorExecuteResult) => {
+  const render = (result: LocalPineIndicatorResult) => {
     const chart = getChart()
     if (!chart) {
       return
     }
-    remove(result.script_id)
-    const indicatorGroupId = groupId(result.script_id)
-    const overlays = [
-      ...createPinePlotOverlays(indicatorGroupId, result.plots),
-      ...createPineDrawingOverlays(indicatorGroupId, result.drawings, labelHandlers),
-    ]
+    remove(result.scriptId)
+    const renderedAsIndicator = createPineIndicator(chart, result)
+    const overlays = createPineDrawingOverlays(groupId(result.scriptId), result.drawings, labelHandlers)
     if (overlays.length) {
       chart.createOverlay(overlays)
-      renderedPineIndicatorIds.add(result.script_id)
+    }
+    if (renderedAsIndicator || overlays.length) {
+      renderedPineIndicatorIds.add(result.scriptId)
     }
   }
 
@@ -68,7 +72,13 @@ export const usePineIndicators = (
     const requestId = ++latestRequestId
     setLoading(scriptId, true)
     try {
-      const result = await executePineIndicatorApi({ script_id: scriptId, symbol, interval, limit: 1000 })
+      await pineScriptsStore.loadScripts()
+      const script = pineScriptsStore.scriptsById.get(scriptId)
+      if (!script || script.script_type !== "indicator") {
+        throw new Error(`Pine indicator #${scriptId} was not found.`)
+      }
+
+      const result = await executePineScriptInBrowser(script, chart.getDataList())
       const isStillCurrent = getChart()
         && selectedSymbol.value === symbol
         && selectedPeriod.value === interval
@@ -76,9 +86,10 @@ export const usePineIndicators = (
       if (isStillCurrent) {
         render(result)
       }
-    } catch {
+    } catch (error) {
       if (selectedSymbol.value === symbol && selectedPeriod.value === interval) {
-        ElMessage.error(`Failed to load Pine indicator #${scriptId}.`)
+        const message = error instanceof Error ? error.message : "Unknown PineTS execution error."
+        ElMessage.error(`Pine indicator #${scriptId}: ${message}`)
       }
     } finally {
       if (requestId <= latestRequestId) {

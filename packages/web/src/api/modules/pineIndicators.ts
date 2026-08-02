@@ -33,6 +33,7 @@ export interface PineIndicatorPlotPoint {
   options?: {
     color?: string
     linewidth?: number
+    style?: string
   }
 }
 

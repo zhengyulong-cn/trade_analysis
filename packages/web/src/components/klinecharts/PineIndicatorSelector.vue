@@ -1,9 +1,10 @@
 <script setup lang="ts">
 import { DataAnalysis } from "@element-plus/icons-vue"
 import { ElMessage } from "element-plus"
-import { computed, ref } from "vue"
+import { storeToRefs } from "pinia"
+import { computed } from "vue"
 
-import { getPineScriptListApi, type PineScript } from "@/api/modules"
+import { usePineScriptsStore } from "@/stores/pineScripts"
 
 const props = withDefaults(
   defineProps<{
@@ -21,18 +22,15 @@ const emit = defineEmits<{
   "update:modelValue": [value: number[]]
 }>()
 
-const loading = ref(false)
-const scripts = ref<PineScript[]>([])
+const pineScriptsStore = usePineScriptsStore()
+const { loading, scripts } = storeToRefs(pineScriptsStore)
 const indicatorScripts = computed(() => scripts.value.filter((script) => script.script_type === "indicator"))
 
 const loadScripts = async () => {
-  loading.value = true
   try {
-    scripts.value = await getPineScriptListApi()
+    await pineScriptsStore.loadScripts()
   } catch {
     ElMessage.error("Failed to load Pine indicators.")
-  } finally {
-    loading.value = false
   }
 }
 

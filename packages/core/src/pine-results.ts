@@ -39,6 +39,7 @@ type PinePlots = Record<string, unknown>
 type PlotEntry = {
   title?: unknown
   option?: unknown
+  options?: unknown
   data?: unknown
 }
 
@@ -100,7 +101,11 @@ const normalizePlots = (plots: PinePlots): PinePlot[] =>
       return {
         key,
         ...(typeof entry?.title === "string" ? { title: entry.title } : {}),
-        ...(entry?.option === undefined ? {} : { options: entry.option }),
+        ...(
+          entry?.options === undefined && entry?.option === undefined
+            ? {}
+            : { options: entry.options ?? entry.option }
+        ),
         data: asArray(entry?.data),
       }
     })
