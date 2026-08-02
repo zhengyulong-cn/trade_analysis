@@ -1,5 +1,5 @@
 import { ElMessage } from "element-plus"
-import type { Chart } from 'klinecharts'
+import type { Chart, KLineData } from 'klinecharts'
 import { ref, type Ref } from 'vue'
 import { usePineScriptsStore } from "@/stores/pineScripts"
 import type { PineLabelOverlayHandlers } from '../overlay/label/pine-label-overlay'
@@ -17,7 +17,8 @@ export const usePineIndicators = (
   const pineIndicatorLoadingIds = ref<number[]>([])
   const renderedPineIndicatorIds = new Set<number>()
   const pineScriptsStore = usePineScriptsStore()
-  let latestRequestId = 0
+  const loadingVersionByScriptId = new Map<number, number>()
+  let renderVersion = 0
 
   const groupId = (scriptId: number) => `pine-indicator-${scriptId}`
 
@@ -28,7 +29,15 @@ export const usePineIndicators = (
     renderedPineIndicatorIds.delete(scriptId)
   }
 
-  const setLoading = (scriptId: number, loading: boolean) => {
+  const setLoading = (scriptId: number, loading: boolean, version: number) => {
+    if (loading) {
+      loadingVersionByScriptId.set(scriptId, version)
+    } else if (loadingVersionByScriptId.get(scriptId) !== version) {
+      return
+    } else {
+      loadingVersionByScriptId.delete(scriptId)
+    }
+
     const ids = new Set(pineIndicatorLoadingIds.value)
     if (loading) {
       ids.add(scriptId)
@@ -39,6 +48,7 @@ export const usePineIndicators = (
   }
 
   const clear = () => {
+    renderVersion += 1
     labelHandlers.onLeave?.()
     for (const scriptId of new Set([...renderedPineIndicatorIds, ...selectedPineIndicatorIds.value])) {
       remove(scriptId)
@@ -61,16 +71,15 @@ export const usePineIndicators = (
     }
   }
 
-  const load = async (scriptId: number) => {
+  const load = async (scriptId: number, dataList: KLineData[], version: number) => {
     const chart = getChart()
     const symbol = selectedSymbol.value
     const interval = selectedPeriod.value
-    if (!chart || !symbol || !selectedPineIndicatorIds.value.includes(scriptId)) {
+    if (!chart || !symbol || !dataList.length || !selectedPineIndicatorIds.value.includes(scriptId)) {
       return
     }
 
-    const requestId = ++latestRequestId
-    setLoading(scriptId, true)
+    setLoading(scriptId, true, version)
     try {
       await pineScriptsStore.loadScripts()
       const script = pineScriptsStore.scriptsById.get(scriptId)
@@ -78,8 +87,9 @@ export const usePineIndicators = (
         throw new Error(`Pine indicator #${scriptId} was not found.`)
       }
 
-      const result = await executePineScriptInBrowser(script, chart.getDataList())
-      const isStillCurrent = getChart()
+      const result = await executePineScriptInBrowser(script, dataList)
+      const isStillCurrent = version === renderVersion
+        && getChart()
         && selectedSymbol.value === symbol
         && selectedPeriod.value === interval
         && selectedPineIndicatorIds.value.includes(scriptId)
@@ -87,20 +97,20 @@ export const usePineIndicators = (
         render(result)
       }
     } catch (error) {
-      if (selectedSymbol.value === symbol && selectedPeriod.value === interval) {
+      if (version === renderVersion && selectedSymbol.value === symbol && selectedPeriod.value === interval) {
         const message = error instanceof Error ? error.message : "Unknown PineTS execution error."
         ElMessage.error(`Pine indicator #${scriptId}: ${message}`)
       }
     } finally {
-      if (requestId <= latestRequestId) {
-        setLoading(scriptId, false)
-      }
+      setLoading(scriptId, false, version)
     }
   }
 
-  const reload = () => {
+  const reload = (dataList?: KLineData[]) => {
+    const bars = dataList ?? getChart()?.getDataList() ?? []
+    const version = ++renderVersion
     for (const scriptId of selectedPineIndicatorIds.value) {
-      void load(scriptId)
+      void load(scriptId, bars, version)
     }
   }
 
@@ -113,14 +123,9 @@ export const usePineIndicators = (
       }
     }
 
-    const currentIdSet = new Set(selectedPineIndicatorIds.value)
     selectedPineIndicatorIds.value = nextIds
-    for (const scriptId of nextIds) {
-      if (!currentIdSet.has(scriptId)) {
-        void load(scriptId)
-      }
-    }
+    reload()
   }
 
-  return { selectedPineIndicatorIds, pineIndicatorLoadingIds, clear, load, reload, update }
+  return { selectedPineIndicatorIds, pineIndicatorLoadingIds, clear, reload, update }
 }

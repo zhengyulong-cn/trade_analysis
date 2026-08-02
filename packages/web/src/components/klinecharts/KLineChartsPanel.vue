@@ -127,12 +127,14 @@ const {
 } = useKlineReplay({
   getChart: () => chart,
   onEnterSelection: () => {
-    clearPineIndicatorOverlays()
     clearPositionOverlays()
   },
   onNextBar: (bar) => {
     latestClosePrice.value = bar.close
     realtimeBarSubscriber?.(bar)
+  },
+  onReplayBarsChange: (bars) => {
+    reloadSelectedPineIndicators(bars)
   },
   onExit: () => chart?.resetData(),
 })
@@ -261,7 +263,7 @@ const ensureChart = async () => {
       realtimeBarSubscriber = null
     },
   })
-  chart.subscribeAction("onCrosshairChange", onReplayCrosshairChange)
+  chart?.subscribeAction("onCrosshairChange", onReplayCrosshairChange)
 
   resizeObserver = new ResizeObserver(() => {
     chart?.resize()

@@ -13,10 +13,17 @@ interface UseKlineReplayOptions {
   getChart: () => Chart | null
   onEnterSelection: () => void
   onNextBar: (bar: KLineData) => void
+  onReplayBarsChange: (bars: KLineData[]) => void
   onExit: () => void
 }
 
-export const useKlineReplay = ({ getChart, onEnterSelection, onNextBar, onExit }: UseKlineReplayOptions) => {
+export const useKlineReplay = ({
+  getChart,
+  onEnterSelection,
+  onNextBar,
+  onReplayBarsChange,
+  onExit,
+}: UseKlineReplayOptions) => {
   const mode = ref<ReplayMode>("live")
   const historicalBars = ref<KLineData[]>([])
   const replayBars = ref<KLineData[]>([])
@@ -89,6 +96,7 @@ export const useKlineReplay = ({ getChart, onEnterSelection, onNextBar, onExit }
     if (resumeFromReplay) {
       chart?.resetData()
       chart?.scrollToDataIndex(startIndex.value)
+      onReplayBarsChange([...historicalBars.value])
     }
     return true
   }
@@ -104,6 +112,7 @@ export const useKlineReplay = ({ getChart, onEnterSelection, onNextBar, onExit }
     const chart = getChart()
     chart?.resetData()
     chart?.scrollToRealTime()
+    onReplayBarsChange(replayBars.value.slice(0, cursor.value + 1))
   }
 
   const step = () => {
@@ -119,6 +128,7 @@ export const useKlineReplay = ({ getChart, onEnterSelection, onNextBar, onExit }
 
     cursor.value += 1
     onNextBar(nextBar)
+    onReplayBarsChange(replayBars.value.slice(0, cursor.value + 1))
   }
 
   const play = () => {
