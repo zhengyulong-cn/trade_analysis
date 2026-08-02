@@ -1,9 +1,11 @@
 {
   "name": "trade_analysis",
   "private": true,
+  "packageManager": "pnpm@11.13.0",
   "scripts": {
-    "dev:web": "npm --prefix trade_analysis_web run dev",
-    "dev:fas": "npm --prefix trade_analysis_fastify run dev",
+    "dev:web": "pnpm --filter @trade-analysis/web dev",
+    "dev:fastify": "pnpm --filter @trade-analysis/fastify dev",
+    "build": "pnpm -r run build",
     "dev:backend": "powershell -NoProfile -ExecutionPolicy Bypass -Command \"Set-Location -LiteralPath 'trade_analysis_backend'; & '.\\.venv\\Scripts\\python.exe' -m fastapi dev main.py\""
   }
 }

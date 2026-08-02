@@ -1,5 +1,5 @@
 {
-  "name": "trade_analysis_web",
+  "name": "@trade-analysis/web",
   "version": "0.0.0",
   "private": true,
   "type": "module",
@@ -15,6 +15,7 @@
     "format": "prettier --write --experimental-cli src/"
   },
   "dependencies": {
+    "@trade-analysis/core": "workspace:*",
     "@element-plus/icons-vue": "^2.3.2",
     "@imengyu/vue3-context-menu": "^1.5.4",
     "axios": "^1.15.0",
