@@ -17,12 +17,12 @@ import PineLabelTooltip from "./overlay/label/PineLabelTooltip.vue"
 import { usePineLabelTooltip } from "./overlay/label/usePineLabelTooltip.ts"
 import { registerPineDrawingOverlays } from "./overlay/pine-drawing-overlays.ts"
 import { registerPositionTextOverlay } from "./overlay/position-text-overlay.ts"
-import { usePineIndicators } from './composables/usePineIndicators'
-import { usePositionChartOverlays } from './composables/usePositionChartOverlays'
-import { useWatchlists } from './composables/useWatchlists'
+import { usePineIndicators } from './composables/usePineIndicators.ts'
+import { usePositionChartOverlays } from './composables/usePositionChartOverlays.ts'
+import { useWatchlists } from './composables/useWatchlists.ts'
 import ReplayToolbar from "./toolbar_panel/ReplayToolbar.vue"
 import ReplaySelectionMarker from "./toolbar_panel/ReplaySelectionMarker.vue"
-import { useKlineReplay } from "./composables/useKlineReplay"
+import { useKlineReplay } from "./composables/useKlineReplay.ts"
 
 interface PeriodOption {
   label: string

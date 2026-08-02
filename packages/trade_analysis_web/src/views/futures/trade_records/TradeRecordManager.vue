@@ -30,13 +30,13 @@ import {
   saveTradeRecordManagerViewState,
   type FilterCondition,
   type FilterLogic,
-} from "./toolbars/tradeRecordFilter"
+} from "./toolbars/tradeRecordFilter.ts"
 import {
   getSortableColumns,
   normalizeSortConditions,
   sortTradeRecords,
   type SortCondition,
-} from "./toolbars/tradeRecordSort"
+} from "./toolbars/tradeRecordSort.ts"
 
 type DialogMode = "create" | "edit"
 
