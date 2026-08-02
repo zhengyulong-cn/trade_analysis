@@ -6,6 +6,6 @@
     "dev:web": "pnpm --filter @trade-analysis/web dev",
     "dev:fastify": "pnpm --filter @trade-analysis/fastify dev",
     "build": "pnpm -r run build",
-    "dev:backend": "powershell -NoProfile -ExecutionPolicy Bypass -Command \"Set-Location -LiteralPath 'trade_analysis_backend'; & '.\\.venv\\Scripts\\python.exe' -m fastapi dev main.py\""
+    "dev:backend": "powershell -NoProfile -ExecutionPolicy Bypass -Command \"Set-Location -LiteralPath 'backend'; & '.\\.venv\\Scripts\\python.exe' -m fastapi dev main.py\""
   }
 }

@@ -9,7 +9,6 @@ import 'element-plus/dist/index.css'
 import * as ElementPlusIconsVue from '@element-plus/icons-vue'
 // @imengyu/vue3-context-menu
 import '@imengyu/vue3-context-menu/lib/vue3-context-menu.css'
-import ContextMenu from '@imengyu/vue3-context-menu/index'
 // 公共样式
 import './style.less'
 
@@ -22,6 +21,5 @@ for (const [key, component] of Object.entries(ElementPlusIconsVue)) {
 app.use(createPinia())
 app.use(router)
 app.use(ElementPlus)
-app.use(ContextMenu)
 
 app.mount('#app')
