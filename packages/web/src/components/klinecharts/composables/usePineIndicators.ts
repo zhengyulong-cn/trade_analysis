@@ -2,7 +2,6 @@ import { ElMessage } from "element-plus"
 import type { Chart, KLineData } from 'klinecharts'
 import { ref, type Ref } from 'vue'
 import { usePineScriptsStore } from "@/stores/pineScripts"
-import type { PineLabelOverlayHandlers } from '../overlay/label/pine-label-overlay'
 import { createPineDrawingOverlays } from "../overlay/pine-drawing-overlays"
 import { executePineScriptInBrowser, type LocalPineIndicatorResult } from "../indicator/pine-browser-executor"
 import { createPineIndicator, removePineIndicator } from "../indicator/pine-indicator"
@@ -11,7 +10,6 @@ export const usePineIndicators = (
   getChart: () => Chart | null,
   selectedSymbol: Ref<string>,
   selectedPeriod: Ref<number>,
-  labelHandlers: PineLabelOverlayHandlers,
 ) => {
   const selectedPineIndicatorIds = ref<number[]>([])
   const pineIndicatorLoadingIds = ref<number[]>([])
@@ -49,7 +47,6 @@ export const usePineIndicators = (
 
   const clear = () => {
     renderVersion += 1
-    labelHandlers.onLeave?.()
     for (const scriptId of new Set([...renderedPineIndicatorIds, ...selectedPineIndicatorIds.value])) {
       remove(scriptId)
     }
@@ -62,7 +59,7 @@ export const usePineIndicators = (
     }
     remove(result.scriptId)
     const renderedAsIndicator = createPineIndicator(chart, result)
-    const overlays = createPineDrawingOverlays(groupId(result.scriptId), result.drawings, labelHandlers)
+    const overlays = createPineDrawingOverlays(groupId(result.scriptId), result.drawings)
     if (overlays.length) {
       chart.createOverlay(overlays)
     }

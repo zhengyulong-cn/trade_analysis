@@ -9,7 +9,6 @@ import type {
 import {
   createPineLabelOverlay,
   registerPineLabelOverlay,
-  type PineLabelOverlayHandlers,
 } from "./label/pine-label-overlay"
 
 let registered = false
@@ -193,13 +192,12 @@ export const createPinePlotOverlays = (groupId: string, plots: PineIndicatorPlot
 export const createPineDrawingOverlays = (
   groupId: string,
   drawings: PineIndicatorDrawings,
-  labelHandlers: PineLabelOverlayHandlers = {},
 ): OverlayCreate[] => {
   const overlays: OverlayCreate[] = []
   for (const drawing of drawings.labels) {
     const point = toOverlayPoint(drawing)
     if (point) {
-      overlays.push(createPineLabelOverlay(groupId, drawing, point, labelHandlers))
+      overlays.push(createPineLabelOverlay(groupId, drawing, point))
     }
   }
   for (const drawing of drawings.lines) {

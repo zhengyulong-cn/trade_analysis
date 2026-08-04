@@ -13,8 +13,6 @@ import { usePositionOverlayStore } from "@/stores/positionOverlays"
 import ChartSideBar from "./ChartSideBar.vue"
 import { chartStylesConfig } from "./config.ts"
 import PineIndicatorSelector from "./PineIndicatorSelector.vue"
-import PineLabelTooltip from "./overlay/label/PineLabelTooltip.vue"
-import { usePineLabelTooltip } from "./overlay/label/usePineLabelTooltip.ts"
 import { registerPineDrawingOverlays } from "./overlay/pine-drawing-overlays.ts"
 import { registerPositionTextOverlay } from "./overlay/position-text-overlay.ts"
 import { usePineIndicators } from './composables/usePineIndicators.ts'
@@ -49,19 +47,12 @@ const PERIOD_OPTIONS: PeriodOption[] = [
 const DEFAULT_PERIOD_OPTION = PERIOD_OPTIONS[0] as PeriodOption
 
 const chartRef = ref<HTMLDivElement>()
-const chartShellRef = ref<HTMLDivElement>()
 const selectedSymbol = ref("")
 const selectedPeriod = ref(DEFAULT_PERIOD_OPTION.value)
 const chartLoading = ref(false)
 const hasLoadedOnce = ref(false)
 const klineCount = ref(0)
 const latestClosePrice = ref<number | undefined>()
-const {
-  tooltip: pineLabelTooltip,
-  hide: hidePineLabelTooltip,
-  show: showPineLabelTooltip,
-  scheduleHide: schedulePineLabelTooltipHide,
-} = usePineLabelTooltip(chartShellRef)
 let chart: Chart | null = null
 let resizeObserver: ResizeObserver | null = null
 let latestRequestId = 0
@@ -98,11 +89,6 @@ const {
   () => chart,
   selectedSymbol,
   selectedPeriod,
-  {
-    onEnter: showPineLabelTooltip,
-    onMove: showPineLabelTooltip,
-    onLeave: hidePineLabelTooltip,
-  },
 )
 const {
   mode: replayMode,
@@ -435,17 +421,13 @@ onBeforeUnmount(() => {
         </div>
       </header>
       <div
-        ref="chartShellRef"
         v-loading="chartLoading"
         class="chart-shell"
-        @mousemove.capture="schedulePineLabelTooltipHide"
-        @mouseleave="hidePineLabelTooltip"
         @mousedown.capture="startReplaySelectionDrag"
         @mouseup.capture="stopReplaySelectionDrag"
       >
         <div ref="chartRef" class="chart-container"></div>
         <ReplaySelectionMarker :visible="replayMode === 'selecting'" :x="replaySelectionX" />
-        <PineLabelTooltip v-bind="pineLabelTooltip" />
         <el-empty v-if="isChartUnavailable" description="暂无合约数据" class="chart-empty" />
         <el-empty v-else-if="isChartEmpty" description="当前合约和周期暂无 K 线数据" class="chart-empty" />
       </div>
