@@ -18,6 +18,7 @@ from app.services.opportunity_review_column_service import OpportunityReviewColu
 from app.services.opportunity_review_service import OpportunityReviewService
 from app.services.pine_script_service import PineScriptService
 from app.services.pine_indicator_service import PineIndicatorService
+from app.services.pine_scanner_service import PineScannerService
 from app.services.pine_runner_client import PineRunnerClient
 from app.services.realtime_bar_service import RealtimeBarService
 from app.services.signal_filter_service import SignalFilterService
@@ -144,6 +145,24 @@ def get_pine_indicator_service(
 
 PineIndicatorServiceDep = Annotated[
     PineIndicatorService, Depends(get_pine_indicator_service)
+]
+
+
+def get_pine_scanner_service(
+    pine_script_service: PineScriptServiceDep,
+    contract_service: Annotated[ContractService, Depends(get_contract_service)],
+    kline_service: Annotated[KlineService, Depends(get_kline_service)],
+) -> PineScannerService:
+    return PineScannerService(
+        pine_script_service=pine_script_service,
+        contract_service=contract_service,
+        kline_service=kline_service,
+        pine_runner_client=PineRunnerClient(),
+    )
+
+
+PineScannerServiceDep = Annotated[
+    PineScannerService, Depends(get_pine_scanner_service)
 ]
 
 

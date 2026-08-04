@@ -1,0 +1,175 @@
+//@version=6
+indicator("HLPoint2 Scanner", overlay = true, max_bars_back = 5000)
+
+minimumDistance = input.int(3, "MinimumDistance", minval = 1)
+ema20 = ta.ema(close, 20)
+
+// PineTS does not reliably support arrays of custom Pine types. Each array
+// below stores one field of the same pivot at the same index.
+var pivotKinds = array.new_int()
+var pivotBarIndexes = array.new_int()
+var pivotPrices = array.new_float()
+var pivotZoneUppers = array.new_float()
+var pivotZoneLowers = array.new_float()
+
+isConfirmedHigh() =>
+    candidate = high[2]
+    result = not na(high[4]) and candidate > ema20[2]
+    for index = 0 to 4
+        if index != 2 and high[index] > candidate
+            result := false
+    result
+
+isConfirmedLow() =>
+    candidate = low[2]
+    result = not na(low[4]) and candidate < ema20[2]
+    for index = 0 to 4
+        if index != 2 and low[index] < candidate
+            result := false
+    result
+
+addPivot(int kind, int pivotBarIndex, float price, float tolerance) =>
+    pivotOffset = bar_index - pivotBarIndex
+    pivotCenter = kind == 1 ? math.max(open[pivotOffset], close[pivotOffset]) : math.min(open[pivotOffset], close[pivotOffset])
+    zoneUpper = kind == 1 ? high[pivotOffset] : pivotCenter + tolerance
+    zoneLower = kind == 1 ? pivotCenter - tolerance : low[pivotOffset]
+    array.push(pivotKinds, kind)
+    array.push(pivotBarIndexes, pivotBarIndex)
+    array.push(pivotPrices, price)
+    array.push(pivotZoneUppers, zoneUpper)
+    array.push(pivotZoneLowers, zoneLower)
+
+replaceLastPivot(int kind, int pivotBarIndex, float price, float tolerance) =>
+    array.pop(pivotKinds)
+    array.pop(pivotBarIndexes)
+    array.pop(pivotPrices)
+    array.pop(pivotZoneUppers)
+    array.pop(pivotZoneLowers)
+    addPivot(kind, pivotBarIndex, price, tolerance)
+
+getRecentPivotIndex(int kind, int occurrence) =>
+    int result = na
+    found = 0
+    pointIndex = array.size(pivotKinds) - 1
+    while pointIndex >= 0 and found < occurrence
+        if array.get(pivotKinds, pointIndex) == kind
+            found += 1
+            if found == occurrence
+                result := pointIndex
+        pointIndex -= 1
+    result
+
+isLess(int leftIndex, int rightIndex) =>
+    array.get(pivotZoneUppers, leftIndex) < array.get(pivotZoneLowers, rightIndex)
+
+isGreater(int leftIndex, int rightIndex) =>
+    array.get(pivotZoneLowers, leftIndex) > array.get(pivotZoneUppers, rightIndex)
+
+isEqual(int leftIndex, int rightIndex) =>
+    array.get(pivotZoneUppers, leftIndex) >= array.get(pivotZoneLowers, rightIndex) and array.get(pivotZoneLowers, leftIndex) <= array.get(pivotZoneUppers, rightIndex)
+
+getLongStructureText() =>
+    string labelText = ""
+    lastIndex = array.size(pivotKinds) - 1
+    if array.size(pivotKinds) >= 6 and array.get(pivotKinds, lastIndex) == -1
+        h1 = getRecentPivotIndex(1, 3)
+        h2 = getRecentPivotIndex(1, 2)
+        h3 = getRecentPivotIndex(1, 1)
+        l1 = getRecentPivotIndex(-1, 3)
+        l2 = getRecentPivotIndex(-1, 2)
+        l3 = getRecentPivotIndex(-1, 1)
+        if not na(h1) and not na(h2) and not na(h3) and not na(l1) and not na(l2) and not na(l3)
+            if isLess(l1, l2) and isLess(l2, l3) and isLess(h2, h3)
+                labelText := "L1<L2<L3 & H2<H3"
+            else if isEqual(l1, l2) and isLess(l2, l3) and isLess(h2, h3)
+                labelText := "L1=L2<L3 & H2<H3"
+            else if isLess(l1, l2) and isEqual(l2, l3) and isLess(h2, h3)
+                labelText := "L1<L2=L3 & H2<H3"
+            else if isLess(l1, l2) and isLess(l2, l3) and isEqual(h2, h3)
+                labelText := "L1<L2<L3 & H2=H3"
+            else if isEqual(l1, l2) and isLess(l2, l3) and isEqual(h2, h3)
+                labelText := "L1=L2<L3 & H2=H3"
+    labelText
+
+getShortStructureText() =>
+    string labelText = ""
+    lastIndex = array.size(pivotKinds) - 1
+    if array.size(pivotKinds) >= 6 and array.get(pivotKinds, lastIndex) == 1
+        h1 = getRecentPivotIndex(1, 3)
+        h2 = getRecentPivotIndex(1, 2)
+        h3 = getRecentPivotIndex(1, 1)
+        l1 = getRecentPivotIndex(-1, 3)
+        l2 = getRecentPivotIndex(-1, 2)
+        l3 = getRecentPivotIndex(-1, 1)
+        if not na(h1) and not na(h2) and not na(h3) and not na(l1) and not na(l2) and not na(l3)
+            if isGreater(h1, h2) and isGreater(h2, h3) and isGreater(l2, l3)
+                labelText := "H1>H2>H3 & L2>L3"
+            else if isEqual(h1, h2) and isGreater(h2, h3) and isGreater(l2, l3)
+                labelText := "H1=H2>H3 & L2>L3"
+            else if isGreater(h1, h2) and isEqual(h2, h3) and isGreater(l2, l3)
+                labelText := "H1>H2=H3 & L2>L3"
+            else if isGreater(h1, h2) and isGreater(h2, h3) and isEqual(l2, l3)
+                labelText := "H1>H2>H3 & L2=L3"
+            else if isEqual(h1, h2) and isGreater(h2, h3) and isEqual(l2, l3)
+                labelText := "H1=H2>H3 & L2=L3"
+    labelText
+
+processPivot(int kind, int pivotBarIndex, float price, int requiredDistance, float tolerance) =>
+    bool changed = false
+    pointCount = array.size(pivotKinds)
+    if pointCount == 0
+        addPivot(kind, pivotBarIndex, price, tolerance)
+        changed := true
+    else
+        lastIndex = pointCount - 1
+        lastKind = array.get(pivotKinds, lastIndex)
+        lastPrice = array.get(pivotPrices, lastIndex)
+        lastBarIndex = array.get(pivotBarIndexes, lastIndex)
+        if lastKind == kind
+            isMoreExtreme = kind == 1 ? price > lastPrice : price < lastPrice
+            if isMoreExtreme
+                replaceLastPivot(kind, pivotBarIndex, price, tolerance)
+                changed := true
+        else
+            distanceFromLastPivot = pivotBarIndex - lastBarIndex
+            swing = math.abs(price - lastPrice)
+            minimumSwing = nz(tolerance, 0.0)
+            maximumSwing = nz(tolerance, 0.0) * (distanceFromLastPivot == 0 ? 9 : distanceFromLastPivot == 1 ? 6 : distanceFromLastPivot == 2 ? 4 : distanceFromLastPivot == 3 ? 3 : 1)
+            if distanceFromLastPivot > requiredDistance
+                if swing >= minimumSwing
+                    addPivot(kind, pivotBarIndex, price, tolerance)
+                    changed := true
+            else if not na(tolerance) and swing >= maximumSwing
+                addPivot(kind, pivotBarIndex, price, tolerance)
+                changed := true
+    changed
+
+highSignal = isConfirmedHigh()
+lowSignal = isConfirmedLow()
+pivotIndex = bar_index - 2
+pivotPointStdev = ta.stdev(math.abs(close - open), 500, false)[2]
+
+bool highPivotChanged = false
+bool lowPivotChanged = false
+if highSignal and not lowSignal
+    highPivotChanged := processPivot(1, pivotIndex, high[2], minimumDistance, pivotPointStdev)
+if not highSignal and lowSignal
+    lowPivotChanged := processPivot(-1, pivotIndex, low[2], minimumDistance, pivotPointStdev)
+
+// Scanner output describes the currently valid structure, rather than only
+// the bar on which a new pivot was detected. A signal remains selectable
+// until a later pivot changes the current structure.
+longStructureText = getLongStructureText()
+shortStructureText = getShortStructureText()
+
+alertcondition(longStructureText == "L1<L2<L3 & H2<H3", title = "SCAN_SIGNAL", message = "L1<L2<L3 & H2<H3")
+alertcondition(longStructureText == "L1=L2<L3 & H2<H3", title = "SCAN_SIGNAL", message = "L1=L2<L3 & H2<H3")
+alertcondition(longStructureText == "L1<L2=L3 & H2<H3", title = "SCAN_SIGNAL", message = "L1<L2=L3 & H2<H3")
+alertcondition(longStructureText == "L1<L2<L3 & H2=H3", title = "SCAN_SIGNAL", message = "L1<L2<L3 & H2=H3")
+alertcondition(longStructureText == "L1=L2<L3 & H2=H3", title = "SCAN_SIGNAL", message = "L1=L2<L3 & H2=H3")
+
+alertcondition(shortStructureText == "H1>H2>H3 & L2>L3", title = "SCAN_SIGNAL", message = "H1>H2>H3 & L2>L3")
+alertcondition(shortStructureText == "H1=H2>H3 & L2>L3", title = "SCAN_SIGNAL", message = "H1=H2>H3 & L2>L3")
+alertcondition(shortStructureText == "H1>H2=H3 & L2>L3", title = "SCAN_SIGNAL", message = "H1>H2=H3 & L2>L3")
+alertcondition(shortStructureText == "H1>H2>H3 & L2=L3", title = "SCAN_SIGNAL", message = "H1>H2>H3 & L2=L3")
+alertcondition(shortStructureText == "H1=H2>H3 & L2=L3", title = "SCAN_SIGNAL", message = "H1=H2>H3 & L2=L3")

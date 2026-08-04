@@ -1,13 +1,15 @@
 <script setup lang="ts">
 import { computed, ref } from 'vue'
 import type { FutureContract, Watchlist, WatchlistContract } from '@/api/modules'
-import { Collection, Monitor } from '@element-plus/icons-vue'
+import { Collection, Filter, Monitor } from '@element-plus/icons-vue'
 import ContractListPanel from './sidebar_panel/ContractListPanel.vue';
 import PositionPanel from './sidebar_panel/PositionPanel.vue'
+import ScannerPanel from './sidebar_panel/ScannerPanel.vue'
 
 enum PanelTypeEnum {
   Contracts = 'contracts',
   Monitor = 'Monitor',
+  Scanner = 'scanner',
 }
 
 const props = withDefaults(
@@ -18,6 +20,7 @@ const props = withDefaults(
     watchlistContracts?: WatchlistContract[]
     selectedContract?: string
     latestPrice?: number
+    interval: number
   }>(),
   {
     contracts: () => [],
@@ -26,6 +29,7 @@ const props = withDefaults(
     watchlistContracts: () => [],
     selectedContract: '',
     latestPrice: undefined,
+    interval: 300,
   },
 )
 
@@ -73,6 +77,11 @@ const toggleSidePanel = (panel: PanelTypeEnum) => {
         :latest-price="latestPrice"
         @update:selected-contract="emit('update:selectedContract', $event)"
       />
+      <ScannerPanel
+        v-else-if="activeSidePanel === PanelTypeEnum.Scanner"
+        :interval="interval"
+        @update:selected-contract="emit('update:selectedContract', $event)"
+      />
     </div>
     <div class="sidebar-actions">
       <button
@@ -91,6 +100,15 @@ const toggleSidePanel = (panel: PanelTypeEnum) => {
         @click="toggleSidePanel(PanelTypeEnum.Monitor)"
       >
         <el-icon><Monitor /></el-icon>
+      </button>
+      <button
+        type="button"
+        class="sidebar-action"
+        :class="{ 'is-active': activeSidePanel === PanelTypeEnum.Scanner }"
+        title="Scanner"
+        @click="toggleSidePanel(PanelTypeEnum.Scanner)"
+      >
+        <el-icon><Filter /></el-icon>
       </button>
     </div>
   </div>

@@ -43,6 +43,9 @@ class Settings:
     pine_runner_timeout_seconds: float = float(
         os.getenv("PINE_RUNNER_TIMEOUT_SECONDS", "30")
     )
+    pine_scanner_timeout_seconds: float = float(
+        os.getenv("PINE_SCANNER_TIMEOUT_SECONDS", "120")
+    )
     storage_root: str = os.getenv(
         "STORAGE_ROOT",
         str(Path(__file__).resolve().parents[2] / "storage"),

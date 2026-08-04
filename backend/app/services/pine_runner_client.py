@@ -14,22 +14,45 @@ logger = get_logger(__name__)
 
 class PineRunnerClient:
     def execute_indicator(self, source: str, bars: list[dict[str, float | int]]) -> dict[str, Any]:
-        payload = json.dumps({"source": source, "bars": bars}).encode("utf-8")
+        return self._execute(
+            path="/v1/pine/execute",
+            payload={"source": source, "bars": bars},
+            timeout_seconds=settings.pine_runner_timeout_seconds,
+        )
+
+    def execute_scanner(
+        self,
+        source: str,
+        contracts: list[dict[str, Any]],
+    ) -> dict[str, Any]:
+        return self._execute(
+            path="/v1/pine/scan",
+            payload={"source": source, "contracts": contracts},
+            timeout_seconds=settings.pine_scanner_timeout_seconds,
+        )
+
+    def _execute(
+        self,
+        path: str,
+        payload: dict[str, Any],
+        timeout_seconds: float,
+    ) -> dict[str, Any]:
+        encoded_payload = json.dumps(payload).encode("utf-8")
         last_error: TimeoutError | URLError | None = None
         for runner_url in self._get_runner_urls():
             request = Request(
-                url=f"{runner_url}/v1/pine/execute",
-                data=payload,
+                url=f"{runner_url}{path}",
+                data=encoded_payload,
                 headers={"Content-Type": "application/json"},
                 method="POST",
             )
             try:
-                with urlopen(request, timeout=settings.pine_runner_timeout_seconds) as response:
+                with urlopen(request, timeout=timeout_seconds) as response:
                     result = json.loads(response.read().decode("utf-8"))
                 break
             except HTTPError as exc:
                 detail = self._read_error_detail(exc)
-                logger.warning("Pine runner rejected indicator execution: %s", detail)
+                logger.warning("Pine runner rejected request: %s", detail)
                 raise HTTPException(status_code=exc.code, detail=detail) from exc
             except (TimeoutError, URLError) as exc:
                 last_error = exc

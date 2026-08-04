@@ -1,4 +1,4 @@
-import { normalizePineResult, type PineBar, type PineNormalizedResult } from "@trade-analysis/core"
+import { normalizePineResult, type PineAlert, type PineBar, type PineNormalizedResult } from "@trade-analysis/core"
 import type { KLineData } from "klinecharts"
 import { PineTS } from "pinets"
 
@@ -15,12 +15,14 @@ export interface LocalPineIndicatorResult {
   overlay: boolean
   plots: PineIndicatorPlot[]
   drawings: PineIndicatorDrawings
+  alerts: PineAlert[]
 }
 
 const toMilliseconds = (value: number) => (value < 100_000_000_000 ? value * 1000 : value)
 
 const toPineBars = (dataList: KLineData[]): PineBar[] => dataList.map((bar) => ({
   openTime: bar.timestamp,
+  closeTime: bar.timestamp,
   open: bar.open,
   high: bar.high,
   low: bar.low,
@@ -80,6 +82,7 @@ export const executePineScriptInBrowser = async (
   const result = normalizePineResult({
     indicator: context.indicator,
     plots: context.plots,
+    alerts: context.alerts,
     warnings: context.warnings,
   }, bars)
 
@@ -91,5 +94,6 @@ export const executePineScriptInBrowser = async (
     overlay: getOverlay(result.indicator),
     plots: toPlots(result),
     drawings: result.drawings as unknown as PineIndicatorDrawings,
+    alerts: result.alerts,
   }
 }

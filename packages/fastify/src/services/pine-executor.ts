@@ -65,6 +65,7 @@ export const executePineScript = async ({ source, bars }: ExecutePineRequest) =>
     return normalizePineResult({
       indicator: context.indicator,
       plots: context.plots,
+      alerts: context.alerts,
       warnings: context.warnings,
     }, normalizedBars)
   } catch (error) {

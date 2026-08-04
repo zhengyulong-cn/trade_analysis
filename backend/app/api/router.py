@@ -9,6 +9,7 @@ from app.api.routes.opportunity_review_columns import router as opportunity_revi
 from app.api.routes.opportunity_reviews import router as opportunity_review_router
 from app.api.routes.pine_scripts import router as pine_script_router
 from app.api.routes.pine_indicators import router as pine_indicator_router
+from app.api.routes.pine_scanners import router as pine_scanner_router
 from app.api.routes.realtime_bars import router as realtime_bar_router
 from app.api.routes.realtime_market import router as realtime_market_router
 from app.api.routes.signal_filters import router as signal_filter_router
@@ -68,6 +69,11 @@ api_router.include_router(
     pine_indicator_router,
     prefix="/pine-indicators",
     tags=["pine-indicators"],
+)
+api_router.include_router(
+    pine_scanner_router,
+    prefix="/pine-scanners",
+    tags=["pine-scanners"],
 )
 api_router.include_router(
     upload_router,

@@ -440,6 +440,7 @@ onBeforeUnmount(() => {
         :watchlist-contracts="sortedContracts"
         :selected-contract="selectedSymbol"
         :latest-price="currentLatestPrice"
+        :interval="selectedPeriod"
         @update:selected-contract="selectedSymbol = $event"
         @update:active-watchlist-id="switchWatchlist"
         @create-watchlist="createWatchlist"

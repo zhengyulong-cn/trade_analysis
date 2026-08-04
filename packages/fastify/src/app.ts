@@ -7,6 +7,7 @@ import { registerRoutes } from './routes/index.js'
 
 export const buildApp = () => {
   const app = Fastify({
+    bodyLimit: Number(process.env.BODY_LIMIT_BYTES ?? 16 * 1024 * 1024),
     logger: {
       level: process.env.LOG_LEVEL ?? 'info',
     },

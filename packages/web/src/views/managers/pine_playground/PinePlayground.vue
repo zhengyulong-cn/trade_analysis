@@ -96,6 +96,7 @@ const runScript = async () => {
     result.value = {
       indicator: context.indicator,
       plots: context.plots,
+      alerts: context.alerts,
       warnings: context.warnings,
     }
     console.info("Execution result", result.value)

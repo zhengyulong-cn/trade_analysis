@@ -11,6 +11,7 @@ export interface PineBar {
 export interface PineRawResult {
   indicator: unknown
   plots: unknown
+  alerts?: unknown
   warnings: unknown
 }
 
@@ -27,10 +28,20 @@ export interface PineDrawings {
   boxes: Array<Record<string, unknown>>
 }
 
+export interface PineAlert {
+  type: string
+  id?: string
+  title?: string
+  message?: string
+  barIndex?: number
+  timestamp?: number
+}
+
 export interface PineNormalizedResult {
   indicator: unknown
   plots: PinePlot[]
   drawings: PineDrawings
+  alerts: PineAlert[]
   warnings: unknown
 }
 
@@ -174,12 +185,36 @@ const normalizeDrawings = (plots: PinePlots, bars: PineBar[]): PineDrawings => (
   }),
 })
 
+const normalizeAlerts = (alerts: unknown): PineAlert[] => asArray(alerts).flatMap((value) => {
+  const alert = asRecord(value)
+  if (!alert || typeof alert.type !== "string") {
+    return []
+  }
+
+  const titleOptions = asRecord(alert.title)
+  const title = typeof alert.title === "string" ? alert.title : titleOptions?.title
+  const message = typeof alert.message === "string" && alert.message
+    ? alert.message
+    : titleOptions?.message
+  const timestamp = asFiniteNumber(alert.time ?? alert.timestamp)
+  const barIndex = asFiniteNumber(alert.bar_index ?? alert.barIndex)
+  return [{
+    type: alert.type,
+    ...(typeof alert.id === "string" ? { id: alert.id } : {}),
+    ...(typeof title === "string" ? { title } : {}),
+    ...(typeof message === "string" ? { message } : {}),
+    ...(barIndex === undefined ? {} : { barIndex }),
+    ...(timestamp === undefined ? {} : { timestamp: toMilliseconds(timestamp) }),
+  }]
+})
+
 export const normalizePineResult = (result: PineRawResult, bars: PineBar[]): PineNormalizedResult => {
   const plots = asRecord(result.plots) ?? {}
   return {
     indicator: result.indicator,
     plots: normalizePlots(plots),
     drawings: normalizeDrawings(plots, bars),
+    alerts: normalizeAlerts(result.alerts),
     warnings: result.warnings,
   }
 }

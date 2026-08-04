@@ -39,7 +39,10 @@ class PineIndicatorService:
             interval_seconds=payload.interval,
             limit=payload.limit,
         )
-        bars = [self._to_pine_bar(item.date_time, item) for item in kline_result.kline_data]
+        bars = [
+            self._to_pine_bar(item.date_time, item, payload.interval)
+            for item in kline_result.kline_data
+        ]
         result = self._pine_runner_client.execute_indicator(script.script_content, bars)
 
         indicator = result.get("indicator")
@@ -70,10 +73,15 @@ class PineIndicatorService:
         )
 
     @staticmethod
-    def _to_pine_bar(date_time: datetime, item: Any) -> dict[str, float | int]:
+    def _to_pine_bar(
+        date_time: datetime,
+        item: Any,
+        interval_seconds: int,
+    ) -> dict[str, float | int]:
         timestamp = PineIndicatorService._to_timestamp_milliseconds(date_time)
         return {
             "timestamp": timestamp,
+            "closeTime": timestamp + interval_seconds * 1000,
             "open": float(item.open),
             "high": float(item.high),
             "low": float(item.low),
