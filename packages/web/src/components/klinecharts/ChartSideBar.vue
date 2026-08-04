@@ -53,7 +53,7 @@ const toggleSidePanel = (panel: PanelTypeEnum) => {
 
 <template>
   <div class="chart-sidebar-box">
-    <div v-if="activeSidePanel">
+    <div v-if="activeSidePanel" class="side-panel">
       <ContractListPanel
         v-if="activeSidePanel === PanelTypeEnum.Contracts"
         :watchlists="watchlists"
@@ -120,7 +120,11 @@ const toggleSidePanel = (panel: PanelTypeEnum) => {
   flex-direction: row;
   gap: .5rem;
   min-height: 0;
-  padding: 0.5rem;
+  flex: 1;
+}
+
+.side-panel {
+  margin-top: .5rem;
 }
 
 .sidebar-actions {

@@ -470,6 +470,7 @@ onBeforeUnmount(() => {
 
 .chart-side-bar {
   height: 100%;
+  display: flex;
 }
 
 .chart-toolbar {
