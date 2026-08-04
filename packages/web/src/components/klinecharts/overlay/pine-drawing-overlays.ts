@@ -13,7 +13,11 @@ import {
 
 let registered = false
 
-const lineStyle = (style?: string) => (style === "dashed" || style === "dotted" ? "dashed" : "solid")
+const lineStyle = (style?: string) => (
+  style === "style_dashed"
+    ? "dashed"
+    : "solid"
+)
 
 const toOverlayPoint = (point: { timestamp?: number; price?: number }) => {
   if (!Number.isFinite(point.timestamp) || !Number.isFinite(point.price)) {
@@ -118,6 +122,7 @@ const registerPineLineOverlay = () => {
         return []
       }
       const drawing = overlay.extendData
+      console.log("drawing.style =", drawing.style, lineStyle(drawing.style))
       return [{
         type: "line",
         attrs: { coordinates: [start, end] },

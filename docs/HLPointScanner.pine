@@ -134,7 +134,7 @@ processPivot(int kind, int pivotBarIndex, float price, int requiredDistance, flo
             distanceFromLastPivot = pivotBarIndex - lastBarIndex
             swing = math.abs(price - lastPrice)
             minimumSwing = nz(tolerance, 0.0)
-            maximumSwing = nz(tolerance, 0.0) * (distanceFromLastPivot == 0 ? 9 : distanceFromLastPivot == 1 ? 6 : distanceFromLastPivot == 2 ? 4 : distanceFromLastPivot == 3 ? 3 : 1)
+            maximumSwing = nz(tolerance, 0.0) * (distanceFromLastPivot == 0 ? 9 : distanceFromLastPivot == 1 ? 7 : distanceFromLastPivot == 2 ? 5 : distanceFromLastPivot == 3 ? 5 : 1)
             if distanceFromLastPivot > requiredDistance
                 if swing >= minimumSwing
                     addPivot(kind, pivotBarIndex, price, tolerance)

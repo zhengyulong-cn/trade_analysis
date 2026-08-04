@@ -4,6 +4,7 @@ indicator("HLPoint2 ZigZag", overlay = true, max_labels_count = 500, max_lines_c
 minimumDistance = input.int(3, "MinimumDistance", minval = 1)
 showStructureLabels = input.bool(true, "Show Structure Labels")
 showLines = input.bool(true, "Show Lines")
+showPreviewLine = input.bool(true, "Show Preview Line")
 showZones = input.bool(true, "Show Pivot Zones")
 highColor = input.color(color.green, "High / Down Color")
 lowColor = input.color(color.red, "Low / Up Color")
@@ -201,7 +202,6 @@ refreshLatestStructureLabel(array<PivotPoint> points) =>
                     labelColor := longLabelColor
     updateLatestStructureLabel(points, labelText, targetKind, labelColor)
 
-
 // ---------------------Pivot结点操作---------------------
 addPivot(array<PivotPoint> points, int kind, int pivotBarIndex, float price, float tolerance) =>
     [zoneCenter, zoneUpper, zoneLower] = buildZone(kind, pivotBarIndex, tolerance)
@@ -237,11 +237,11 @@ getLimitedMaxNumSwing(int distance) =>
     if distance == 0
         9
     else if distance == 1
-        6
+        7
     else if distance == 2
-        4
+        5
     else if distance == 3
-        3
+        5
     else
         1
 
@@ -276,3 +276,31 @@ if highSignal and not(lowSignal)
     processPivot(pivotPoints, 1, pivotIndex, high[2], minimumDistance, pivotPointStdev)
 if not(highSignal) and lowSignal
     processPivot(pivotPoints, -1, pivotIndex, low[2], minimumDistance, pivotPointStdev)
+
+// ---------------------预览线---------------------
+var line previewLine = na
+
+updatePreviewLine(array<PivotPoint> points, line existingLine) =>
+    line result = existingLine
+    if not showLines or not showPreviewLine or array.size(points) == 0
+        if not na(result)
+            line.delete(result)
+        result := na
+    else
+        lastPoint = array.last(points)
+        isContinuing = lastPoint.kind == 1 ? high > lastPoint.price : low < lastPoint.price
+        previousPoint = array.size(points) >= 2 ? array.get(points, array.size(points) - 2) : lastPoint
+        previewStartPoint = isContinuing ? previousPoint : lastPoint
+        previewPrice = lastPoint.kind == 1 ? (isContinuing ? high : low) : (isContinuing ? low : high)
+        previewColor = color.black
+        if na(result)
+            result := line.new(previewStartPoint.barIndex, previewStartPoint.price, bar_index, previewPrice, color = previewColor, width = lineWidth, style = line.style_dashed)
+        else
+            line.set_xy1(result, previewStartPoint.barIndex, previewStartPoint.price)
+            line.set_xy2(result, bar_index, previewPrice)
+            line.set_color(result, previewColor)
+            line.set_width(result, lineWidth)
+            line.set_style(result, line.style_dashed)
+    result
+
+previewLine := updatePreviewLine(pivotPoints, previewLine)
