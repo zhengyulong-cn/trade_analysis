@@ -1,0 +1,102 @@
+from fastapi import APIRouter
+
+from app.api.routes.chart_persistences import router as chart_persistence_router
+from app.api.routes.contracts import router as contract_router
+from app.api.routes.analysis import router as analysis_router
+from app.api.routes.health import router as health_router
+from app.api.routes.klines import router as kline_router
+from app.api.routes.opportunity_review_columns import router as opportunity_review_column_router
+from app.api.routes.opportunity_reviews import router as opportunity_review_router
+from app.api.routes.pine_scripts import router as pine_script_router
+from app.api.routes.pine_indicators import router as pine_indicator_router
+from app.api.routes.pine_scanners import router as pine_scanner_router
+from app.api.routes.realtime_bars import router as realtime_bar_router
+from app.api.routes.realtime_market import router as realtime_market_router
+from app.api.routes.signal_filters import router as signal_filter_router
+from app.api.routes.trade_accounts import router as trade_account_router
+from app.api.routes.trade_record_columns import router as trade_record_column_router
+from app.api.routes.trade_records import router as trade_record_router
+from app.api.routes.trade_thoughts import router as trade_thought_router
+from app.api.routes.uploads import router as upload_router
+from app.api.routes.watchlists import router as watchlist_router
+
+api_router = APIRouter()
+api_router.include_router(health_router, tags=["health"])
+api_router.include_router(
+    chart_persistence_router,
+    prefix="/chart-persistences",
+    tags=["chart-persistences"],
+)
+api_router.include_router(contract_router, prefix="/contracts", tags=["contracts"])
+api_router.include_router(watchlist_router, prefix="/watchlists", tags=["watchlists"])
+api_router.include_router(kline_router, prefix="/klines", tags=["klines"])
+api_router.include_router(
+    trade_account_router,
+    prefix="/trade-accounts",
+    tags=["trade-accounts"],
+)
+api_router.include_router(
+    trade_record_column_router,
+    prefix="/trade-record-columns",
+    tags=["trade-record-columns"],
+)
+api_router.include_router(
+    opportunity_review_column_router,
+    prefix="/opportunity-review-columns",
+    tags=["opportunity-review-columns"],
+)
+api_router.include_router(
+    opportunity_review_router,
+    prefix="/opportunity-reviews",
+    tags=["opportunity-reviews"],
+)
+api_router.include_router(
+    trade_record_router,
+    prefix="/trade-records",
+    tags=["trade-records"],
+)
+api_router.include_router(
+    trade_thought_router,
+    prefix="/trade-thoughts",
+    tags=["trade-thoughts"],
+)
+api_router.include_router(
+    pine_script_router,
+    prefix="/pine-scripts",
+    tags=["pine-scripts"],
+)
+api_router.include_router(
+    pine_indicator_router,
+    prefix="/pine-indicators",
+    tags=["pine-indicators"],
+)
+api_router.include_router(
+    pine_scanner_router,
+    prefix="/pine-scanners",
+    tags=["pine-scanners"],
+)
+api_router.include_router(
+    upload_router,
+    prefix="/uploads",
+    tags=["uploads"],
+)
+api_router.include_router(
+    realtime_bar_router,
+    prefix="/realtime-bars",
+    tags=["realtime-bars"],
+)
+api_router.include_router(
+    realtime_market_router,
+    prefix="/ws",
+    tags=["realtime-market"],
+)
+api_router.include_router(
+    analysis_router,
+    prefix="/analysis",
+    tags=["analysis"],
+)
+api_router.include_router(
+    signal_filter_router,
+    prefix="/signal-filters",
+    tags=["signal-filters"],
+)
